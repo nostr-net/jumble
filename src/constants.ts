@@ -83,7 +83,14 @@ export const FAST_WRITE_RELAY_URLS = [
   'wss://thecitadel.nostr1.com/'
 ]
 
-export const SEARCHABLE_RELAY_URLS = ['wss://relay.nostr.band/', 'wss://freelay.sovbit.host/', 'wss://relay.damus.io/', 'wss://search.nos.today/', 'wss://aggr.nostr.land', 'wss://purplepag.es', 'wss://profiles.nostr1.com']
+export const SEARCHABLE_RELAY_URLS = [
+  'wss://relay.nostr.band/', 
+  'wss://freelay.sovbit.host/', 
+  'wss://relay.damus.io/', 
+  'wss://search.nos.today/', 
+  'wss://aggr.nostr.land', 
+  'wss://purplepag.es', 
+  'wss://profiles.nostr1.com']
 
 // Combined relay URLs for profile fetching - includes both BIG_RELAY_URLS and SEARCHABLE_RELAY_URLS
 export const PROFILE_FETCH_RELAY_URLS = [...BIG_RELAY_URLS, ...SEARCHABLE_RELAY_URLS]
