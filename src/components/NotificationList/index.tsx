@@ -55,7 +55,8 @@ const NotificationList = forwardRef((_, ref) => {
           kinds.ShortTextNote,
           ExtendedKind.COMMENT,
           ExtendedKind.VOICE_COMMENT,
-          ExtendedKind.POLL
+          ExtendedKind.POLL,
+          ExtendedKind.PUBLIC_MESSAGE
         ]
       case 'reactions':
         return [kinds.Reaction, kinds.Repost, ExtendedKind.POLL_RESPONSE]
@@ -70,7 +71,8 @@ const NotificationList = forwardRef((_, ref) => {
           ExtendedKind.COMMENT,
           ExtendedKind.POLL_RESPONSE,
           ExtendedKind.VOICE_COMMENT,
-          ExtendedKind.POLL
+          ExtendedKind.POLL,
+          ExtendedKind.PUBLIC_MESSAGE
         ]
     }
   }, [notificationType])

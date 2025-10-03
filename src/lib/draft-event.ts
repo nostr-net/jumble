@@ -10,7 +10,7 @@ import {
   TPollCreateData,
   TRelaySet
 } from '@/types'
-import { sha256 } from '@noble/hashes/sha2'
+import { sha256 } from '@noble/hashes/sha256'
 import dayjs from 'dayjs'
 import { Event, kinds, nip19 } from 'nostr-tools'
 import {
@@ -252,6 +252,116 @@ export async function createCommentDraftEvent(
     content: transformedEmojisContent,
     tags
   }
+
+  return setDraftEventCache(baseDraft)
+}
+
+export async function createPublicMessageReplyDraftEvent(
+  content: string,
+  parentEvent: Event,
+  mentions: string[],
+  options: {
+    addClientTag?: boolean
+    isNsfw?: boolean
+  } = {}
+): Promise<TDraftEvent> {
+  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(content)
+  const {
+    quoteEventHexIds,
+    quoteReplaceableCoordinates
+  } = await extractCommentMentions(transformedEmojisContent, parentEvent)
+  const hashtags = extractHashtags(transformedEmojisContent)
+
+  const tags = emojiTags
+    .concat(hashtags.map((hashtag) => buildTTag(hashtag)))
+    .concat(quoteEventHexIds.map((eventId) => buildQTag(eventId)))
+    .concat(quoteReplaceableCoordinates.map((coordinate) => buildReplaceableQTag(coordinate)))
+
+  const images = extractImagesFromContent(transformedEmojisContent)
+  if (images && images.length) {
+    tags.push(...generateImetaTags(images))
+  }
+
+  // For kind 24 replies, we use 'q' tag for the parent event (as per NIP-A4)
+  tags.push(buildQTag(parentEvent.id))
+
+  // Add 'p' tags for recipients (original sender and any mentions)
+  const recipients = new Set([parentEvent.pubkey])
+  mentions.forEach(pubkey => recipients.add(pubkey))
+  
+  // console.log('🔧 Creating public message reply draft:', {
+  //   parentEventId: parentEvent.id,
+  //   parentEventPubkey: parentEvent.pubkey,
+  //   mentions,
+  //   recipients: Array.from(recipients),
+  //   finalTags: tags.length
+  // })
+  
+  tags.push(
+    ...Array.from(recipients).map((pubkey) => buildPTag(pubkey))
+  )
+
+  if (options.addClientTag) {
+    tags.push(buildClientTag())
+  }
+
+  if (options.isNsfw) {
+    tags.push(buildNsfwTag())
+  }
+
+  // console.log('📝 Final public message reply draft tags:', {
+  //   pTags: tags.filter(tag => tag[0] === 'p'),
+  //   qTags: tags.filter(tag => tag[0] === 'q'),
+  //   allTags: tags
+  // })
+
+  const baseDraft = {
+    kind: ExtendedKind.PUBLIC_MESSAGE,
+    content: transformedEmojisContent,
+    tags
+  }
+
+  return setDraftEventCache(baseDraft)
+}
+
+export async function createPublicMessageDraftEvent(
+  content: string,
+  recipients: string[],
+  options: {
+    addClientTag?: boolean
+    isNsfw?: boolean
+  } = {}
+): Promise<TDraftEvent> {
+  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(content)
+  const hashtags = extractHashtags(transformedEmojisContent)
+
+  const tags = emojiTags
+    .concat(hashtags.map((hashtag) => buildTTag(hashtag)))
+
+  const images = extractImagesFromContent(transformedEmojisContent)
+  if (images && images.length) {
+    tags.push(...generateImetaTags(images))
+  }
+
+  // Add 'p' tags for recipients
+  tags.push(
+    ...recipients.map((pubkey) => buildPTag(pubkey))
+  )
+
+  if (options.addClientTag) {
+    tags.push(buildClientTag())
+  }
+
+  if (options.isNsfw) {
+    tags.push(buildNsfwTag())
+  }
+
+  const baseDraft = {
+    kind: ExtendedKind.PUBLIC_MESSAGE,
+    content: transformedEmojisContent,
+    tags
+  }
+
   return setDraftEventCache(baseDraft)
 }
 

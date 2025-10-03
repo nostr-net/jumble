@@ -51,7 +51,8 @@ export default function QuoteList({ event, className }: { event: Event; classNam
                 kinds.Highlights,
                 kinds.LongFormArticle,
                 ExtendedKind.COMMENT,
-                ExtendedKind.POLL
+                ExtendedKind.POLL,
+                ExtendedKind.PUBLIC_MESSAGE
               ],
               limit: LIMIT
             }

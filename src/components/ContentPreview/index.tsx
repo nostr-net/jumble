@@ -62,7 +62,8 @@ export default function ContentPreview({
       ExtendedKind.COMMENT,
       ExtendedKind.VOICE,
       ExtendedKind.VOICE_COMMENT,
-      ExtendedKind.RELAY_REVIEW
+      ExtendedKind.RELAY_REVIEW,
+      ExtendedKind.PUBLIC_MESSAGE
     ].includes(event.kind)
   ) {
     return <NormalContentPreview event={event} className={className} />

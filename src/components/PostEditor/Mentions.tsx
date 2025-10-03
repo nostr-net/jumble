@@ -132,7 +132,7 @@ function PopoverCheckboxItem({
   )
 }
 
-async function extractMentions(content: string, parentEvent?: Event) {
+export async function extractMentions(content: string, parentEvent?: Event) {
   const parentEventPubkey = parentEvent ? parentEvent.pubkey : undefined
   const pubkeys: string[] = []
   const relatedPubkeys: string[] = []

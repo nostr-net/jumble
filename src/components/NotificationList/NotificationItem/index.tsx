@@ -8,6 +8,7 @@ import { Event, kinds } from 'nostr-tools'
 import { useMemo } from 'react'
 import { MentionNotification } from './MentionNotification'
 import { PollResponseNotification } from './PollResponseNotification'
+import { PublicMessageNotification } from './PublicMessageNotification'
 import { ReactionNotification } from './ReactionNotification'
 import { RepostNotification } from './RepostNotification'
 import { ZapNotification } from './ZapNotification'
@@ -42,6 +43,9 @@ export function NotificationItem({
 
   if (notification.kind === kinds.Reaction) {
     return <ReactionNotification notification={notification} isNew={isNew} />
+  }
+  if (notification.kind === ExtendedKind.PUBLIC_MESSAGE) {
+    return <PublicMessageNotification notification={notification} isNew={isNew} />
   }
   if (
     notification.kind === kinds.ShortTextNote ||

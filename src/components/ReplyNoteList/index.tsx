@@ -172,6 +172,14 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
               limit: LIMIT
             })
           }
+          // For public messages (kind 24), also look for replies using 'q' tags
+          if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
+            filters.push({
+              '#q': [rootInfo.id],
+              kinds: [ExtendedKind.PUBLIC_MESSAGE],
+              limit: LIMIT
+            })
+          }
         } else if (rootInfo.type === 'A') {
           filters.push(
             {

@@ -40,6 +40,7 @@ const PostTextarea = forwardRef<
     onUploadStart?: (file: File, cancel: () => void) => void
     onUploadProgress?: (file: File, progress: number) => void
     onUploadEnd?: (file: File) => void
+    kind?: number
   }
 >(
   (
@@ -52,7 +53,8 @@ const PostTextarea = forwardRef<
       className,
       onUploadStart,
       onUploadProgress,
-      onUploadEnd
+      onUploadEnd,
+      kind = 1
     },
     ref
   ) => {
@@ -167,7 +169,7 @@ const PostTextarea = forwardRef<
           <EditorContent className="tiptap" editor={editor} />
         </TabsContent>
         <TabsContent value="preview">
-          <Preview content={text} className={className} />
+          <Preview content={text} className={className} kind={kind} />
         </TabsContent>
       </Tabs>
     )

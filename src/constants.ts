@@ -106,6 +106,7 @@ export const ExtendedKind = {
   COMMENT: 1111,
   VOICE: 1222,
   VOICE_COMMENT: 1244,
+  PUBLIC_MESSAGE: 24,
   FAVORITE_RELAYS: 10012,
   BLOSSOM_SERVER_LIST: 10063,
   RELAY_REVIEW: 31987,
@@ -122,6 +123,7 @@ export const SUPPORTED_KINDS = [
   ExtendedKind.COMMENT,
   ExtendedKind.VOICE,
   ExtendedKind.VOICE_COMMENT,
+  // ExtendedKind.PUBLIC_MESSAGE, // Excluded - public messages should only appear in notifications
   kinds.Highlights,
   kinds.LongFormArticle,
   ExtendedKind.RELAY_REVIEW

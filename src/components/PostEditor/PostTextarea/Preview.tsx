@@ -5,7 +5,15 @@ import { cn } from '@/lib/utils'
 import { useMemo } from 'react'
 import Content from '../../Content'
 
-export default function Preview({ content, className }: { content: string; className?: string }) {
+export default function Preview({ 
+  content, 
+  className,
+  kind = 1 
+}: { 
+  content: string
+  className?: string
+  kind?: number
+}) {
   const { content: processedContent, emojiTags } = useMemo(
     () => transformCustomEmojisInContent(content),
     [content]
@@ -13,7 +21,11 @@ export default function Preview({ content, className }: { content: string; class
   return (
     <Card className={cn('p-3', className)}>
       <Content
-        event={createFakeEvent({ content: processedContent, tags: emojiTags })}
+        event={createFakeEvent({ 
+          content: processedContent, 
+          tags: emojiTags,
+          kind 
+        })}
         className="pointer-events-none h-full"
         mustLoadMedia
       />

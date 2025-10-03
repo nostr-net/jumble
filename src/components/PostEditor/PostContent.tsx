@@ -4,21 +4,24 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   createCommentDraftEvent,
   createPollDraftEvent,
+  createPublicMessageDraftEvent,
+  createPublicMessageReplyDraftEvent,
   createShortTextNoteDraftEvent,
   deleteDraftEventCache
 } from '@/lib/draft-event'
+import { ExtendedKind } from '@/constants'
 import { isTouchDevice } from '@/lib/utils'
 import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import postEditorCache from '@/services/post-editor-cache.service'
 import { TPollCreateData } from '@/types'
-import { ImageUp, ListTodo, LoaderCircle, Settings, Smile, X } from 'lucide-react'
+import { ImageUp, ListTodo, LoaderCircle, MessageCircle, Settings, Smile, X } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import EmojiPickerDialog from '../EmojiPickerDialog'
-import Mentions from './Mentions'
+import Mentions, { extractMentions } from './Mentions'
 import PollEditor from './PollEditor'
 import PostOptions from './PostOptions'
 import PostRelaySelector from './PostRelaySelector'
@@ -50,6 +53,8 @@ export default function PostContent({
   const [mentions, setMentions] = useState<string[]>([])
   const [isNsfw, setIsNsfw] = useState(false)
   const [isPoll, setIsPoll] = useState(false)
+  const [isPublicMessage, setIsPublicMessage] = useState(false)
+  const [publicMessageRecipients, setPublicMessageRecipients] = useState<string[]>([])
   const [isProtectedEvent, setIsProtectedEvent] = useState(false)
   const [additionalRelayUrls, setAdditionalRelayUrls] = useState<string[]>([])
   const [pollCreateData, setPollCreateData] = useState<TPollCreateData>({
@@ -61,14 +66,32 @@ export default function PostContent({
   const [minPow, setMinPow] = useState(0)
   const isFirstRender = useRef(true)
   const canPost = useMemo(() => {
-    return (
+    const result = (
       !!pubkey &&
       !!text &&
       !posting &&
       !uploadProgresses.length &&
       (!isPoll || pollCreateData.options.filter((option) => !!option.trim()).length >= 2) &&
+      (!isPublicMessage || publicMessageRecipients.length > 0 || parentEvent?.kind === ExtendedKind.PUBLIC_MESSAGE) &&
       (!isProtectedEvent || additionalRelayUrls.length > 0)
     )
+    
+    // Debug logging for public message replies
+    if (parentEvent?.kind === ExtendedKind.PUBLIC_MESSAGE) {
+      console.log('Public message reply debug:', {
+        pubkey: !!pubkey,
+        text: !!text,
+        posting,
+        uploadProgresses: uploadProgresses.length,
+        isPoll,
+        pollCreateDataValid: !isPoll || pollCreateData.options.filter((option) => !!option.trim()).length >= 2,
+        publicMessageCheck: !isPublicMessage || publicMessageRecipients.length > 0 || parentEvent?.kind === ExtendedKind.PUBLIC_MESSAGE,
+        protectedEventCheck: !isProtectedEvent || additionalRelayUrls.length > 0,
+        canPost: result
+      })
+    }
+    
+    return result
   }, [
     pubkey,
     text,
@@ -76,6 +99,9 @@ export default function PostContent({
     uploadProgresses,
     isPoll,
     pollCreateData,
+    isPublicMessage,
+    publicMessageRecipients,
+    parentEvent?.kind,
     isProtectedEvent,
     additionalRelayUrls
   ])
@@ -113,37 +139,106 @@ export default function PostContent({
     )
   }, [defaultContent, parentEvent, isNsfw, isPoll, pollCreateData, addClientTag])
 
+  // Extract mentions from content for public messages
+  const extractMentionsFromContent = useCallback(async (content: string) => {
+    try {
+      // First try to extract nostr: protocol mentions
+      const { pubkeys: nostrPubkeys } = await extractMentions(content, undefined)
+      
+      // Also extract regular @ mentions (simple pattern for now)
+      const atMentions = content.match(/@[a-zA-Z0-9_]+/g) || []
+      
+      console.log('Nostr mentions:', nostrPubkeys)
+      console.log('@ mentions:', atMentions)
+      
+      // For now, we'll use the nostr mentions and show that we detected @ mentions
+      // In a real implementation, you'd resolve @ mentions to pubkeys
+      setPublicMessageRecipients(nostrPubkeys)
+    } catch (error) {
+      console.error('Error extracting mentions:', error)
+      setPublicMessageRecipients([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isPublicMessage) {
+      setPublicMessageRecipients([])
+      return
+    }
+
+    if (!text) {
+      setPublicMessageRecipients([])
+      return
+    }
+
+    // Debounce the mention extraction
+    const timeoutId = setTimeout(() => {
+      extractMentionsFromContent(text)
+    }, 300)
+
+    return () => {
+      clearTimeout(timeoutId)
+    }
+  }, [text, isPublicMessage, extractMentionsFromContent])
+
   const post = async (e?: React.MouseEvent) => {
     e?.stopPropagation()
     checkLogin(async () => {
-      if (!canPost) return
+      if (!canPost) {
+        console.log('❌ Cannot post - canPost is false')
+        return
+      }
+
+      // console.log('🚀 Starting post process:', {
+      //   isPublicMessage,
+      //   parentEventKind: parentEvent?.kind,
+      //   parentEventId: parentEvent?.id,
+      //   text: text.substring(0, 50) + '...',
+      //   mentions: mentions.length,
+      //   canPost
+      // })
 
       setPosting(true)
       try {
-        const draftEvent =
-          parentEvent && parentEvent.kind !== kinds.ShortTextNote
-            ? await createCommentDraftEvent(text, parentEvent, mentions, {
-                addClientTag,
-                protectedEvent: isProtectedEvent,
-                isNsfw
-              })
-            : isPoll
-              ? await createPollDraftEvent(pubkey!, text, mentions, pollCreateData, {
-                  addClientTag,
-                  isNsfw
-                })
-              : await createShortTextNoteDraftEvent(text, mentions, {
-                  parentEvent,
-                  addClientTag,
-                  protectedEvent: isProtectedEvent,
-                  isNsfw
-                })
+        
+        let draftEvent
+        if (isPublicMessage) {
+          draftEvent = await createPublicMessageDraftEvent(text, publicMessageRecipients, {
+            addClientTag,
+            isNsfw
+          })
+        } else if (parentEvent && parentEvent.kind === ExtendedKind.PUBLIC_MESSAGE) {
+          draftEvent = await createPublicMessageReplyDraftEvent(text, parentEvent, mentions, {
+            addClientTag,
+            isNsfw
+          })
+        } else if (parentEvent && parentEvent.kind !== kinds.ShortTextNote) {
+          draftEvent = await createCommentDraftEvent(text, parentEvent, mentions, {
+            addClientTag,
+            protectedEvent: isProtectedEvent,
+            isNsfw
+          })
+        } else if (isPoll) {
+          draftEvent = await createPollDraftEvent(pubkey!, text, mentions, pollCreateData, {
+            addClientTag,
+            isNsfw
+          })
+        } else {
+          draftEvent = await createShortTextNoteDraftEvent(text, mentions, {
+            parentEvent,
+            addClientTag,
+            protectedEvent: isProtectedEvent,
+            isNsfw
+          })
+        }
 
+        // console.log('Publishing draft event:', draftEvent)
         const newEvent = await publish(draftEvent, {
           specifiedRelayUrls: isProtectedEvent ? additionalRelayUrls : undefined,
           additionalRelayUrls: isPoll ? pollCreateData.relays : additionalRelayUrls,
           minPow
         })
+        // console.log('Published event:', newEvent)
         postEditorCache.clearPostCache({ defaultContent, parentEvent })
         deleteDraftEventCache(draftEvent)
         addReplies([newEvent])
@@ -171,6 +266,16 @@ export default function PostContent({
     setIsPoll((prev) => !prev)
   }
 
+  const handlePublicMessageToggle = () => {
+    if (parentEvent) return
+
+    setIsPublicMessage((prev) => !prev)
+    if (!isPublicMessage) {
+      // When enabling public message mode, clear other modes
+      setIsPoll(false)
+    }
+  }
+
   const handleUploadStart = (file: File, cancel: () => void) => {
     setUploadProgresses((prev) => [...prev, { file, progress: 0, cancel }])
   }
@@ -187,6 +292,26 @@ export default function PostContent({
 
   return (
     <div className="space-y-2">
+      {/* Dynamic Title based on mode */}
+      <div className="text-lg font-semibold">
+        {parentEvent ? (
+          <div className="flex gap-2 items-center w-full">
+            <div className="shrink-0">
+              {parentEvent.kind === ExtendedKind.PUBLIC_MESSAGE 
+                ? t('Reply to Public Message')
+                : t('Reply to')
+              }
+            </div>
+          </div>
+        ) : isPoll ? (
+          t('New Poll')
+        ) : isPublicMessage ? (
+          t('New Public Message')
+        ) : (
+          t('New Note')
+        )}
+      </div>
+      
       {parentEvent && (
         <ScrollArea className="flex max-h-48 flex-col overflow-y-auto rounded-lg border bg-muted/40">
           <div className="p-2 sm:p-3 pointer-events-none">
@@ -205,6 +330,7 @@ export default function PostContent({
         onUploadStart={handleUploadStart}
         onUploadProgress={handleUploadProgress}
         onUploadEnd={handleUploadEnd}
+        kind={isPublicMessage ? ExtendedKind.PUBLIC_MESSAGE : isPoll ? ExtendedKind.POLL : kinds.ShortTextNote}
       />
       {isPoll && (
         <PollEditor
@@ -212,6 +338,28 @@ export default function PostContent({
           setPollCreateData={setPollCreateData}
           setIsPoll={setIsPoll}
         />
+      )}
+      {isPublicMessage && (
+        <div className="rounded-lg border bg-muted/40 p-3">
+          <div className="mb-2 text-sm font-medium">{t('Recipients')}</div>
+          <div className="space-y-2">
+            <Mentions
+              content={text}
+              parentEvent={undefined}
+              mentions={publicMessageRecipients}
+              setMentions={setPublicMessageRecipients}
+            />
+            {publicMessageRecipients.length > 0 ? (
+              <div className="text-sm text-muted-foreground">
+                {t('Recipients detected from your message:')} {publicMessageRecipients.length}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                {t('Add recipients using nostr: mentions (e.g., nostr:npub1...) or the recipient selector above')}
+              </div>
+            )}
+          </div>
+        </div>
       )}
       {uploadProgresses.length > 0 &&
         uploadProgresses.map(({ file, progress, cancel }, index) => (
@@ -289,6 +437,17 @@ export default function PostContent({
               <ListTodo />
             </Button>
           )}
+          {!parentEvent && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title={t('Send Public Message')}
+              className={isPublicMessage ? 'bg-accent' : ''}
+              onClick={handlePublicMessageToggle}
+            >
+              <MessageCircle />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -317,7 +476,7 @@ export default function PostContent({
             </Button>
             <Button type="submit" disabled={!canPost} onClick={post}>
               {posting && <LoaderCircle className="animate-spin" />}
-              {parentEvent ? t('Reply') : t('Post')}
+              {parentEvent ? t('Reply') : isPublicMessage ? t('Send Public Message') : t('Post')}
             </Button>
           </div>
         </div>

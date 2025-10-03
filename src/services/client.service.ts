@@ -113,7 +113,8 @@ class ClientService extends EventTarget {
         })
         if (mentions.length > 0) {
           const relayLists = await this.fetchRelayLists(mentions)
-          relayLists.forEach((relayList) => {
+          relayLists.forEach((relayList, index) => {
+            const mentionPubkey = mentions[index]
             _additionalRelayUrls.push(...relayList.read.slice(0, 4))
           })
         }
@@ -131,9 +132,19 @@ class ClientService extends EventTarget {
       }
 
       const relayList = await this.fetchRelayList(event.pubkey)
-      relays = (relayList?.write.slice(0, 6) ?? []).concat(
-        Array.from(new Set(_additionalRelayUrls)) ?? []
-      )
+      const senderWriteRelays = relayList?.write.slice(0, 6) ?? []
+      const recipientReadRelays = Array.from(new Set(_additionalRelayUrls))
+      relays = senderWriteRelays.concat(recipientReadRelays)
+      
+      // Special logging for public messages
+      if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
+        // console.log('🎯 Final relay selection for public message:', {
+        //   eventId: event.id.substring(0, 8) + '...',
+        //   senderWriteRelays: senderWriteRelays.length,
+        //   recipientReadRelays: recipientReadRelays.length,
+        //   finalRelays: relays.length
+        // })
+      }
     }
 
     if (!relays.length) {
@@ -145,6 +156,17 @@ class ClientService extends EventTarget {
 
   async publishEvent(relayUrls: string[], event: NEvent) {
     const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
+    console.log(`Publishing kind ${event.kind} event to ${uniqueRelayUrls.length} relays`)
+    // if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
+    //   console.log('Public message event details:', {
+    //     id: event.id,
+    //     pubkey: event.pubkey,
+    //     content: event.content.substring(0, 50),
+    //     tags: event.tags,
+    //     targetRelays: uniqueRelayUrls
+    //   })
+    // }
+    
     await new Promise<void>((resolve, reject) => {
       let successCount = 0
       let finishedCount = 0
@@ -158,15 +180,18 @@ class ClientService extends EventTarget {
           return relay
             .publish(event)
             .then(() => {
+              console.log(`✓ Published to ${url}`)
               this.trackEventSeenOn(event.id, relay)
               successCount++
             })
             .catch((error) => {
+              console.log(`✗ Failed to publish to ${url}:`, error.message)
               if (
                 error instanceof Error &&
                 error.message.startsWith('auth-required') &&
                 !!that.signer
               ) {
+                console.log(`Attempting auth for ${url}`)
                 return relay
                   .auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
                   .then(() => relay.publish(event))
@@ -175,23 +200,32 @@ class ClientService extends EventTarget {
               }
             })
             .finally(() => {
+              finishedCount++
               // If one third of the relays have accepted the event, consider it a success
               const isSuccess = successCount >= uniqueRelayUrls.length / 3
               if (isSuccess) {
+                console.log(`✓ Publishing successful (${successCount}/${uniqueRelayUrls.length} relays)`)
                 this.emitNewEvent(event)
                 resolve()
               }
-              if (++finishedCount >= uniqueRelayUrls.length) {
-                reject(
-                  new AggregateError(
-                    errors.map(
-                      ({ url, error }) =>
-                        new Error(
-                          `${url}: ${error instanceof Error ? error.message : String(error)}`
-                        )
+              if (finishedCount >= uniqueRelayUrls.length) {
+                if (successCount > 0) {
+                  console.log(`✓ Publishing successful (${successCount}/${uniqueRelayUrls.length} relays)`)
+                  this.emitNewEvent(event)
+                  resolve()
+                } else {
+                  console.log(`✗ Publishing failed (0/${uniqueRelayUrls.length} relays)`)
+                  reject(
+                    new AggregateError(
+                      errors.map(
+                        ({ url, error }) =>
+                          new Error(
+                            `${url}: ${error instanceof Error ? error.message : String(error)}`
+                          )
+                      )
                     )
                   )
-                )
+                }
               }
             })
         })
