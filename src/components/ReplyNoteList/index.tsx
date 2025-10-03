@@ -14,6 +14,7 @@ import { generateBech32IdFromETag, tagNameEquals } from '@/lib/tag'
 import { useSecondaryPage } from '@/PageManager'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
+import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
 import client from '@/services/client.service'
@@ -37,6 +38,7 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
   const { mutePubkeySet } = useMuteList()
   const { hideContentMentioningMutedUsers } = useContentPolicy()
+  const { relayList: userRelayList } = useNostr()
   const [rootInfo, setRootInfo] = useState<TRootInfo | undefined>(undefined)
   const { repliesMap, addReplies } = useReply()
   const replies = useMemo(() => {
@@ -141,7 +143,9 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
         const relayList = await client.fetchRelayList(
           (rootInfo as { pubkey?: string }).pubkey ?? event.pubkey
         )
-        const relayUrls = relayList.read.concat(BIG_RELAY_URLS)
+        // Include user's mailbox relays for better reply discovery
+        const userRelays = userRelayList?.read || []
+        const relayUrls = relayList.read.concat(userRelays).concat(BIG_RELAY_URLS)
         const seenOn =
           rootInfo.type === 'E'
             ? client.getSeenEventRelayUrls(rootInfo.id)

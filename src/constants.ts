@@ -3,16 +3,10 @@ import { kinds } from 'nostr-tools'
 export const JUMBLE_API_BASE_URL = 'https://api.jumble.social'
 
 export const DEFAULT_FAVORITE_RELAYS = [
-  'wss://nostr.wine/',
-  'wss://pyramid.fiatjaf.com/',
-  'wss://relays.land/spatianostra/',
-  'wss://theforest.nostr1.com/',
-  'wss://algo.utxo.one/',
-  'wss://140.f7z.io/',
-  'wss://news.utxo.one/'
+  'wss://theforest.nostr1.com/','wss://orly-relay.imwald.eu'
 ]
 
-export const RECOMMENDED_RELAYS = DEFAULT_FAVORITE_RELAYS.concat(['wss://yabu.me/'])
+export const RECOMMENDED_RELAYS = DEFAULT_FAVORITE_RELAYS.concat([])
 
 export const RECOMMENDED_BLOSSOM_SERVERS = [
   'https://blossom.band/',
@@ -64,13 +58,19 @@ export const ApplicationDataKey = {
 }
 
 export const BIG_RELAY_URLS = [
-  'wss://relay.damus.io/',
-  'wss://nos.lol/',
-  'wss://relay.nostr.band/',
-  'wss://nostr.mom/'
+  'wss://theforest.nostr1.com',
+  'wss://orly-relay.imwald.eu',
+  'wss://thecitadel.nostr1.com/',
+  'wss://nostr.wine',
+  'wss://nostr.land/',
+  'wss://nostr.sovbit.host/',
+  'wss://nostr21.com'
 ]
 
-export const SEARCHABLE_RELAY_URLS = ['wss://relay.nostr.band/', 'wss://search.nos.today/']
+export const SEARCHABLE_RELAY_URLS = ['wss://relay.nostr.band/', 'wss://freelay.sovbit.host/', 'wss://relay.damus.io/', 'wss://search.nos.today/', 'wss://aggr.nostr.land', 'wss://purplepag.es', 'wss://profiles.nostr1.com']
+
+// Combined relay URLs for profile fetching - includes both BIG_RELAY_URLS and SEARCHABLE_RELAY_URLS
+export const PROFILE_FETCH_RELAY_URLS = [...BIG_RELAY_URLS, ...SEARCHABLE_RELAY_URLS]
 
 export const GROUP_METADATA_EVENT_KIND = 39000
 
@@ -134,8 +134,7 @@ export const DEFAULT_NIP_96_SERVICE = 'https://nostr.build'
 
 export const DEFAULT_NOSTRCONNECT_RELAY = [
   'wss://relay.nsec.app/',
-  'wss://nos.lol/',
-  'wss://relay.primal.net'
+  'wss://thecitadel.nostr1.com'
 ]
 
 export const POLL_TYPE = {

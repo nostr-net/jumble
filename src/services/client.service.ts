@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind, PROFILE_FETCH_RELAY_URLS } from '@/constants'
 import {
   compareEvents,
   getReplaceableCoordinate,
@@ -11,7 +11,7 @@ import { getPubkeysFromPTags, getServersFromServerTags, tagNameEquals } from '@/
 import { isLocalNetworkUrl, isWebsocketUrl, normalizeUrl } from '@/lib/url'
 import { isSafari } from '@/lib/utils'
 import { ISigner, TProfile, TPublishOptions, TRelayList, TSubRequestFilter } from '@/types'
-import { sha256 } from '@noble/hashes/sha2'
+import { sha256 } from '@noble/hashes/sha256'
 import DataLoader from 'dataloader'
 import dayjs from 'dayjs'
 import FlexSearch from 'flexsearch'
@@ -875,7 +875,7 @@ class ClientService extends EventTarget {
   }
 
   private async fetchEventsFromBigRelays(ids: readonly string[]) {
-    const events = await this.query(BIG_RELAY_URLS, {
+    const events = await this.query(PROFILE_FETCH_RELAY_URLS, {
       ids: Array.from(new Set(ids)),
       limit: ids.length
     })
@@ -1143,7 +1143,7 @@ class ClientService extends EventTarget {
     const eventsMap = new Map<string, NEvent>()
     await Promise.allSettled(
       Array.from(groups.entries()).map(async ([kind, pubkeys]) => {
-        const events = await this.query(BIG_RELAY_URLS, {
+        const events = await this.query(PROFILE_FETCH_RELAY_URLS, {
           authors: pubkeys,
           kinds: [kind]
         })
@@ -1246,7 +1246,7 @@ class ClientService extends EventTarget {
                 }
               : { authors: [pubkey], kinds: [kind] }) as Filter
         )
-        const events = await this.query(BIG_RELAY_URLS, filters)
+        const events = await this.query(PROFILE_FETCH_RELAY_URLS, filters)
 
         for (const event of events) {
           const key = getReplaceableCoordinateFromEvent(event)

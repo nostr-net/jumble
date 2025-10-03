@@ -14,7 +14,7 @@ const SHOW_COUNT = 10
 
 export default function QuoteList({ event, className }: { event: Event; className?: string }) {
   const { t } = useTranslation()
-  const { startLogin } = useNostr()
+  const { startLogin, relayList: userRelayList } = useNostr()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
   const [timelineKey, setTimelineKey] = useState<string | undefined>(undefined)
   const [events, setEvents] = useState<Event[]>([])
@@ -30,7 +30,9 @@ export default function QuoteList({ event, className }: { event: Event; classNam
       setHasMore(true)
 
       const relayList = await client.fetchRelayList(event.pubkey)
-      const relayUrls = relayList.read.concat(BIG_RELAY_URLS)
+      // Include user's mailbox relays for better quote discovery
+      const userRelays = userRelayList?.read || []
+      const relayUrls = relayList.read.concat(userRelays).concat(BIG_RELAY_URLS)
       const seenOn = client.getSeenEventRelayUrls(event.id)
       relayUrls.unshift(...seenOn)
 

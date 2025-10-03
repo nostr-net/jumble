@@ -43,15 +43,21 @@ export function FavoriteRelaysProvider({ children }: { children: React.ReactNode
 
   useEffect(() => {
     if (!favoriteRelaysEvent) {
-      const favoriteRelays: string[] = DEFAULT_FAVORITE_RELAYS
-      const storedRelaySets = storage.getRelaySets()
-      storedRelaySets.forEach(({ relayUrls }) => {
-        relayUrls.forEach((url) => {
-          if (!favoriteRelays.includes(url)) {
-            favoriteRelays.push(url)
-          }
+      // For anonymous users (no login), only use relays from BIG_RELAY_URLS
+      // Don't load potentially untrusted relays from local storage
+      const favoriteRelays: string[] = pubkey ? DEFAULT_FAVORITE_RELAYS : BIG_RELAY_URLS.slice()
+      
+      if (pubkey) {
+        // Only add stored relay sets if user is logged in
+        const storedRelaySets = storage.getRelaySets()
+        storedRelaySets.forEach(({ relayUrls }) => {
+          relayUrls.forEach((url) => {
+            if (!favoriteRelays.includes(url)) {
+              favoriteRelays.push(url)
+            }
+          })
         })
-      })
+      }
 
       setFavoriteRelays(favoriteRelays)
       setRelaySetEvents([])
