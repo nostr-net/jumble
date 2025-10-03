@@ -1,6 +1,6 @@
 services:
   jumble:
-    container_name: jumble-nginx
+    container_name: imwald-jumble
     build:
       context: .
       dockerfile: Dockerfile

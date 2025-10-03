@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   jumble:
-    container_name: jumble-nginx
+    container_name: imwald-jumble
     build:
       context: .
       dockerfile: Dockerfile
