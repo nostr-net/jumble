@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind, PROFILE_FETCH_RELAY_URLS } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, PROFILE_FETCH_RELAY_URLS } from '@/constants'
 import {
   compareEvents,
   getReplaceableCoordinate,
@@ -131,20 +131,20 @@ class ClientService extends EventTarget {
       }
 
       const relayList = await this.fetchRelayList(event.pubkey)
-      relays = (relayList?.write.slice(0, 10) ?? []).concat(
+      relays = (relayList?.write.slice(0, 6) ?? []).concat(
         Array.from(new Set(_additionalRelayUrls)) ?? []
       )
     }
 
     if (!relays.length) {
-      relays.push(...BIG_RELAY_URLS)
+      relays.push(...FAST_WRITE_RELAY_URLS)
     }
 
     return relays
   }
 
   async publishEvent(relayUrls: string[], event: NEvent) {
-    const uniqueRelayUrls = Array.from(new Set(relayUrls))
+    const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
     await new Promise<void>((resolve, reject) => {
       let successCount = 0
       let finishedCount = 0
@@ -154,7 +154,7 @@ class ClientService extends EventTarget {
           // eslint-disable-next-line @typescript-eslint/no-this-alias
           const that = this
           const relay = await this.pool.ensureRelay(url)
-          relay.publishTimeout = 10_000 // 10s
+          relay.publishTimeout = 8_000 // 8s
           return relay
             .publish(event)
             .then(() => {
@@ -367,7 +367,7 @@ class ClientService extends EventTarget {
       onAllClose?: (reasons: string[]) => void
     }
   ) {
-    const relays = Array.from(new Set(urls))
+    const relays = this.optimizeRelaySelection(Array.from(new Set(urls)))
     const filters = Array.isArray(filter) ? filter : [filter]
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -386,7 +386,7 @@ class ClientService extends EventTarget {
 
       async function startSub() {
         startedCount++
-        const relay = await that.pool.ensureRelay(url, { connectionTimeout: 5000 }).catch(() => {
+        const relay = await that.pool.ensureRelay(url, { connectionTimeout: 3000 }).catch(() => {
           return undefined
         })
         // cannot connect to relay
@@ -465,7 +465,7 @@ class ClientService extends EventTarget {
             }
             return
           },
-          eoseTimeout: 10_000 // 10s
+          eoseTimeout: 8_000 // 8s
         })
       }
     })
@@ -657,7 +657,7 @@ class ClientService extends EventTarget {
   }
 
   getSeenEventRelayUrls(eventId: string) {
-    return this.getSeenEventRelays(eventId).map((relay) => relay.url)
+    return Array.from(new Set(this.getSeenEventRelays(eventId).map((relay) => relay.url)))
   }
 
   getEventHints(eventId: string) {
@@ -875,7 +875,7 @@ class ClientService extends EventTarget {
   }
 
   private async fetchEventsFromBigRelays(ids: readonly string[]) {
-    const events = await this.query(PROFILE_FETCH_RELAY_URLS, {
+    const events = await this.query(FAST_READ_RELAY_URLS, {
       ids: Array.from(new Set(ids)),
       limit: ids.length
     })
@@ -1338,6 +1338,13 @@ class ClientService extends EventTarget {
       })
       .filter(Boolean) as { pubkey: string; kind: number; d: string }[]
     return await this.replaceableEventDataLoader.loadMany(params)
+  }
+
+  // ================= Performance Optimization =================
+
+  private optimizeRelaySelection(relays: string[]): string[] {
+    // Limit to 4 relays for better performance
+    return relays.slice(0, 4)
   }
 
   // ================= Utils =================

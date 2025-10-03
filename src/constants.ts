@@ -67,6 +67,22 @@ export const BIG_RELAY_URLS = [
   'wss://nostr21.com'
 ]
 
+// Optimized relay list for read operations (includes aggregator)
+export const FAST_READ_RELAY_URLS = [
+  'wss://theforest.nostr1.com',
+  'wss://orly-relay.imwald.eu',
+  'wss://nostr.wine',
+  'wss://aggr.nostr.land'
+]
+
+// Optimized relay list for write operations (no aggregator since it's read-only)
+export const FAST_WRITE_RELAY_URLS = [
+  'wss://nostr.wine',
+  'wss://nostr.land',
+  'wss://freelay.sovbit.host/',
+  'wss://thecitadel.nostr1.com/'
+]
+
 export const SEARCHABLE_RELAY_URLS = ['wss://relay.nostr.band/', 'wss://freelay.sovbit.host/', 'wss://relay.damus.io/', 'wss://search.nos.today/', 'wss://aggr.nostr.land', 'wss://purplepag.es', 'wss://profiles.nostr1.com']
 
 // Combined relay URLs for profile fetching - includes both BIG_RELAY_URLS and SEARCHABLE_RELAY_URLS

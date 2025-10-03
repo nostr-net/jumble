@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind } from '@/constants'
+import { FAST_READ_RELAY_URLS, ExtendedKind } from '@/constants'
 import {
   getParentETag,
   getReplaceableCoordinateFromEvent,
@@ -145,7 +145,7 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
         )
         // Include user's mailbox relays for better reply discovery
         const userRelays = userRelayList?.read || []
-        const relayUrls = relayList.read.concat(userRelays).concat(BIG_RELAY_URLS)
+        const relayUrls = Array.from(new Set(relayList.read.concat(userRelays).concat(FAST_READ_RELAY_URLS)))
         const seenOn =
           rootInfo.type === 'E'
             ? client.getSeenEventRelayUrls(rootInfo.id)
@@ -153,6 +153,8 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
               ? client.getSeenEventRelayUrls(rootInfo.eventId)
               : []
         relayUrls.unshift(...seenOn)
+        // Deduplicate the final list including seenOn relays
+        const finalRelayUrls = Array.from(new Set(relayUrls))
 
         const filters: (Omit<Filter, 'since' | 'until'> & {
           limit: number
@@ -184,7 +186,7 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
             }
           )
           if (rootInfo.relay) {
-            relayUrls.push(rootInfo.relay)
+            finalRelayUrls.push(rootInfo.relay)
           }
         } else {
           filters.push({
@@ -195,7 +197,7 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
         }
         const { closer, timelineKey } = await client.subscribeTimeline(
           filters.map((filter) => ({
-            urls: relayUrls.slice(0, 5),
+            urls: finalRelayUrls.slice(0, 5),
             filter
           })),
           {

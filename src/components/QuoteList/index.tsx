@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind } from '@/constants'
+import { FAST_READ_RELAY_URLS, ExtendedKind } from '@/constants'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
 import { useNostr } from '@/providers/NostrProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
@@ -32,14 +32,16 @@ export default function QuoteList({ event, className }: { event: Event; classNam
       const relayList = await client.fetchRelayList(event.pubkey)
       // Include user's mailbox relays for better quote discovery
       const userRelays = userRelayList?.read || []
-      const relayUrls = relayList.read.concat(userRelays).concat(BIG_RELAY_URLS)
+      const relayUrls = Array.from(new Set(relayList.read.concat(userRelays).concat(FAST_READ_RELAY_URLS)))
       const seenOn = client.getSeenEventRelayUrls(event.id)
       relayUrls.unshift(...seenOn)
+      // Deduplicate the final list including seenOn relays
+      const finalRelayUrls = Array.from(new Set(relayUrls))
 
       const { closer, timelineKey } = await client.subscribeTimeline(
         [
           {
-            urls: relayUrls,
+            urls: finalRelayUrls,
             filter: {
               '#q': [
                 isReplaceableEvent(event.kind) ? getReplaceableCoordinateFromEvent(event) : event.id
