@@ -1,4 +1,3 @@
-import { ExtendedKind } from '@/constants'
 import { useNostr } from '@/providers/NostrProvider'
 import { MessageCircle } from 'lucide-react'
 import { Event } from 'nostr-tools'

@@ -113,8 +113,7 @@ class ClientService extends EventTarget {
         })
         if (mentions.length > 0) {
           const relayLists = await this.fetchRelayLists(mentions)
-          relayLists.forEach((relayList, index) => {
-            const mentionPubkey = mentions[index]
+          relayLists.forEach((relayList) => {
             _additionalRelayUrls.push(...relayList.read.slice(0, 4))
           })
         }
