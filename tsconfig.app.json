@@ -27,7 +27,7 @@
     "noUncheckedSideEffectImports": true,
     
     /* Type resolution */
-    "types": []
+    "types": ["node"]
   },
   "include": ["src"]
 }
