@@ -22,7 +22,7 @@ export default function TopicFilter({ topics, selectedTopic, onTopicChange }: To
       <DropdownMenuTrigger asChild>
         <Button 
           variant="outline" 
-          className="flex items-center gap-2 h-10 px-3"
+          className="flex items-center gap-2 h-10 px-3 min-w-40"
         >
           <Hash className="w-4 h-4" />
           <span className="hidden sm:inline">{selectedTopicInfo.label}</span>
@@ -30,7 +30,7 @@ export default function TopicFilter({ topics, selectedTopic, onTopicChange }: To
           <ChevronDown className="w-4 h-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start" className="w-72">
         {topics.map(topic => (
           <DropdownMenuItem
             key={topic.id}

@@ -99,7 +99,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
               <select
                 value={selectedRelay || ''}
                 onChange={(e) => setSelectedRelay(e.target.value || null)}
-                className="px-2 py-1 rounded border bg-background text-sm"
+                className="px-3 h-10 rounded border bg-background text-sm"
               >
                 <option value="">All Relays</option>
                 {availableRelays.map(relay => (

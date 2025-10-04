@@ -2,6 +2,7 @@ import Icon from '@/assets/Icon'
 import Logo from '@/assets/Logo'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import AccountButton from './AccountButton'
+import DiscussionsButton from './DiscussionsButton'
 import RelaysButton from './ExploreButton'
 import HomeButton from './HomeButton'
 import NotificationsButton from './NotificationButton'
@@ -23,6 +24,7 @@ export default function PrimaryPageSidebar() {
         </div>
         <HomeButton />
         <RelaysButton />
+        <DiscussionsButton />
         <NotificationsButton />
         <SearchButton />
         <ProfileButton />
