@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MessageCircle, User, Clock, Hash, Server } from 'lucide-react'
+import { User, Clock, Hash, Server } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
@@ -92,10 +92,6 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
                 {timeAgo}
               </div>
             </div>
-          </div>
-          <div className="flex items-center gap-1 text-sm text-muted-foreground shrink-0">
-            <MessageCircle className="w-4 h-4" />
-            <span>0</span> {/* TODO: Add reply count */}
           </div>
         </div>
       </CardHeader>

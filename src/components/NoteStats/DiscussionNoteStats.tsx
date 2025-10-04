@@ -5,8 +5,6 @@ import noteStatsService from '@/services/note-stats.service'
 import { Event } from 'nostr-tools'
 import { useEffect, useState } from 'react'
 import VoteButtons from './VoteButtons'
-import ReplyButton from './ReplyButton'
-import SeenOnButton from './SeenOnButton'
 
 export default function DiscussionNoteStats({
   event,
@@ -42,9 +40,7 @@ export default function DiscussionNoteStats({
           )}
           onClick={(e) => e.stopPropagation()}
         >
-          <ReplyButton event={event} />
           <VoteButtons event={event} />
-          <SeenOnButton event={event} />
         </div>
       </div>
     )
@@ -57,11 +53,9 @@ export default function DiscussionNoteStats({
           className={cn('flex items-center gap-2', loading ? 'animate-pulse' : '')}
           onClick={(e) => e.stopPropagation()}
         >
-          <ReplyButton event={event} />
         </div>
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <VoteButtons event={event} />
-          <SeenOnButton event={event} />
         </div>
       </div>
     </div>

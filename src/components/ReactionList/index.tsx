@@ -1,4 +1,5 @@
 import { useSecondaryPage } from '@/PageManager'
+import { ExtendedKind } from '@/constants'
 import { useNoteStatsById } from '@/hooks/useNoteStatsById'
 import { toProfile } from '@/lib/link'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
@@ -21,10 +22,17 @@ export default function ReactionList({ event }: { event: Event }) {
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
   const noteStats = useNoteStatsById(event.id)
   const filteredLikes = useMemo(() => {
-    return (noteStats?.likes ?? [])
+    let likes = noteStats?.likes ?? []
+    
+    // For discussion events (kind 11), only show up/down arrow reactions
+    if (event.kind === ExtendedKind.DISCUSSION) {
+      likes = likes.filter(like => like.emoji === '⬆️' || like.emoji === '⬇️')
+    }
+    
+    return likes
       .filter((like) => !hideUntrustedInteractions || isUserTrusted(like.pubkey))
       .sort((a, b) => b.created_at - a.created_at)
-  }, [noteStats, event.id, hideUntrustedInteractions, isUserTrusted])
+  }, [noteStats, event.id, hideUntrustedInteractions, isUserTrusted, event.kind])
 
   const [showCount, setShowCount] = useState(SHOW_COUNT)
   const bottomRef = useRef<HTMLDivElement | null>(null)

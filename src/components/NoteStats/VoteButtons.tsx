@@ -40,6 +40,11 @@ export default function VoteButtons({ event }: { event: Event }) {
     checkLogin(async () => {
       if (voting || !pubkey) return
 
+      // Prevent voting if user already voted (no toggling allowed)
+      if (userVote) {
+        return // User already voted, don't allow multiple votes
+      }
+
       setVoting(type)
       const timer = setTimeout(() => setVoting(null), 10_000)
 
@@ -48,7 +53,7 @@ export default function VoteButtons({ event }: { event: Event }) {
           await noteStatsService.fetchNoteStats(event, pubkey)
         }
 
-        // If user is voting the same way again, remove the vote (toggle)
+        // Create the vote reaction
         const emoji = type === 'up' ? '⬆️' : '⬇️'
         
         // Check if user already voted this way
@@ -92,13 +97,13 @@ export default function VoteButtons({ event }: { event: Event }) {
           userVote === 'up' ? 'bg-orange-100 text-orange-600' : 'text-muted-foreground'
         }`}
         onClick={() => vote('up')}
-        disabled={voting !== null}
+        disabled={voting !== null || userVote !== null}
       >
         <ChevronUp className="h-4 w-4" />
       </Button>
       
       <span className={`text-xs font-medium min-w-[20px] text-center ${
-        score > 0 ? 'text-orange-600' : score < 0 ? 'text-blue-600' : 'text-muted-foreground'
+        score > 0 ? 'text-green-600' : score < 0 ? 'text-red-600' : 'text-muted-foreground'
       }`}>
         {score}
       </span>
