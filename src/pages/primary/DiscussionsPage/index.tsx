@@ -13,8 +13,10 @@ import ThreadSort, { SortOption } from '@/pages/primary/DiscussionsPage/ThreadSo
 import CreateThreadDialog, { DISCUSSION_TOPICS } from '@/pages/primary/DiscussionsPage/CreateThreadDialog'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
+import noteStatsService from '@/services/note-stats.service'
 import { useSecondaryPage } from '@/PageManager'
 import { toNote } from '@/lib/link'
+import { kinds } from 'nostr-tools'
 
 const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
@@ -28,6 +30,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const [threads, setThreads] = useState<NostrEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreateThread, setShowCreateThread] = useState(false)
+  const [statsLoaded, setStatsLoaded] = useState(false)
+  const [customVoteStats, setCustomVoteStats] = useState<Record<string, { upvotes: number; downvotes: number; score: number; controversy: number }>>({})
 
   // Use DEFAULT_FAVORITE_RELAYS for logged-out users, or user's favorite relays for logged-in users
   const availableRelays = pubkey && favoriteRelays.length > 0 ? favoriteRelays : DEFAULT_FAVORITE_RELAYS
@@ -35,13 +39,135 @@ const DiscussionsPage = forwardRef((_, ref) => {
   // Available topic IDs for matching
   const availableTopicIds = DISCUSSION_TOPICS.map(topic => topic.id)
 
+  // Custom function to fetch vote stats from selected relays only
+  const fetchVoteStatsFromRelays = async (thread: NostrEvent, relayUrls: string[]) => {
+    try {
+      const reactions = await client.fetchEvents(relayUrls, [
+        {
+          '#e': [thread.id],
+          kinds: [kinds.Reaction],
+          limit: 500
+        }
+      ])
+      
+      // Filter for up/down vote reactions only
+      const upvotes = reactions.filter(r => r.content === '⬆️')
+      const downvotes = reactions.filter(r => r.content === '⬇️')
+      
+      return {
+        upvotes: upvotes.length,
+        downvotes: downvotes.length,
+        score: upvotes.length - downvotes.length,
+        controversy: Math.min(upvotes.length, downvotes.length)
+      }
+    } catch (error) {
+      console.error('Error fetching vote stats for thread', thread.id, error)
+      return { upvotes: 0, downvotes: 0, score: 0, controversy: 0 }
+    }
+  }
+
+  // Helper function to get vote score for a thread
+  const getThreadVoteScore = (thread: NostrEvent) => {
+    // Use custom vote stats if available (from selected relays), otherwise fall back to noteStatsService
+    if (customVoteStats[thread.id]) {
+      const stats = customVoteStats[thread.id]
+      console.log(`Thread ${thread.id}: upvotes=${stats.upvotes}, downvotes=${stats.downvotes}, score=${stats.score} (custom)`)
+      return stats.score
+    }
+    
+    const stats = noteStatsService.getNoteStats(thread.id)
+    if (!stats?.likes) {
+      console.log(`No stats for thread ${thread.id}`)
+      return 0
+    }
+    
+    const upvoteReactions = stats.likes.filter(r => r.emoji === '⬆️')
+    const downvoteReactions = stats.likes.filter(r => r.emoji === '⬇️')
+    const score = upvoteReactions.length - downvoteReactions.length
+    
+    console.log(`Thread ${thread.id}: upvotes=${upvoteReactions.length}, downvotes=${downvoteReactions.length}, score=${score} (fallback)`)
+    return score
+  }
+
+  // Helper function to get controversy score (high upvotes AND downvotes)
+  const getThreadControversyScore = (thread: NostrEvent) => {
+    // Use custom vote stats if available (from selected relays), otherwise fall back to noteStatsService
+    if (customVoteStats[thread.id]) {
+      const stats = customVoteStats[thread.id]
+      console.log(`Thread ${thread.id}: upvotes=${stats.upvotes}, downvotes=${stats.downvotes}, controversy=${stats.controversy} (custom)`)
+      return stats.controversy
+    }
+    
+    const stats = noteStatsService.getNoteStats(thread.id)
+    if (!stats?.likes) {
+      console.log(`No stats for thread ${thread.id}`)
+      return 0
+    }
+    
+    const upvoteReactions = stats.likes.filter(r => r.emoji === '⬆️')
+    const downvoteReactions = stats.likes.filter(r => r.emoji === '⬇️')
+    
+    // Controversy = minimum of upvotes and downvotes (both need to be high)
+    const controversy = Math.min(upvoteReactions.length, downvoteReactions.length)
+    console.log(`Thread ${thread.id}: upvotes=${upvoteReactions.length}, downvotes=${downvoteReactions.length}, controversy=${controversy} (fallback)`)
+    return controversy
+  }
+
   useEffect(() => {
+    setCustomVoteStats({}) // Clear custom stats when relay changes
     fetchAllThreads()
   }, [selectedRelay])
 
   useEffect(() => {
+    // Only wait for stats for vote-based sorting
+    if ((selectedSort === 'top' || selectedSort === 'controversial') && !statsLoaded) {
+      console.log('Waiting for stats to load before sorting...')
+      return
+    }
+    console.log('Running filterThreadsByTopic with selectedSort:', selectedSort, 'statsLoaded:', statsLoaded)
     filterThreadsByTopic()
-  }, [allThreads, selectedTopic, selectedSort])
+  }, [allThreads, selectedTopic, selectedSort, statsLoaded])
+
+  // Fetch stats when sort changes to top/controversial
+  useEffect(() => {
+    if ((selectedSort === 'top' || selectedSort === 'controversial') && allThreads.length > 0) {
+      setStatsLoaded(false)
+      console.log('Fetching vote stats for', allThreads.length, 'threads from relays:', selectedRelay || availableRelays)
+      
+      // Use the same relay selection as thread fetching
+      const relayUrls = selectedRelay ? [selectedRelay] : availableRelays
+      
+      // Fetch custom vote stats from selected relays only
+      const statsPromises = allThreads.map(async (thread) => {
+        try {
+          const stats = await fetchVoteStatsFromRelays(thread, relayUrls)
+          return { threadId: thread.id, stats }
+        } catch (error) {
+          console.error('Error fetching stats for thread', thread.id, error)
+          return { threadId: thread.id, stats: { upvotes: 0, downvotes: 0, score: 0, controversy: 0 } }
+        }
+      })
+      
+      Promise.allSettled(statsPromises).then((results) => {
+        const successful = results.filter(r => r.status === 'fulfilled').length
+        console.log(`Vote stats fetch completed: ${successful}/${results.length} successful`)
+        
+        // Store the custom vote stats
+        const newCustomStats: Record<string, { upvotes: number; downvotes: number; score: number; controversy: number }> = {}
+        results.forEach(result => {
+          if (result.status === 'fulfilled') {
+            newCustomStats[result.value.threadId] = result.value.stats
+          }
+        })
+        
+        setCustomVoteStats(newCustomStats)
+        setStatsLoaded(true)
+      })
+    } else {
+      setStatsLoaded(true) // For non-vote-based sorting, stats don't matter
+      console.log('Set statsLoaded to true for non-vote sorting')
+    }
+  }, [selectedSort, allThreads, selectedRelay, availableRelays])
 
   const fetchAllThreads = async () => {
     setLoading(true)
@@ -51,13 +177,45 @@ const DiscussionsPage = forwardRef((_, ref) => {
       
       // Fetch all kind 11 events (limit 100, newest first) with relay source tracking
       console.log('Fetching kind 11 events from relays:', relayUrls)
+      // Fetch recent kind 11 events (last 30 days)
+      const thirtyDaysAgo = Math.floor((Date.now() - (30 * 24 * 60 * 60 * 1000)) / 1000)
+      
       const events = await client.fetchEvents(relayUrls, [
         {
           kinds: [11], // Thread events
+          since: thirtyDaysAgo, // Only fetch events from last 30 days
           limit: 100
         }
       ])
       console.log('Fetched kind 11 events:', events.length, events.map(e => ({ id: e.id, title: e.tags.find(t => t[0] === 'title')?.[1], pubkey: e.pubkey })))
+      
+      // Debug: Show date range of fetched events
+      if (events.length > 0) {
+        const dates = events.map(e => new Date(e.created_at * 1000))
+        const newest = new Date(Math.max(...dates.map(d => d.getTime())))
+        const oldest = new Date(Math.min(...dates.map(d => d.getTime())))
+        console.log(`Date range: ${oldest.toISOString()} to ${newest.toISOString()}`)
+        console.log(`Current time: ${new Date().toISOString()}`)
+        console.log(`Newest thread is ${Math.floor((Date.now() - newest.getTime()) / (1000 * 60 * 60 * 24))} days old`)
+      } else {
+        console.log('No recent events found, fetching all events...')
+        // If no recent events, fetch all events without time filter
+        const allEvents = await client.fetchEvents(relayUrls, [
+          {
+            kinds: [11], // Thread events
+            limit: 100
+          }
+        ])
+        console.log('Fetched all kind 11 events:', allEvents.length)
+        if (allEvents.length > 0) {
+          const dates = allEvents.map(e => new Date(e.created_at * 1000))
+          const newest = new Date(Math.max(...dates.map(d => d.getTime())))
+          const oldest = new Date(Math.min(...dates.map(d => d.getTime())))
+          console.log(`All events date range: ${oldest.toISOString()} to ${newest.toISOString()}`)
+          console.log(`Newest thread is ${Math.floor((Date.now() - newest.getTime()) / (1000 * 60 * 60 * 24))} days old`)
+        }
+        return // Use the events we already fetched
+      }
 
       // Filter and sort threads, adding relay source information
       const validThreads = events
@@ -70,9 +228,17 @@ const DiscussionsPage = forwardRef((_, ref) => {
           ...event,
           _relaySource: selectedRelay || 'multiple' // Track which relay(s) it was found on
         }))
-        .sort((a, b) => b.created_at - a.created_at) // Sort by newest first (will be overridden by vote-based sorting in the UI)
 
       setAllThreads(validThreads)
+      
+      // Fetch stats for all threads to enable proper sorting
+      if (selectedSort === 'top' || selectedSort === 'controversial') {
+        // Fetch stats for all threads in parallel
+        const statsPromises = validThreads.map(thread => 
+          noteStatsService.fetchNoteStats(thread, pubkey)
+        )
+        await Promise.allSettled(statsPromises)
+      }
     } catch (error) {
       console.error('Error fetching threads:', error)
       setAllThreads([])
@@ -118,25 +284,93 @@ const DiscussionsPage = forwardRef((_, ref) => {
           })
 
     // Apply sorting based on selectedSort
+    console.log('Sorting by:', selectedSort, 'with', threadsForTopic.length, 'threads')
+    
+    // Debug: show timestamps before sorting
+    if (selectedSort === 'newest' || selectedSort === 'oldest') {
+      console.log('Timestamps before sorting:', threadsForTopic.map(t => ({
+        id: t.id.slice(0, 8),
+        created_at: t.created_at,
+        date: new Date(t.created_at * 1000).toISOString()
+      })))
+    }
+    
     switch (selectedSort) {
       case 'newest':
-        threadsForTopic.sort((a, b) => b.created_at - a.created_at)
+        console.log('BEFORE newest sort - first 3 threads:', threadsForTopic.slice(0, 3).map(t => ({
+          id: t.id.slice(0, 8),
+          created_at: t.created_at,
+          date: new Date(t.created_at * 1000).toISOString()
+        })))
+        
+        // Create a new sorted array instead of mutating
+        const sortedNewest = [...threadsForTopic].sort((a, b) => {
+          const result = b.created_at - a.created_at
+          console.log(`Comparing ${a.id.slice(0,8)} (${new Date(a.created_at * 1000).toISOString()}) vs ${b.id.slice(0,8)} (${new Date(b.created_at * 1000).toISOString()}) = ${result}`)
+          return result
+        })
+        
+        // Replace the original array
+        threadsForTopic.length = 0
+        threadsForTopic.push(...sortedNewest)
+        
+        console.log('AFTER newest sort - first 3 threads:', threadsForTopic.slice(0, 3).map(t => ({
+          id: t.id.slice(0, 8),
+          created_at: t.created_at,
+          date: new Date(t.created_at * 1000).toISOString()
+        })))
         break
       case 'oldest':
-        threadsForTopic.sort((a, b) => a.created_at - b.created_at)
+        // Create a new sorted array instead of mutating
+        const sortedOldest = [...threadsForTopic].sort((a, b) => a.created_at - b.created_at)
+        
+        // Replace the original array
+        threadsForTopic.length = 0
+        threadsForTopic.push(...sortedOldest)
+        
+        console.log('Sorted by oldest - first thread created_at:', new Date(threadsForTopic[0]?.created_at * 1000), 'last thread created_at:', new Date(threadsForTopic[threadsForTopic.length - 1]?.created_at * 1000))
         break
       case 'top':
-        // For now, sort by newest since we don't have vote data readily available
-        // TODO: Implement proper vote-based sorting when vote data is available
-        threadsForTopic.sort((a, b) => b.created_at - a.created_at)
+        // Sort by vote score (upvotes - downvotes), then by newest if tied
+        const sortedTop = [...threadsForTopic].sort((a, b) => {
+          const scoreA = getThreadVoteScore(a)
+          const scoreB = getThreadVoteScore(b)
+          console.log(`Comparing ${a.id.slice(0,8)} (score: ${scoreA}) vs ${b.id.slice(0,8)} (score: ${scoreB})`)
+          if (scoreA !== scoreB) {
+            return scoreB - scoreA // Higher scores first
+          }
+          return b.created_at - a.created_at // Newest first if tied
+        })
+        
+        // Replace the original array
+        threadsForTopic.length = 0
+        threadsForTopic.push(...sortedTop)
+        
+        console.log('Sorted by top (vote score)')
         break
       case 'controversial':
-        // For now, sort by newest since we don't have vote data readily available
-        // TODO: Implement controversial sorting (high upvotes AND downvotes)
-        threadsForTopic.sort((a, b) => b.created_at - a.created_at)
+        // Sort by controversy score (min of upvotes and downvotes), then by newest if tied
+        const sortedControversial = [...threadsForTopic].sort((a, b) => {
+          const controversyA = getThreadControversyScore(a)
+          const controversyB = getThreadControversyScore(b)
+          console.log(`Comparing ${a.id.slice(0,8)} (controversy: ${controversyA}) vs ${b.id.slice(0,8)} (controversy: ${controversyB})`)
+          if (controversyA !== controversyB) {
+            return controversyB - controversyA // Higher controversy first
+          }
+          return b.created_at - a.created_at // Newest first if tied
+        })
+        
+        // Replace the original array
+        threadsForTopic.length = 0
+        threadsForTopic.push(...sortedControversial)
+        
+        console.log('Sorted by controversial')
         break
       default:
-        threadsForTopic.sort((a, b) => b.created_at - a.created_at)
+        const sortedDefault = [...threadsForTopic].sort((a, b) => b.created_at - a.created_at)
+        threadsForTopic.length = 0
+        threadsForTopic.push(...sortedDefault)
+        console.log('Sorted by default (newest)')
     }
 
     setThreads(threadsForTopic)
