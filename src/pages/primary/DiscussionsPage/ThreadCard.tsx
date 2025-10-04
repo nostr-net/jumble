@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MessageCircle, User, Clock, Hash } from 'lucide-react'
+import { MessageCircle, User, Clock, Hash, Server } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
@@ -9,8 +9,12 @@ import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/utils'
 import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 
+interface ThreadWithRelaySource extends NostrEvent {
+  _relaySource?: string
+}
+
 interface ThreadCardProps {
-  thread: NostrEvent
+  thread: ThreadWithRelaySource
   onThreadClick: () => void
   className?: string
 }
@@ -45,6 +49,14 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
 
   const topicInfo = getTopicInfo(topic)
 
+  // Format relay name for display
+  const formatRelayName = (relaySource: string) => {
+    if (relaySource === 'multiple') {
+      return t('Multiple Relays')
+    }
+    return relaySource.replace('wss://', '').replace('ws://', '')
+  }
+
   return (
     <Card 
       className={cn(
@@ -56,9 +68,17 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-lg leading-tight mb-2 line-clamp-2">
-              {title}
-            </h3>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-semibold text-lg leading-tight line-clamp-2">
+                {title}
+              </h3>
+              {thread._relaySource && (
+                <Badge variant="outline" className="text-xs shrink-0">
+                  <Server className="w-3 h-3 mr-1" />
+                  {formatRelayName(thread._relaySource)}
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Badge variant="secondary" className="text-xs">
                 <topicInfo.icon className="w-3 h-3 mr-1" />

@@ -5,16 +5,37 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
+import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
 import { TDraftEvent } from '@/types'
 import dayjs from 'dayjs'
 
+// Utility functions for thread creation
+function extractImagesFromContent(content: string): string[] {
+  const imageRegex = /(https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp|svg)(\?[^\s]*)?)/gi
+  return content.match(imageRegex) || []
+}
+
+function generateImetaTags(imageUrls: string[]): string[][] {
+  return imageUrls.map(url => ['imeta', 'url', url])
+}
+
+function buildNsfwTag(): string[] {
+  return ['content-warning', '']
+}
+
+function buildClientTag(): string[] {
+  return ['client', 'jumble']
+}
+
 interface CreateThreadDialogProps {
   topic: string
   availableRelays: string[]
+  selectedRelay?: string | null
   onClose: () => void
   onThreadCreated: () => void
 }
@@ -42,6 +63,7 @@ export const DISCUSSION_TOPICS = [
 export default function CreateThreadDialog({ 
   topic: initialTopic, 
   availableRelays, 
+  selectedRelay: initialRelay, 
   onClose, 
   onThreadCreated 
 }: CreateThreadDialogProps) {
@@ -50,9 +72,12 @@ export default function CreateThreadDialog({
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [selectedTopic] = useState(initialTopic)
-  const [selectedRelay, setSelectedRelay] = useState<string>('')
+  const [selectedRelay, setSelectedRelay] = useState<string>(initialRelay || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<{ title?: string; content?: string; relay?: string }>({})
+  const [isNsfw, setIsNsfw] = useState(false)
+  const [addClientTag, setAddClientTag] = useState(true)
+  const [minPow, setMinPow] = useState(0)
 
   const validateForm = () => {
     const newErrors: { title?: string; content?: string; relay?: string } = {}
@@ -92,21 +117,43 @@ export default function CreateThreadDialog({
     setIsSubmitting(true)
     
     try {
+      // Extract images from content
+      const images = extractImagesFromContent(content.trim())
+      
+      // Build tags array
+      const tags = [
+        ['title', title.trim()],
+        ['t', selectedTopic],
+        ['-'] // Required tag for relay privacy
+      ]
+      
+      // Add image metadata tags if images are found
+      if (images && images.length > 0) {
+        tags.push(...generateImetaTags(images))
+      }
+      
+      // Add NSFW tag if enabled
+      if (isNsfw) {
+        tags.push(buildNsfwTag())
+      }
+      
+      // Add client tag if enabled
+      if (addClientTag) {
+        tags.push(buildClientTag())
+      }
+      
       // Create the thread event (kind 11)
       const threadEvent: TDraftEvent = {
         kind: 11,
         content: content.trim(),
-        tags: [
-          ['title', title.trim()],
-          ['t', selectedTopic],
-          ['-'] // Required tag for relay privacy
-        ],
+        tags,
         created_at: dayjs().unix()
       }
       
       // Publish to the selected relay only
       const publishedEvent = await publish(threadEvent, {
-        specifiedRelayUrls: [selectedRelay]
+        specifiedRelayUrls: [selectedRelay],
+        minPow
       })
       
       if (publishedEvent) {
@@ -216,6 +263,68 @@ export default function CreateThreadDialog({
               <p className="text-sm text-muted-foreground">
                 {t('Choose the relay where this discussion will be hosted.')}
               </p>
+            </div>
+
+            {/* Advanced Options */}
+            <div className="space-y-4 border-t pt-4">
+              <h4 className="text-sm font-medium">{t('Advanced Options')}</h4>
+              
+              {/* NSFW Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-red-500" />
+                  <Label htmlFor="nsfw" className="text-sm">
+                    {t('Mark as NSFW')}
+                  </Label>
+                </div>
+                <Switch
+                  id="nsfw"
+                  checked={isNsfw}
+                  onCheckedChange={setIsNsfw}
+                />
+              </div>
+
+              {/* Client Tag Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Image className="w-4 h-4 text-blue-500" />
+                  <Label htmlFor="client-tag" className="text-sm">
+                    {t('Add client identifier')}
+                  </Label>
+                </div>
+                <Switch
+                  id="client-tag"
+                  checked={addClientTag}
+                  onCheckedChange={setAddClientTag}
+                />
+              </div>
+
+              {/* PoW Setting */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-yellow-500" />
+                  <Label className="text-sm">
+                    {t('Proof of Work')}: {minPow}
+                  </Label>
+                </div>
+                <div className="px-2">
+                  <Slider
+                    value={[minPow]}
+                    onValueChange={(value) => setMinPow(value[0])}
+                    max={20}
+                    min={0}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>{t('No PoW')}</span>
+                    <span>{t('High PoW')}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('Higher values make your thread harder to mine but more unique.')}
+                </p>
+              </div>
             </div>
 
             {/* Form Actions */}
