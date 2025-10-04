@@ -83,6 +83,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
               topics={DISCUSSION_TOPICS}
               selectedTopic={selectedTopic}
               onTopicChange={setSelectedTopic}
+              threads={threads}
+              replies={[]}
             />
             {availableRelays.length > 1 && (
               <select

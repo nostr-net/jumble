@@ -31,6 +31,7 @@ import Poll from './Poll'
 import UnknownNote from './UnknownNote'
 import VideoNote from './VideoNote'
 import RelayReview from './RelayReview'
+import DiscussionNote from '@/components/DiscussionNote'
 
 export default function Note({
   event,
@@ -101,6 +102,8 @@ export default function Note({
     content = <VideoNote className="mt-2" event={event} />
   } else if (event.kind === ExtendedKind.RELAY_REVIEW) {
     content = <RelayReview className="mt-2" event={event} />
+  } else if (event.kind === ExtendedKind.DISCUSSION) {
+    content = <DiscussionNote className="mt-2" event={event} size={size} />
   } else if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
     content = <Content className="mt-2" event={event} />
   } else {

@@ -20,7 +20,8 @@ const KIND_FILTER_OPTIONS = [
   { kindGroup: [ExtendedKind.POLL], label: 'Polls' },
   { kindGroup: [ExtendedKind.VOICE, ExtendedKind.VOICE_COMMENT], label: 'Voice Posts' },
   { kindGroup: [ExtendedKind.PICTURE], label: 'Photo Posts' },
-  { kindGroup: [ExtendedKind.VIDEO, ExtendedKind.SHORT_VIDEO], label: 'Video Posts' }
+  { kindGroup: [ExtendedKind.VIDEO, ExtendedKind.SHORT_VIDEO], label: 'Video Posts' },
+  { kindGroup: [ExtendedKind.DISCUSSION], label: 'Discussions' }
 ]
 
 export default function KindFilter({

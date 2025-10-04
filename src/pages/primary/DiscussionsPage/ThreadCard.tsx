@@ -39,8 +39,7 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
     return topic || { 
       id: topicId, 
       label: topicId, 
-      icon: Hash, 
-      color: 'bg-gray-100 text-gray-800' 
+      icon: Hash
     }
   }
 
@@ -61,7 +60,7 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
               {title}
             </h3>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Badge variant="secondary" className={cn('text-xs', topicInfo.color)}>
+              <Badge variant="secondary" className="text-xs">
                 <topicInfo.icon className="w-3 h-3 mr-1" />
                 {topicInfo.label}
               </Badge>

@@ -113,6 +113,7 @@ export const ExtendedKind = {
   VOICE: 1222,
   VOICE_COMMENT: 1244,
   PUBLIC_MESSAGE: 24,
+  DISCUSSION: 11,
   FAVORITE_RELAYS: 10012,
   BLOSSOM_SERVER_LIST: 10063,
   RELAY_REVIEW: 31987,
@@ -132,7 +133,8 @@ export const SUPPORTED_KINDS = [
   // ExtendedKind.PUBLIC_MESSAGE, // Excluded - public messages should only appear in notifications
   kinds.Highlights,
   kinds.LongFormArticle,
-  ExtendedKind.RELAY_REVIEW
+  ExtendedKind.RELAY_REVIEW,
+  ExtendedKind.DISCUSSION
 ]
 
 export const URL_REGEX =

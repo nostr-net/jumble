@@ -5,12 +5,11 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Hash, X, Users, Code, DollarSign, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt } from 'lucide-react'
+import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
 import { TDraftEvent } from '@/types'
-import { cn } from '@/lib/utils'
 import dayjs from 'dayjs'
 
 interface CreateThreadDialogProps {
@@ -21,23 +20,23 @@ interface CreateThreadDialogProps {
 }
 
 export const DISCUSSION_TOPICS = [
-  { id: 'general', label: 'General', icon: Hash, color: 'bg-gray-100 text-gray-800' },
-  { id: 'meetups', label: 'Meetups', icon: Users, color: 'bg-blue-100 text-blue-800' },
-  { id: 'devs', label: 'Developers', icon: Code, color: 'bg-green-100 text-green-800' },
-  { id: 'finance', label: 'Bitcoin, Finance & Economics', icon: DollarSign, color: 'bg-yellow-100 text-yellow-800' },
-  { id: 'politics', label: 'Politics & Breaking News', icon: Newspaper, color: 'bg-red-100 text-red-800' },
-  { id: 'literature', label: 'Literature & Art', icon: BookOpen, color: 'bg-purple-100 text-purple-800' },
-  { id: 'philosophy', label: 'Philosophy & Theology', icon: Scroll, color: 'bg-indigo-100 text-indigo-800' },
-  { id: 'tech', label: 'Technology & Science', icon: Cpu, color: 'bg-cyan-100 text-cyan-800' },
-  { id: 'sports', label: 'Sports and Gaming', icon: Trophy, color: 'bg-orange-100 text-orange-800' },
-  { id: 'entertainment', label: 'Entertainment & Pop Culture', icon: Film, color: 'bg-pink-100 text-pink-800' },
-  { id: 'health', label: 'Health & Wellness', icon: Heart, color: 'bg-red-100 text-red-800' },
-  { id: 'lifestyle', label: 'Lifestyle & Personal Development', icon: TrendingUp, color: 'bg-emerald-100 text-emerald-800' },
-  { id: 'food', label: 'Food & Cooking', icon: Utensils, color: 'bg-amber-100 text-amber-800' },
-  { id: 'travel', label: 'Travel & Adventure', icon: MapPin, color: 'bg-teal-100 text-teal-800' },
-  { id: 'home', label: 'Home & Garden', icon: Home, color: 'bg-lime-100 text-lime-800' },
-  { id: 'pets', label: 'Pets & Animals', icon: PawPrint, color: 'bg-rose-100 text-rose-800' },
-  { id: 'fashion', label: 'Fashion & Beauty', icon: Shirt, color: 'bg-violet-100 text-violet-800' }
+  { id: 'general', label: 'General', icon: Hash },
+  { id: 'meetups', label: 'Meetups', icon: Users },
+  { id: 'devs', label: 'Developers', icon: Code },
+  { id: 'finance', label: 'Bitcoin, Finance & Economics', icon: Coins },
+  { id: 'politics', label: 'Politics & Breaking News', icon: Newspaper },
+  { id: 'literature', label: 'Literature & Art', icon: BookOpen },
+  { id: 'philosophy', label: 'Philosophy & Theology', icon: Scroll },
+  { id: 'tech', label: 'Technology & Science', icon: Cpu },
+  { id: 'sports', label: 'Sports and Gaming', icon: Trophy },
+  { id: 'entertainment', label: 'Entertainment & Pop Culture', icon: Film },
+  { id: 'health', label: 'Health & Wellness', icon: Heart },
+  { id: 'lifestyle', label: 'Lifestyle & Personal Development', icon: TrendingUp },
+  { id: 'food', label: 'Food & Cooking', icon: Utensils },
+  { id: 'travel', label: 'Travel & Adventure', icon: MapPin },
+  { id: 'home', label: 'Home & Garden', icon: Home },
+  { id: 'pets', label: 'Pets & Animals', icon: PawPrint },
+  { id: 'fashion', label: 'Fashion & Beauty', icon: Shirt }
 ]
 
 export default function CreateThreadDialog({ 
@@ -148,7 +147,7 @@ export default function CreateThreadDialog({
               <Label htmlFor="topic">{t('Topic')}</Label>
               <div className="flex items-center gap-2">
                 <selectedTopicInfo.icon className="w-4 h-4" />
-                <Badge variant="secondary" className={cn('text-sm', selectedTopicInfo.color)}>
+                <Badge variant="secondary" className="text-sm">
                   {selectedTopicInfo.label}
                 </Badge>
               </div>
