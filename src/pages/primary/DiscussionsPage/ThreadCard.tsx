@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/utils'
 import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 import Username from '@/components/Username'
+import VoteButtons from '@/components/NoteStats/VoteButtons'
 
 interface ThreadWithRelaySource extends NostrEvent {
   _relaySource?: string
@@ -67,7 +68,8 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
       onClick={onThreadClick}
     >
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-3">
+          <VoteButtons event={thread} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="font-semibold text-lg leading-tight line-clamp-2">

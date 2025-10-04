@@ -64,7 +64,6 @@ export default function TopicFilter({ topics, selectedTopic, onTopicChange, thre
           variant="outline" 
           className="flex items-center gap-2 h-10 px-3 min-w-44"
         >
-          <selectedTopicInfo.icon className="w-4 h-4" />
           <span className="flex-1 text-left">{selectedTopicInfo.label}</span>
           <ChevronDown className="w-4 h-4" />
         </Button>

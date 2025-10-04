@@ -9,6 +9,7 @@ import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
 import { MessageSquarePlus } from 'lucide-react'
 import ThreadCard from '@/pages/primary/DiscussionsPage/ThreadCard'
 import TopicFilter from '@/pages/primary/DiscussionsPage/TopicFilter'
+import ThreadSort, { SortOption } from '@/pages/primary/DiscussionsPage/ThreadSort'
 import CreateThreadDialog, { DISCUSSION_TOPICS } from '@/pages/primary/DiscussionsPage/CreateThreadDialog'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
@@ -22,6 +23,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const { push } = useSecondaryPage()
   const [selectedTopic, setSelectedTopic] = useState('general')
   const [selectedRelay, setSelectedRelay] = useState<string | null>(null)
+  const [selectedSort, setSelectedSort] = useState<SortOption>('newest')
   const [allThreads, setAllThreads] = useState<NostrEvent[]>([])
   const [threads, setThreads] = useState<NostrEvent[]>([])
   const [loading, setLoading] = useState(false)
@@ -39,7 +41,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
 
   useEffect(() => {
     filterThreadsByTopic()
-  }, [allThreads, selectedTopic])
+  }, [allThreads, selectedTopic, selectedSort])
 
   const fetchAllThreads = async () => {
     setLoading(true)
@@ -68,7 +70,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
           ...event,
           _relaySource: selectedRelay || 'multiple' // Track which relay(s) it was found on
         }))
-        .sort((a, b) => b.created_at - a.created_at)
+        .sort((a, b) => b.created_at - a.created_at) // Sort by newest first (will be overridden by vote-based sorting in the UI)
 
       setAllThreads(validThreads)
     } catch (error) {
@@ -101,7 +103,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
     })
 
     // Filter threads for the selected topic (or show all if "all" is selected)
-    const threadsForTopic = selectedTopic === 'all' 
+    let threadsForTopic = selectedTopic === 'all' 
       ? categorizedThreads.map(thread => {
           // Remove the temporary categorization property but keep relay source
           const { _categorizedTopic, ...cleanThread } = thread
@@ -114,6 +116,28 @@ const DiscussionsPage = forwardRef((_, ref) => {
             const { _categorizedTopic, ...cleanThread } = thread
             return cleanThread
           })
+
+    // Apply sorting based on selectedSort
+    switch (selectedSort) {
+      case 'newest':
+        threadsForTopic.sort((a, b) => b.created_at - a.created_at)
+        break
+      case 'oldest':
+        threadsForTopic.sort((a, b) => a.created_at - b.created_at)
+        break
+      case 'top':
+        // For now, sort by newest since we don't have vote data readily available
+        // TODO: Implement proper vote-based sorting when vote data is available
+        threadsForTopic.sort((a, b) => b.created_at - a.created_at)
+        break
+      case 'controversial':
+        // For now, sort by newest since we don't have vote data readily available
+        // TODO: Implement controversial sorting (high upvotes AND downvotes)
+        threadsForTopic.sort((a, b) => b.created_at - a.created_at)
+        break
+      default:
+        threadsForTopic.sort((a, b) => b.created_at - a.created_at)
+    }
 
     setThreads(threadsForTopic)
   }
@@ -175,6 +199,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
           <h1 className="text-2xl font-bold">
             {t('Discussions')} - {selectedTopic === 'all' ? t('All Topics') : DISCUSSION_TOPICS.find(t => t.id === selectedTopic)?.label}
           </h1>
+          <div className="flex items-center gap-2">
+            <ThreadSort 
+              selectedSort={selectedSort}
+              onSortChange={setSelectedSort}
+            />
+          </div>
         </div>
 
         {loading ? (

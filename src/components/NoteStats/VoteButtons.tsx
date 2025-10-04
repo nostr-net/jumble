@@ -1,0 +1,119 @@
+import { Button } from '@/components/ui/button'
+import { createReactionDraftEvent } from '@/lib/draft-event'
+import { useNostr } from '@/providers/NostrProvider'
+import client from '@/services/client.service'
+import noteStatsService from '@/services/note-stats.service'
+import { Event } from 'nostr-tools'
+import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useNoteStatsById } from '@/hooks/useNoteStatsById'
+
+export default function VoteButtons({ event }: { event: Event }) {
+  const { pubkey, publish, checkLogin } = useNostr()
+  const [voting, setVoting] = useState<string | null>(null)
+  const noteStats = useNoteStatsById(event.id)
+
+  // Calculate vote counts and user's current vote
+  const { userVote, score } = useMemo(() => {
+    const stats = noteStats || {}
+    const reactions = stats.likes || []
+    
+    const upvoteReactions = reactions.filter(r => r.emoji === '⬆️')
+    const downvoteReactions = reactions.filter(r => r.emoji === '⬇️')
+    
+    const score = upvoteReactions.length - downvoteReactions.length
+    
+    // Check if current user has voted
+    let userVote: 'up' | 'down' | null = null
+    if (pubkey) {
+      if (upvoteReactions.some(r => r.pubkey === pubkey)) {
+        userVote = 'up'
+      } else if (downvoteReactions.some(r => r.pubkey === pubkey)) {
+        userVote = 'down'
+      }
+    }
+    
+    return { userVote, score }
+  }, [noteStats, pubkey])
+
+  const vote = async (type: 'up' | 'down') => {
+    checkLogin(async () => {
+      if (voting || !pubkey) return
+
+      setVoting(type)
+      const timer = setTimeout(() => setVoting(null), 10_000)
+
+      try {
+        if (!noteStats?.updatedAt) {
+          await noteStatsService.fetchNoteStats(event, pubkey)
+        }
+
+        // If user is voting the same way again, remove the vote (toggle)
+        const emoji = type === 'up' ? '⬆️' : '⬇️'
+        
+        // Check if user already voted this way
+        const existingVote = userVote === type
+        if (existingVote) {
+          // Remove vote by creating a reaction with the same emoji (this will toggle it off)
+          const reaction = createReactionDraftEvent(event, emoji)
+          const seenOn = client.getSeenEventRelayUrls(event.id)
+          const evt = await publish(reaction, { additionalRelayUrls: seenOn })
+          noteStatsService.updateNoteStatsByEvents([evt])
+        } else {
+          // If user voted the opposite way, first remove the old vote
+          if (userVote) {
+            const oldEmoji = userVote === 'up' ? '⬆️' : '⬇️'
+            const removeReaction = createReactionDraftEvent(event, oldEmoji)
+            const seenOn = client.getSeenEventRelayUrls(event.id)
+            await publish(removeReaction, { additionalRelayUrls: seenOn })
+          }
+          
+          // Then add the new vote
+          const reaction = createReactionDraftEvent(event, emoji)
+          const seenOn = client.getSeenEventRelayUrls(event.id)
+          const evt = await publish(reaction, { additionalRelayUrls: seenOn })
+          noteStatsService.updateNoteStatsByEvents([evt])
+        }
+      } catch (error) {
+        console.error('vote failed', error)
+      } finally {
+        setVoting(null)
+        clearTimeout(timer)
+      }
+    })
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <Button
+        variant="ghost"
+        size="sm"
+        className={`h-6 w-6 p-0 hover:bg-orange-100 hover:text-orange-600 ${
+          userVote === 'up' ? 'bg-orange-100 text-orange-600' : 'text-muted-foreground'
+        }`}
+        onClick={() => vote('up')}
+        disabled={voting !== null}
+      >
+        <ChevronUp className="h-4 w-4" />
+      </Button>
+      
+      <span className={`text-xs font-medium min-w-[20px] text-center ${
+        score > 0 ? 'text-orange-600' : score < 0 ? 'text-blue-600' : 'text-muted-foreground'
+      }`}>
+        {score}
+      </span>
+      
+      <Button
+        variant="ghost"
+        size="sm"
+        className={`h-6 w-6 p-0 hover:bg-blue-100 hover:text-blue-600 ${
+          userVote === 'down' ? 'bg-blue-100 text-blue-600' : 'text-muted-foreground'
+        }`}
+        onClick={() => vote('down')}
+        disabled={voting !== null}
+      >
+        <ChevronDown className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}

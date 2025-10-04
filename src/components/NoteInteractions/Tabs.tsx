@@ -13,18 +13,25 @@ const TABS = [
 
 export function Tabs({
   selectedTab,
-  onTabChange
+  onTabChange,
+  hideRepostsAndQuotes = false
 }: {
   selectedTab: TTabValue
   onTabChange: (tab: TTabValue) => void
+  hideRepostsAndQuotes?: boolean
 }) {
   const { t } = useTranslation()
   const tabRefs = useRef<(HTMLDivElement | null)[]>([])
   const [indicatorStyle, setIndicatorStyle] = useState({ width: 0, left: 0 })
 
+  // Filter tabs based on hideRepostsAndQuotes
+  const visibleTabs = hideRepostsAndQuotes 
+    ? TABS.filter(tab => tab.value !== 'reposts' && tab.value !== 'quotes')
+    : TABS
+
   useEffect(() => {
     setTimeout(() => {
-      const activeIndex = TABS.findIndex((tab) => tab.value === selectedTab)
+      const activeIndex = visibleTabs.findIndex((tab) => tab.value === selectedTab)
       if (activeIndex >= 0 && tabRefs.current[activeIndex]) {
         const activeTab = tabRefs.current[activeIndex]
         const { offsetWidth, offsetLeft } = activeTab
@@ -35,12 +42,12 @@ export function Tabs({
         })
       }
     }, 20) // ensure tabs are rendered before calculating
-  }, [selectedTab])
+  }, [selectedTab, visibleTabs])
 
   return (
     <div className="w-fit">
       <div className="flex relative">
-        {TABS.map((tab, index) => (
+        {visibleTabs.map((tab, index) => (
           <div
             key={tab.value}
             ref={(el) => (tabRefs.current[index] = el)}

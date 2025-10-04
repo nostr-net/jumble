@@ -1,5 +1,6 @@
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { ExtendedKind } from '@/constants'
 import { Event } from 'nostr-tools'
 import { useState } from 'react'
 import HideUntrustedContentButton from '../HideUntrustedContentButton'
@@ -18,18 +19,22 @@ export default function NoteInteractions({
   event: Event
 }) {
   const [type, setType] = useState<TTabValue>('replies')
+  const isDiscussion = event.kind === ExtendedKind.DISCUSSION
+  
   let list
   switch (type) {
     case 'replies':
       list = <ReplyNoteList index={pageIndex} event={event} />
       break
     case 'quotes':
+      if (isDiscussion) return null // Hide quotes for discussions
       list = <QuoteList event={event} />
       break
     case 'reactions':
       list = <ReactionList event={event} />
       break
     case 'reposts':
+      if (isDiscussion) return null // Hide reposts for discussions
       list = <RepostList event={event} />
       break
     case 'zaps':
@@ -43,7 +48,7 @@ export default function NoteInteractions({
     <>
       <div className="flex items-center justify-between">
         <ScrollArea className="flex-1 w-0">
-          <Tabs selectedTab={type} onTabChange={setType} />
+          <Tabs selectedTab={type} onTabChange={setType} hideRepostsAndQuotes={isDiscussion} />
           <ScrollBar orientation="horizontal" className="opacity-0 pointer-events-none" />
         </ScrollArea>
         <Separator orientation="vertical" className="h-6" />

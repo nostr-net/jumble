@@ -1,10 +1,12 @@
 import { Separator } from '@/components/ui/separator'
+import { ExtendedKind } from '@/constants'
 import { toNote } from '@/lib/link'
 import { useSecondaryPage } from '@/PageManager'
 import { Event } from 'nostr-tools'
 import Collapsible from '../Collapsible'
 import Note from '../Note'
 import NoteStats from '../NoteStats'
+import DiscussionNoteStats from '../NoteStats/DiscussionNoteStats'
 import RepostDescription from './RepostDescription'
 
 export default function MainNoteCard({
@@ -40,7 +42,13 @@ export default function MainNoteCard({
             originalNoteId={originalNoteId}
           />
         </Collapsible>
-        {!embedded && <NoteStats className="mt-3 px-4" event={event} />}
+        {!embedded && (
+          event.kind === ExtendedKind.DISCUSSION ? (
+            <DiscussionNoteStats className="mt-3 px-4" event={event} />
+          ) : (
+            <NoteStats className="mt-3 px-4" event={event} />
+          )
+        )}
       </div>
       {!embedded && <Separator />}
     </div>
