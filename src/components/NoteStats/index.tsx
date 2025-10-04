@@ -84,6 +84,7 @@ export default function NoteStats({
           className={cn('flex items-center', loading ? 'animate-pulse' : '')}
           onClick={(e) => e.stopPropagation()}
         >
+          <ReplyButton event={event} />
           {!isDiscussion && <RepostButton event={event} />}
           {!isDiscussion && <LikeButton event={event} />}
           <ZapButton event={event} />
