@@ -17,6 +17,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function truncateText(text: string, maxWords: number): string {
+  if (!text) return ''
+  
+  const words = text.trim().split(/\s+/)
+  if (words.length <= maxWords) return text
+  
+  return words.slice(0, maxWords).join(' ') + '...'
+}
+
 export function isSafari() {
   if (typeof window === 'undefined' || !window.navigator) return false
   const ua = window.navigator.userAgent

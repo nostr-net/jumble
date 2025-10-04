@@ -24,6 +24,7 @@ import NotificationListPage from './pages/primary/NotificationListPage'
 import ProfilePage from './pages/primary/ProfilePage'
 import RelayPage from './pages/primary/RelayPage'
 import SearchPage from './pages/primary/SearchPage'
+import DiscussionsPage from './pages/primary/DiscussionsPage'
 import { NotificationProvider } from './providers/NotificationProvider'
 import { useScreenSize } from './providers/ScreenSizeProvider'
 import { routes } from './routes'
@@ -58,7 +59,8 @@ const PRIMARY_PAGE_REF_MAP = {
   me: createRef<TPageRef>(),
   profile: createRef<TPageRef>(),
   relay: createRef<TPageRef>(),
-  search: createRef<TPageRef>()
+  search: createRef<TPageRef>(),
+  discussions: createRef<TPageRef>()
 }
 
 const PRIMARY_PAGE_MAP = {
@@ -68,7 +70,8 @@ const PRIMARY_PAGE_MAP = {
   me: <MePage ref={PRIMARY_PAGE_REF_MAP.me} />,
   profile: <ProfilePage ref={PRIMARY_PAGE_REF_MAP.profile} />,
   relay: <RelayPage ref={PRIMARY_PAGE_REF_MAP.relay} />,
-  search: <SearchPage ref={PRIMARY_PAGE_REF_MAP.search} />
+  search: <SearchPage ref={PRIMARY_PAGE_REF_MAP.search} />,
+  discussions: <DiscussionsPage ref={PRIMARY_PAGE_REF_MAP.discussions} />
 }
 
 const PrimaryPageContext = createContext<TPrimaryPageContext | undefined>(undefined)
@@ -143,11 +146,15 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     } else {
       const searchParams = new URLSearchParams(window.location.search)
       const r = searchParams.get('r')
+      const page = searchParams.get('page')
+      
       if (r) {
         const url = normalizeUrl(r)
         if (url) {
           navigatePrimaryPage('relay', { url })
         }
+      } else if (page && page in PRIMARY_PAGE_MAP) {
+        navigatePrimaryPage(page as TPrimaryPageName)
       }
     }
 
@@ -237,6 +244,11 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
       return prev
     })
     setCurrentPrimaryPage(page)
+    
+    // Update URL for primary pages (except home)
+    const newUrl = page === 'home' ? '/' : `/?page=${page}`
+    window.history.pushState(null, '', newUrl)
+    
     if (needScrollToTop) {
       PRIMARY_PAGE_REF_MAP[page].current?.scrollToTop('smooth')
     }

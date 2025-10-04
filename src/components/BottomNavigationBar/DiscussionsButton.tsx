@@ -1,15 +1,15 @@
+import { usePrimaryPage } from '@/PageManager'
 import { MessageCircle } from 'lucide-react'
 import BottomNavigationBarItem from './BottomNavigationBarItem'
 
 export default function DiscussionsButton() {
-  // TODO: Implement discussions navigation when the component is built
-  const handleClick = () => {
-    // Placeholder for future discussions functionality
-    console.log('Discussions button clicked - component to be implemented')
-  }
+  const { navigate, current, display } = usePrimaryPage()
 
   return (
-    <BottomNavigationBarItem onClick={handleClick}>
+    <BottomNavigationBarItem
+      active={current === 'discussions' && display}
+      onClick={() => navigate('discussions')}
+    >
       <MessageCircle />
     </BottomNavigationBarItem>
   )

@@ -3,7 +3,9 @@ import { kinds } from 'nostr-tools'
 export const JUMBLE_API_BASE_URL = 'https://api.jumble.social'
 
 export const DEFAULT_FAVORITE_RELAYS = [
-  'wss://theforest.nostr1.com/','wss://orly-relay.imwald.eu'
+  'wss://theforest.nostr1.com/',
+  'wss://orly-relay.imwald.eu',
+  'wss://nostr.land'
 ]
 
 export const RECOMMENDED_RELAYS = DEFAULT_FAVORITE_RELAYS.concat([])
