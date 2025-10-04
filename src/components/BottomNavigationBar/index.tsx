@@ -1,8 +1,7 @@
 import { cn } from '@/lib/utils'
-import AccountButton from './AccountButton'
-import ExploreButton from './ExploreButton'
 import HomeButton from './HomeButton'
 import NotificationsButton from './NotificationsButton'
+import DiscussionsButton from './DiscussionsButton'
 
 export default function BottomNavigationBar() {
   return (
@@ -15,10 +14,9 @@ export default function BottomNavigationBar() {
         paddingBottom: 'env(safe-area-inset-bottom)'
       }}
     >
-      <HomeButton />
-      <ExploreButton />
       <NotificationsButton />
-      <AccountButton />
+      <HomeButton />
+      <DiscussionsButton />
     </div>
   )
 }

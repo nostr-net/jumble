@@ -22,6 +22,8 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import FeedButton from './FeedButton'
+import ExploreButton from '@/components/Titlebar/ExploreButton'
+import AccountButton from '@/components/Titlebar/AccountButton'
 import FollowingFeed from './FollowingFeed'
 import RelaysFeed from './RelaysFeed'
 
@@ -120,7 +122,10 @@ function NoteListPageTitlebar({
 
   return (
     <div className="flex gap-1 items-center h-full justify-between">
-      <FeedButton className="flex-1 max-w-fit w-0" />
+      <div className="flex gap-1 items-center">
+        <ExploreButton />
+        <FeedButton className="flex-1 max-w-fit w-0" />
+      </div>
       <div className="shrink-0 flex gap-1 items-center">
         {setShowRelayDetails && (
           <Button
@@ -145,6 +150,7 @@ function NoteListPageTitlebar({
             <PostButton />
           </>
         )}
+        <AccountButton />
       </div>
     </div>
   )
