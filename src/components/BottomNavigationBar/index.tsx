@@ -14,9 +14,9 @@ export default function BottomNavigationBar() {
         paddingBottom: 'env(safe-area-inset-bottom)'
       }}
     >
-      <NotificationsButton />
-      <HomeButton />
       <DiscussionsButton />
+      <HomeButton />
+      <NotificationsButton />
     </div>
   )
 }
