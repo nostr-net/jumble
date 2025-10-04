@@ -1,28 +1,17 @@
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { DEFAULT_FAVORITE_RELAYS } from '@/constants'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { forwardRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
-import { MessageSquarePlus, Hash } from 'lucide-react'
+import { MessageSquarePlus } from 'lucide-react'
 import ThreadCard from '@/pages/primary/DiscussionsPage/ThreadCard'
 import TopicFilter from '@/pages/primary/DiscussionsPage/TopicFilter'
+import CreateThreadDialog, { DISCUSSION_TOPICS } from '@/pages/primary/DiscussionsPage/CreateThreadDialog'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
-
-const DISCUSSION_TOPICS = [
-  { id: 'general', label: 'General', icon: Hash },
-  { id: 'meetups', label: 'Meetups', icon: Hash },
-  { id: 'devs', label: 'Developers', icon: Hash },
-  { id: 'finance', label: 'Finance & Economics', icon: Hash },
-  { id: 'politics', label: 'Politics & Breaking News', icon: Hash },
-  { id: 'literature', label: 'Literature & Art', icon: Hash },
-  { id: 'philosophy', label: 'Philosophy & Theology', icon: Hash },
-  { id: 'tech', label: 'Technology & Science', icon: Hash },
-  { id: 'sports', label: 'Sports', icon: Hash }
-]
 
 const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
@@ -180,31 +169,3 @@ const DiscussionsPage = forwardRef((_, ref) => {
 DiscussionsPage.displayName = 'DiscussionsPage'
 export default DiscussionsPage
 
-// Placeholder components - to be implemented
-function CreateThreadDialog({ 
-  onClose, 
-  onThreadCreated 
-}: {
-  topic: string
-  availableRelays: string[]
-  onClose: () => void
-  onThreadCreated: () => void
-}) {
-  // TODO: Implement thread creation dialog
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-md mx-4">
-        <CardHeader>
-          <CardTitle>Create New Thread</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p>Thread creation will be implemented here...</p>
-          <div className="flex gap-2 mt-4">
-            <Button onClick={onClose} variant="outline">Cancel</Button>
-            <Button onClick={onThreadCreated}>Create</Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}

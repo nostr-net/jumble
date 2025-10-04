@@ -37,7 +37,7 @@ export default function TopicFilter({ topics, selectedTopic, onTopicChange }: To
             onClick={() => onTopicChange(topic.id)}
             className="flex items-center gap-2"
           >
-            <Hash className="w-4 h-4" />
+            <topic.icon className="w-4 h-4" />
             <span>{topic.label}</span>
             {topic.id === selectedTopic && (
               <span className="ml-auto text-primary">✓</span>

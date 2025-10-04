@@ -7,6 +7,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/utils'
+import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 
 interface ThreadCardProps {
   thread: NostrEvent
@@ -32,20 +33,15 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
   const createdAt = new Date(thread.created_at * 1000)
   const timeAgo = formatDistanceToNow(createdAt, { addSuffix: true })
 
-  // Get topic display info
+  // Get topic display info from centralized DISCUSSION_TOPICS
   const getTopicInfo = (topicId: string) => {
-    const topicMap: Record<string, { label: string; color: string }> = {
-      general: { label: 'General', color: 'bg-gray-100 text-gray-800' },
-      meetups: { label: 'Meetups', color: 'bg-blue-100 text-blue-800' },
-      devs: { label: 'Developers', color: 'bg-green-100 text-green-800' },
-      finance: { label: 'Finance', color: 'bg-yellow-100 text-yellow-800' },
-      politics: { label: 'Politics', color: 'bg-red-100 text-red-800' },
-      literature: { label: 'Literature', color: 'bg-purple-100 text-purple-800' },
-      philosophy: { label: 'Philosophy', color: 'bg-indigo-100 text-indigo-800' },
-      tech: { label: 'Technology', color: 'bg-cyan-100 text-cyan-800' },
-      sports: { label: 'Sports', color: 'bg-orange-100 text-orange-800' }
+    const topic = DISCUSSION_TOPICS.find(t => t.id === topicId)
+    return topic || { 
+      id: topicId, 
+      label: topicId, 
+      icon: Hash, 
+      color: 'bg-gray-100 text-gray-800' 
     }
-    return topicMap[topicId] || { label: topicId, color: 'bg-gray-100 text-gray-800' }
   }
 
   const topicInfo = getTopicInfo(topic)
@@ -66,7 +62,7 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
             </h3>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Badge variant="secondary" className={cn('text-xs', topicInfo.color)}>
-                <Hash className="w-3 h-3 mr-1" />
+                <topicInfo.icon className="w-3 h-3 mr-1" />
                 {topicInfo.label}
               </Badge>
               <div className="flex items-center gap-1">
