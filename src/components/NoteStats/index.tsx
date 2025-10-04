@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils'
 import { useNostr } from '@/providers/NostrProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import noteStatsService from '@/services/note-stats.service'
+import { ExtendedKind } from '@/constants'
 import { Event } from 'nostr-tools'
 import { useEffect, useState } from 'react'
 import BookmarkButton from '../BookmarkButton'
@@ -12,6 +13,7 @@ import RepostButton from './RepostButton'
 import SeenOnButton from './SeenOnButton'
 import TopZaps from './TopZaps'
 import ZapButton from './ZapButton'
+import VoteButtons from './VoteButtons'
 
 export default function NoteStats({
   event,
@@ -31,6 +33,9 @@ export default function NoteStats({
   const { isSmallScreen } = useScreenSize()
   const { pubkey } = useNostr()
   const [loading, setLoading] = useState(false)
+  
+  // Hide repost button for discussion events
+  const isDiscussion = event.kind === ExtendedKind.DISCUSSION
 
   useEffect(() => {
     if (!fetchIfNotExisting) return
@@ -55,9 +60,9 @@ export default function NoteStats({
           )}
           onClick={(e) => e.stopPropagation()}
         >
-          <ReplyButton event={event} />
-          <RepostButton event={event} />
-          <LikeButton event={event} />
+          {isDiscussion ? <VoteButtons event={event} /> : <ReplyButton event={event} />}
+          {!isDiscussion && <RepostButton event={event} />}
+          {!isDiscussion && <LikeButton event={event} />}
           <ZapButton event={event} />
           <BookmarkButton event={event} />
           <SeenOnButton event={event} />
@@ -79,9 +84,8 @@ export default function NoteStats({
           className={cn('flex items-center', loading ? 'animate-pulse' : '')}
           onClick={(e) => e.stopPropagation()}
         >
-          <ReplyButton event={event} />
-          <RepostButton event={event} />
-          <LikeButton event={event} />
+          {!isDiscussion && <RepostButton event={event} />}
+          {!isDiscussion && <LikeButton event={event} />}
           <ZapButton event={event} />
         </div>
         <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
