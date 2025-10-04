@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
-import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap } from 'lucide-react'
+import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
@@ -78,6 +78,7 @@ export default function CreateThreadDialog({
   const [isNsfw, setIsNsfw] = useState(false)
   const [addClientTag, setAddClientTag] = useState(true)
   const [minPow, setMinPow] = useState(0)
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
 
   const validateForm = () => {
     const newErrors: { title?: string; content?: string; relay?: string } = {}
@@ -265,66 +266,79 @@ export default function CreateThreadDialog({
               </p>
             </div>
 
-            {/* Advanced Options */}
-            <div className="space-y-4 border-t pt-4">
-              <h4 className="text-sm font-medium">{t('Advanced Options')}</h4>
+            {/* Advanced Options Toggle */}
+            <div className="border-t pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
+              >
+                <Settings className="w-4 h-4" />
+                {t('Advanced Options')}
+              </Button>
               
-              {/* NSFW Toggle */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Hash className="w-4 h-4 text-red-500" />
-                  <Label htmlFor="nsfw" className="text-sm">
-                    {t('Mark as NSFW')}
-                  </Label>
-                </div>
-                <Switch
-                  id="nsfw"
-                  checked={isNsfw}
-                  onCheckedChange={setIsNsfw}
-                />
-              </div>
+              {showAdvancedOptions && (
+                <div className="space-y-4 mt-4">
+                  {/* NSFW Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Hash className="w-4 h-4 text-foreground" />
+                      <Label htmlFor="nsfw" className="text-sm">
+                        {t('Mark as NSFW')}
+                      </Label>
+                    </div>
+                    <Switch
+                      id="nsfw"
+                      checked={isNsfw}
+                      onCheckedChange={setIsNsfw}
+                    />
+                  </div>
 
-              {/* Client Tag Toggle */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Image className="w-4 h-4 text-blue-500" />
-                  <Label htmlFor="client-tag" className="text-sm">
-                    {t('Add client identifier')}
-                  </Label>
-                </div>
-                <Switch
-                  id="client-tag"
-                  checked={addClientTag}
-                  onCheckedChange={setAddClientTag}
-                />
-              </div>
+                  {/* Client Tag Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Image className="w-4 h-4 text-foreground" />
+                      <Label htmlFor="client-tag" className="text-sm">
+                        {t('Add client identifier')}
+                      </Label>
+                    </div>
+                    <Switch
+                      id="client-tag"
+                      checked={addClientTag}
+                      onCheckedChange={setAddClientTag}
+                    />
+                  </div>
 
-              {/* PoW Setting */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-yellow-500" />
-                  <Label className="text-sm">
-                    {t('Proof of Work')}: {minPow}
-                  </Label>
-                </div>
-                <div className="px-2">
-                  <Slider
-                    value={[minPow]}
-                    onValueChange={(value) => setMinPow(value[0])}
-                    max={20}
-                    min={0}
-                    step={1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                    <span>{t('No PoW')}</span>
-                    <span>{t('High PoW')}</span>
+                  {/* PoW Setting */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-foreground" />
+                      <Label className="text-sm">
+                        {t('Proof of Work')}: {minPow}
+                      </Label>
+                    </div>
+                    <div className="px-2">
+                      <Slider
+                        value={[minPow]}
+                        onValueChange={(value) => setMinPow(value[0])}
+                        max={20}
+                        min={0}
+                        step={1}
+                        className="w-full"
+                      />
+                      <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                        <span>{t('No PoW')}</span>
+                        <span>{t('High PoW')}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {t('Higher values make your thread harder to mine but more unique.')}
+                    </p>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {t('Higher values make your thread harder to mine but more unique.')}
-                </p>
-              </div>
+              )}
             </div>
 
             {/* Form Actions */}
