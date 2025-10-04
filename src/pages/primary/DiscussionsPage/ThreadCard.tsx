@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/utils'
 import { DISCUSSION_TOPICS } from './CreateThreadDialog'
+import Username from '@/components/Username'
 
 interface ThreadWithRelaySource extends NostrEvent {
   _relaySource?: string
@@ -105,9 +106,11 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
         <div className="flex items-center justify-between mt-3 pt-3 border-t">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <User className="w-4 h-4" />
-            <span className="truncate">
-              {thread.pubkey.slice(0, 8)}...{thread.pubkey.slice(-8)}
-            </span>
+            <Username 
+              userId={thread.pubkey} 
+              className="truncate font-medium"
+              skeletonClassName="h-4 w-20"
+            />
           </div>
           <Button variant="ghost" size="sm" className="h-8 px-2">
             {t('Read more')}

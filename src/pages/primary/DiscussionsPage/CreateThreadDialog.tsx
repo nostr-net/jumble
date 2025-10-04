@@ -151,11 +151,21 @@ export default function CreateThreadDialog({
         created_at: dayjs().unix()
       }
       
+      console.log('Creating kind 11 thread event:', {
+        kind: threadEvent.kind,
+        content: threadEvent.content.substring(0, 50) + '...',
+        tags: threadEvent.tags,
+        selectedRelay,
+        minPow
+      })
+      
       // Publish to the selected relay only
       const publishedEvent = await publish(threadEvent, {
         specifiedRelayUrls: [selectedRelay],
         minPow
       })
+      
+      console.log('Published event result:', publishedEvent)
       
       if (publishedEvent) {
         onThreadCreated()
@@ -165,7 +175,26 @@ export default function CreateThreadDialog({
       }
     } catch (error) {
       console.error('Error creating thread:', error)
-      alert(t('Failed to create thread. Please try again.'))
+      console.error('Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+      
+      let errorMessage = t('Failed to create thread')
+      if (error instanceof Error) {
+        if (error.message.includes('auth-required') || error.message.includes('auth required')) {
+          errorMessage = t('Relay requires authentication for write access. Please try a different relay or contact the relay operator.')
+        } else if (error.message.includes('blocked')) {
+          errorMessage = t('Your account is blocked from posting to this relay.')
+        } else if (error.message.includes('rate limit')) {
+          errorMessage = t('Rate limited. Please wait before trying again.')
+        } else {
+          errorMessage = `${t('Failed to create thread')}: ${error.message}`
+        }
+      }
+      
+      alert(errorMessage)
     } finally {
       setIsSubmitting(false)
     }

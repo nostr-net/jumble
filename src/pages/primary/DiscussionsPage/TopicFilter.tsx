@@ -1,8 +1,9 @@
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Grid3X3 } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface Topic {
   id: string
@@ -19,6 +20,8 @@ interface TopicFilterProps {
 }
 
 export default function TopicFilter({ topics, selectedTopic, onTopicChange, threads, replies }: TopicFilterProps) {
+  const { t } = useTranslation()
+  
   // Sort topics by activity (most recent kind 11 or kind 1111 events first)
   const sortedTopics = useMemo(() => {
     const allEvents = [...threads, ...replies]
@@ -47,7 +50,12 @@ export default function TopicFilter({ topics, selectedTopic, onTopicChange, thre
     })
   }, [topics, threads, replies])
   
-  const selectedTopicInfo = sortedTopics.find(topic => topic.id === selectedTopic) || sortedTopics[0]
+  // Create all topics option
+  const allTopicsOption = { id: 'all', label: t('All Topics'), icon: Grid3X3 }
+  
+  const selectedTopicInfo = selectedTopic === 'all' 
+    ? allTopicsOption 
+    : sortedTopics.find(topic => topic.id === selectedTopic) || sortedTopics[0]
 
   return (
     <DropdownMenu>
@@ -57,11 +65,22 @@ export default function TopicFilter({ topics, selectedTopic, onTopicChange, thre
           className="flex items-center gap-2 h-10 px-3 min-w-44"
         >
           <selectedTopicInfo.icon className="w-4 h-4" />
-          <span className="flex-1 text-left">{selectedTopicInfo.id}</span>
+          <span className="flex-1 text-left">{selectedTopicInfo.label}</span>
           <ChevronDown className="w-4 h-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72">
+        <DropdownMenuItem
+          key="all"
+          onClick={() => onTopicChange('all')}
+          className="flex items-center gap-2"
+        >
+          <Grid3X3 className="w-4 h-4" />
+          <span>{t('All Topics')}</span>
+          {selectedTopic === 'all' && (
+            <span className="ml-auto text-primary">✓</span>
+          )}
+        </DropdownMenuItem>
         {sortedTopics.map(topic => (
           <DropdownMenuItem
             key={topic.id}

@@ -87,6 +87,8 @@ export default function Note({
     content = <GroupMetadata className="mt-2" event={event} originalNoteId={originalNoteId} />
   } else if (event.kind === kinds.CommunityDefinition) {
     content = <CommunityDefinition className="mt-2" event={event} />
+  } else if (event.kind === ExtendedKind.DISCUSSION) {
+    content = <DiscussionNote className="mt-2" event={event} size={size} />
   } else if (event.kind === ExtendedKind.POLL) {
     content = (
       <>

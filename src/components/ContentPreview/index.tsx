@@ -15,6 +15,7 @@ import NormalContentPreview from './NormalContentPreview'
 import PictureNotePreview from './PictureNotePreview'
 import PollPreview from './PollPreview'
 import VideoNotePreview from './VideoNotePreview'
+import DiscussionNote from '../DiscussionNote'
 
 export default function ContentPreview({
   event,
@@ -67,6 +68,10 @@ export default function ContentPreview({
     ].includes(event.kind)
   ) {
     return <NormalContentPreview event={event} className={className} />
+  }
+
+  if (event.kind === ExtendedKind.DISCUSSION) {
+    return <DiscussionNote event={event} className={className} size="small" />
   }
 
   if (event.kind === kinds.Highlights) {

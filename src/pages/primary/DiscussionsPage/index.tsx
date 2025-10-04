@@ -48,13 +48,14 @@ const DiscussionsPage = forwardRef((_, ref) => {
       const relayUrls = selectedRelay ? [selectedRelay] : availableRelays
       
       // Fetch all kind 11 events (limit 100, newest first) with relay source tracking
+      console.log('Fetching kind 11 events from relays:', relayUrls)
       const events = await client.fetchEvents(relayUrls, [
         {
           kinds: [11], // Thread events
-          '#-': ['-'], // Must have the "-" tag for relay privacy
           limit: 100
         }
       ])
+      console.log('Fetched kind 11 events:', events.length, events.map(e => ({ id: e.id, title: e.tags.find(t => t[0] === 'title')?.[1], pubkey: e.pubkey })))
 
       // Filter and sort threads, adding relay source information
       const validThreads = events
@@ -99,14 +100,20 @@ const DiscussionsPage = forwardRef((_, ref) => {
       }
     })
 
-    // Filter threads for the selected topic
-    const threadsForTopic = categorizedThreads
-      .filter(thread => thread._categorizedTopic === selectedTopic)
-      .map(thread => {
-        // Remove the temporary categorization property but keep relay source
-        const { _categorizedTopic, ...cleanThread } = thread
-        return cleanThread
-      })
+    // Filter threads for the selected topic (or show all if "all" is selected)
+    const threadsForTopic = selectedTopic === 'all' 
+      ? categorizedThreads.map(thread => {
+          // Remove the temporary categorization property but keep relay source
+          const { _categorizedTopic, ...cleanThread } = thread
+          return cleanThread
+        })
+      : categorizedThreads
+          .filter(thread => thread._categorizedTopic === selectedTopic)
+          .map(thread => {
+            // Remove the temporary categorization property but keep relay source
+            const { _categorizedTopic, ...cleanThread } = thread
+            return cleanThread
+          })
 
     setThreads(threadsForTopic)
   }
@@ -166,7 +173,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">
-            {t('Discussions')} - {DISCUSSION_TOPICS.find(t => t.id === selectedTopic)?.label}
+            {t('Discussions')} - {selectedTopic === 'all' ? t('All Topics') : DISCUSSION_TOPICS.find(t => t.id === selectedTopic)?.label}
           </h1>
         </div>
 
@@ -180,12 +187,20 @@ const DiscussionsPage = forwardRef((_, ref) => {
               <MessageSquarePlus className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-lg font-semibold mb-2">{t('No threads yet')}</h3>
               <p className="text-muted-foreground mb-4">
-                {t('Be the first to start a discussion in this topic!')}
+                {selectedTopic === 'all' 
+                  ? t('No discussion threads found. Try refreshing or check your relay connection.')
+                  : t('Be the first to start a discussion in this topic!')
+                }
               </p>
-              <Button onClick={handleCreateThread}>
-                <MessageSquarePlus className="w-4 h-4 mr-2" />
-                {t('Create Thread')}
-              </Button>
+              <div className="flex gap-2 justify-center">
+                <Button onClick={handleCreateThread}>
+                  <MessageSquarePlus className="w-4 h-4 mr-2" />
+                  {t('Create Thread')}
+                </Button>
+                <Button variant="outline" onClick={fetchAllThreads}>
+                  {t('Refresh')}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
