@@ -1,4 +1,6 @@
 import { TRelaySet } from '@/types'
+import { toRelay } from '@/lib/link'
+import { useSecondaryPage } from '@/PageManager'
 import { ChevronDown, FolderClosed } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -66,12 +68,18 @@ function RelayUrlsExpandToggle({
 }
 
 function RelayUrls({ urls }: { urls: string[] }) {
+  const { push } = useSecondaryPage()
+  
   if (!urls) return null
 
   return (
     <div className="pl-1 space-y-1">
       {urls.map((url) => (
-        <div key={url} className="flex items-center gap-3">
+        <div 
+          key={url} 
+          className="flex items-center gap-3 cursor-pointer hover:bg-muted rounded px-2 py-1 -mx-2 -my-1"
+          onClick={() => push(toRelay(url))}
+        >
           <RelayIcon url={url} className="w-4 h-4" iconSize={10} />
           <div className="text-muted-foreground text-sm truncate">{url}</div>
         </div>

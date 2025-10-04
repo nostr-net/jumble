@@ -1,6 +1,8 @@
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toRelay } from '@/lib/link'
 import { isWebsocketUrl, normalizeUrl } from '@/lib/url'
+import { useSecondaryPage } from '@/PageManager'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { CircleX } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -79,9 +81,14 @@ export default function RelayUrls({ relaySetId }: { relaySetId: string }) {
 }
 
 function RelayUrl({ url, onRemove }: { url: string; onRemove: () => void }) {
+  const { push } = useSecondaryPage()
+  
   return (
     <div className="flex items-center justify-between pl-1 pr-3">
-      <div className="flex gap-3 items-center flex-1 w-0">
+      <div 
+        className="flex gap-3 items-center flex-1 w-0 cursor-pointer hover:bg-muted rounded px-2 py-1 -mx-2 -my-1"
+        onClick={() => push(toRelay(url))}
+      >
         <RelayIcon url={url} className="w-4 h-4" iconSize={10} />
         <div className="text-muted-foreground text-sm truncate">{url}</div>
       </div>

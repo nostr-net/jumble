@@ -60,11 +60,11 @@ export const ApplicationDataKey = {
 export const BIG_RELAY_URLS = [
   'wss://theforest.nostr1.com',
   'wss://orly-relay.imwald.eu',
-  'wss://thecitadel.nostr1.com/',
-  'wss://nostr.wine',
-  'wss://nostr.land/',
+  'wss://nostr.land',
+  'wss://nostr.wine/',
   'wss://nostr.sovbit.host/',
-  'wss://nostr21.com'
+  'wss://nostr21.com',
+  'wss://thecitadel.nostr1.com/'
 ]
 
 // Optimized relay list for read operations (includes aggregator)
@@ -77,23 +77,27 @@ export const FAST_READ_RELAY_URLS = [
 
 // Optimized relay list for write operations (no aggregator since it's read-only)
 export const FAST_WRITE_RELAY_URLS = [
-  'wss://nostr.wine',
-  'wss://nostr.land',
+  'wss://damus.io/',
+  'wss://primal.net/',
   'wss://freelay.sovbit.host/',
   'wss://thecitadel.nostr1.com/'
 ]
 
 export const SEARCHABLE_RELAY_URLS = [
   'wss://relay.nostr.band/', 
-  'wss://freelay.sovbit.host/', 
-  'wss://relay.damus.io/', 
-  'wss://search.nos.today/', 
-  'wss://aggr.nostr.land', 
-  'wss://purplepag.es', 
-  'wss://profiles.nostr1.com']
+  'wss://search.nos.today/',
+  'wss://nostr.wine', 
+  'wss://orly-relay.imwald.eu',
+  'wss://aggr.nostr.land'
+  ]
+
+export const PROFILE_RELAY_URLS = [
+    'wss://purplepag.es',
+    'wss://profiles.nostr1.com'
+  ]
 
 // Combined relay URLs for profile fetching - includes both BIG_RELAY_URLS and SEARCHABLE_RELAY_URLS
-export const PROFILE_FETCH_RELAY_URLS = [...BIG_RELAY_URLS, ...SEARCHABLE_RELAY_URLS]
+export const PROFILE_FETCH_RELAY_URLS = [...SEARCHABLE_RELAY_URLS, ...PROFILE_RELAY_URLS]
 
 export const GROUP_METADATA_EVENT_KIND = 39000
 
