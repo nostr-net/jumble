@@ -11,6 +11,7 @@ import ThreadCard from '@/pages/primary/DiscussionsPage/ThreadCard'
 import TopicFilter from '@/pages/primary/DiscussionsPage/TopicFilter'
 import ThreadSort, { SortOption } from '@/pages/primary/DiscussionsPage/ThreadSort'
 import CreateThreadDialog, { DISCUSSION_TOPICS } from '@/pages/primary/DiscussionsPage/CreateThreadDialog'
+import ViewToggle from '@/pages/primary/DiscussionsPage/ViewToggle'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
@@ -32,6 +33,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const [showCreateThread, setShowCreateThread] = useState(false)
   const [statsLoaded, setStatsLoaded] = useState(false)
   const [customVoteStats, setCustomVoteStats] = useState<Record<string, { upvotes: number; downvotes: number; score: number; controversy: number }>>({})
+  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
+  const [groupedThreads, setGroupedThreads] = useState<Record<string, NostrEvent[]>>({})
 
   // Use DEFAULT_FAVORITE_RELAYS for logged-out users, or user's favorite relays for logged-in users
   const availableRelays = pubkey && favoriteRelays.length > 0 ? favoriteRelays : DEFAULT_FAVORITE_RELAYS
@@ -136,9 +139,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
       console.log('Waiting for stats to load before sorting...')
       return
     }
-    console.log('Running filterThreadsByTopic with selectedSort:', selectedSort, 'statsLoaded:', statsLoaded)
+    console.log('Running filterThreadsByTopic with selectedSort:', selectedSort, 'statsLoaded:', statsLoaded, 'viewMode:', viewMode, 'selectedTopic:', selectedTopic)
     filterThreadsByTopic()
-  }, [allThreads, selectedTopic, selectedSort, statsLoaded])
+  }, [allThreads, selectedTopic, selectedSort, statsLoaded, viewMode])
 
   // Fetch stats when sort changes to top/controversial
   useEffect(() => {
@@ -403,7 +406,62 @@ const DiscussionsPage = forwardRef((_, ref) => {
         console.log('Sorted by default (newest)')
     }
 
-    setThreads(threadsForTopic)
+    // If grouped view and showing all topics, group threads by topic
+    if (viewMode === 'grouped' && selectedTopic === 'all') {
+      // Group threads by topic
+      const groupedThreads = categorizedThreads.reduce((groups, thread) => {
+        const topic = thread._categorizedTopic
+        if (!groups[topic]) {
+          groups[topic] = []
+        }
+        // Remove the temporary categorization property but keep relay source
+        const { _categorizedTopic, ...cleanThread } = thread
+        groups[topic].push(cleanThread)
+        return groups
+      }, {} as Record<string, NostrEvent[]>)
+
+      // Sort threads within each group
+      Object.keys(groupedThreads).forEach(topic => {
+        groupedThreads[topic] = sortThreads(groupedThreads[topic])
+      })
+
+      // Store grouped data in a different state
+      console.log('Setting grouped threads:', groupedThreads)
+      setGroupedThreads(groupedThreads)
+      setThreads([]) // Clear flat threads
+    } else {
+      // Flat view or specific topic selected
+      setThreads(threadsForTopic)
+      setGroupedThreads({}) // Clear grouped threads
+    }
+  }
+
+  // Helper function to sort threads
+  const sortThreads = (threadsToSort: NostrEvent[]) => {
+    const sortedThreads = [...threadsToSort]
+    
+    switch (selectedSort) {
+      case 'newest':
+        return sortedThreads.sort((a, b) => b.created_at - a.created_at)
+      case 'oldest':
+        return sortedThreads.sort((a, b) => a.created_at - b.created_at)
+      case 'top':
+        return sortedThreads.sort((a, b) => {
+          const scoreA = getThreadVoteScore(a)
+          const scoreB = getThreadVoteScore(b)
+          if (scoreA !== scoreB) return scoreB - scoreA
+          return b.created_at - a.created_at
+        })
+      case 'controversial':
+        return sortedThreads.sort((a, b) => {
+          const controversyA = getThreadControversyScore(a)
+          const controversyB = getThreadControversyScore(b)
+          if (controversyA !== controversyB) return controversyB - controversyA
+          return b.created_at - a.created_at
+        })
+      default:
+        return sortedThreads.sort((a, b) => b.created_at - a.created_at)
+    }
   }
 
   const handleCreateThread = () => {
@@ -464,6 +522,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
             {t('Discussions')} - {selectedTopic === 'all' ? t('All Topics') : DISCUSSION_TOPICS.find(t => t.id === selectedTopic)?.label}
           </h1>
           <div className="flex items-center gap-2">
+            {selectedTopic === 'all' && (
+              <ViewToggle
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+              />
+            )}
             <ThreadSort 
               selectedSort={selectedSort}
               onSortChange={setSelectedSort}
@@ -475,7 +539,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
           <div className="flex justify-center py-8">
             <div className="text-muted-foreground">{t('Loading threads...')}</div>
           </div>
-        ) : threads.length === 0 ? (
+        ) : (viewMode === 'grouped' && selectedTopic === 'all' ? 
+          Object.keys(groupedThreads).length === 0 : 
+          threads.length === 0) ? (
           <Card>
             <CardContent className="p-8 text-center">
               <MessageSquarePlus className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
@@ -497,6 +563,41 @@ const DiscussionsPage = forwardRef((_, ref) => {
               </div>
             </CardContent>
           </Card>
+        ) : viewMode === 'grouped' && selectedTopic === 'all' ? (
+          <div className="space-y-6">
+            {Object.entries(groupedThreads).length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                Debug: No grouped threads found. groupedThreads keys: {Object.keys(groupedThreads).join(', ')}
+              </div>
+            )}
+            {Object.entries(groupedThreads).map(([topicId, topicThreads]) => {
+              const topicInfo = DISCUSSION_TOPICS.find(t => t.id === topicId)
+              if (!topicInfo || topicThreads.length === 0) return null
+              
+              return (
+                <div key={topicId} className="space-y-3">
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    <topicInfo.icon className="w-5 h-5 text-primary" />
+                    <h2 className="text-lg font-semibold">{topicInfo.label}</h2>
+                    <span className="text-sm text-muted-foreground">
+                      ({topicThreads.length} {topicThreads.length === 1 ? t('thread') : t('threads')})
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {topicThreads.map(thread => (
+                      <ThreadCard
+                        key={thread.id}
+                        thread={thread}
+                        onThreadClick={() => {
+                          push(toNote(thread))
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         ) : (
           <div className="space-y-3">
             {threads.map(thread => (
