@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { User, Clock, Hash, Server } from 'lucide-react'
+import { Clock, Hash, Server } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { truncateText } from '@/lib/utils'
 import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 import Username from '@/components/Username'
+import UserAvatar from '@/components/UserAvatar'
 import VoteButtons from '@/components/NoteStats/VoteButtons'
 
 interface ThreadWithRelaySource extends NostrEvent {
@@ -103,7 +104,7 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
         
         <div className="flex items-center justify-between mt-3 pt-3 border-t">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <User className="w-4 h-4" />
+            <UserAvatar userId={thread.pubkey} size="xSmall" />
             <Username 
               userId={thread.pubkey} 
               className="truncate font-medium"
