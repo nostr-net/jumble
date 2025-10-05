@@ -1,5 +1,5 @@
 import { ExtendedKind } from '@/constants'
-import { getNoteBech32Id, isProtectedEvent } from '@/lib/event'
+import { getNoteBech32Id, isProtectedEvent, getRootEventHexId } from '@/lib/event'
 import { toNjump } from '@/lib/link'
 import { pubkeyToNpub } from '@/lib/pubkey'
 import { simplifyUrl } from '@/lib/url'
@@ -10,7 +10,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
 import { Bell, BellOff, Code, Copy, Link, SatelliteDish, Trash2, TriangleAlert } from 'lucide-react'
 import { Event } from 'nostr-tools'
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import RelayIcon from '../RelayIcon'
@@ -57,6 +57,27 @@ export function useMenuActions({
   }, [currentBrowsingRelayUrls, favoriteRelays])
   const { mutePubkeyPublicly, mutePubkeyPrivately, unmutePubkey, mutePubkeySet } = useMuteList()
   const isMuted = useMemo(() => mutePubkeySet.has(event.pubkey), [mutePubkeySet, event])
+  
+  // Check if this is a reply to a discussion event
+  const [isReplyToDiscussion, setIsReplyToDiscussion] = useState(false)
+  
+  useEffect(() => {
+    const isDiscussion = event.kind === ExtendedKind.DISCUSSION
+    if (isDiscussion) return // Already a discussion event
+    
+    const rootEventId = getRootEventHexId(event)
+    if (rootEventId) {
+      // Fetch the root event to check if it's a discussion
+      client.fetchEvent(rootEventId).then(rootEvent => {
+        if (rootEvent && rootEvent.kind === ExtendedKind.DISCUSSION) {
+          setIsReplyToDiscussion(true)
+        }
+      }).catch(() => {
+        // If we can't fetch the root event, assume it's not a discussion reply
+        setIsReplyToDiscussion(false)
+      })
+    }
+  }, [event.id, event.kind])
 
   const broadcastSubMenu: SubMenuAction[] = useMemo(() => {
     const items = []
@@ -185,7 +206,7 @@ export function useMenuActions({
 
     const isProtected = isProtectedEvent(event)
     const isDiscussion = event.kind === ExtendedKind.DISCUSSION
-    if ((!isProtected || event.pubkey === pubkey) && !isDiscussion) {
+    if ((!isProtected || event.pubkey === pubkey) && !isDiscussion && !isReplyToDiscussion) {
       actions.push({
         icon: SatelliteDish,
         label: t('Republish to ...'),

@@ -3,8 +3,10 @@ import { useNostr } from '@/providers/NostrProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import noteStatsService from '@/services/note-stats.service'
 import { ExtendedKind } from '@/constants'
+import { getRootEventHexId } from '@/lib/event'
+import client from '@/services/client.service'
 import { Event } from 'nostr-tools'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import BookmarkButton from '../BookmarkButton'
 import LikeButton from './LikeButton'
 import Likes from './Likes'
@@ -33,8 +35,26 @@ export default function NoteStats({
   const { pubkey } = useNostr()
   const [loading, setLoading] = useState(false)
   
-  // Hide repost button for discussion events
+  // Hide repost button for discussion events and replies to discussions
   const isDiscussion = event.kind === ExtendedKind.DISCUSSION
+  const [isReplyToDiscussion, setIsReplyToDiscussion] = useState(false)
+  
+  useMemo(() => {
+    if (isDiscussion) return // Already a discussion event
+    
+    const rootEventId = getRootEventHexId(event)
+    if (rootEventId) {
+      // Fetch the root event to check if it's a discussion
+      client.fetchEvent(rootEventId).then(rootEvent => {
+        if (rootEvent && rootEvent.kind === ExtendedKind.DISCUSSION) {
+          setIsReplyToDiscussion(true)
+        }
+      }).catch(() => {
+        // If we can't fetch the root event, assume it's not a discussion reply
+        setIsReplyToDiscussion(false)
+      })
+    }
+  }, [event.id, isDiscussion])
 
   useEffect(() => {
     if (!fetchIfNotExisting) return
@@ -60,8 +80,8 @@ export default function NoteStats({
           onClick={(e) => e.stopPropagation()}
         >
           <ReplyButton event={event} />
-          {!isDiscussion && <RepostButton event={event} />}
-          {!isDiscussion && <LikeButton event={event} />}
+          {!isDiscussion && !isReplyToDiscussion && <RepostButton event={event} />}
+          <LikeButton event={event} />
           <ZapButton event={event} />
           <BookmarkButton event={event} />
           <SeenOnButton event={event} />
@@ -84,8 +104,8 @@ export default function NoteStats({
           onClick={(e) => e.stopPropagation()}
         >
           <ReplyButton event={event} />
-          {!isDiscussion && <RepostButton event={event} />}
-          {!isDiscussion && <LikeButton event={event} />}
+          {!isDiscussion && !isReplyToDiscussion && <RepostButton event={event} />}
+          <LikeButton event={event} />
           <ZapButton event={event} />
         </div>
         <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
