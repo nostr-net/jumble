@@ -1,4 +1,4 @@
-import { useSecondaryPage } from '@/PageManager'
+import { usePrimaryPage, useSecondaryPage } from '@/PageManager'
 import { ExtendedKind, SUPPORTED_KINDS } from '@/constants'
 import { getParentBech32Id, isNsfwEvent } from '@/lib/event'
 import { toNote } from '@/lib/link'
@@ -17,6 +17,7 @@ import ParentNotePreview from '../ParentNotePreview'
 import TranslateButton from '../TranslateButton'
 import UserAvatar from '../UserAvatar'
 import Username from '../Username'
+import { MessageSquare } from 'lucide-react'
 import CommunityDefinition from './CommunityDefinition'
 import GroupMetadata from './GroupMetadata'
 import Highlight from './Highlight'
@@ -48,6 +49,7 @@ export default function Note({
   showFull?: boolean
 }) {
   const { push } = useSecondaryPage()
+  const { navigate } = usePrimaryPage()
   const { isSmallScreen } = useScreenSize()
   const parentEventId = useMemo(
     () => (hideParentNotePreview ? undefined : getParentBech32Id(event)),
@@ -87,7 +89,14 @@ export default function Note({
   } else if (event.kind === kinds.CommunityDefinition) {
     content = <CommunityDefinition className="mt-2" event={event} />
   } else if (event.kind === ExtendedKind.DISCUSSION) {
-    content = <Content className="mt-2" event={event} />
+    const titleTag = event.tags.find(tag => tag[0] === 'title')
+    const title = titleTag?.[1] || 'Untitled Discussion'
+    content = (
+      <>
+        <h3 className="mt-2 text-lg font-semibold leading-tight break-words">{title}</h3>
+        <Content className="mt-2" event={event} />
+      </>
+    )
   } else if (event.kind === ExtendedKind.POLL) {
     content = (
       <>
@@ -133,7 +142,19 @@ export default function Note({
             </div>
           </div>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
+          {event.kind === ExtendedKind.DISCUSSION && (
+            <button
+              className="p-1 hover:bg-muted rounded transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                navigate('discussions')
+              }}
+              title="View in Discussions"
+            >
+              <MessageSquare className="w-4 h-4 text-blue-500" />
+            </button>
+          )}
           <TranslateButton event={event} className={size === 'normal' ? '' : 'pr-0'} />
           {size === 'normal' && (
             <NoteOptions event={event} className="py-1 shrink-0 [&_svg]:size-5" />

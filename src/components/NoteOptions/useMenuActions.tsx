@@ -1,3 +1,4 @@
+import { ExtendedKind } from '@/constants'
 import { getNoteBech32Id, isProtectedEvent } from '@/lib/event'
 import { toNjump } from '@/lib/link'
 import { pubkeyToNpub } from '@/lib/pubkey'
@@ -183,7 +184,8 @@ export function useMenuActions({
     ]
 
     const isProtected = isProtectedEvent(event)
-    if (!isProtected || event.pubkey === pubkey) {
+    const isDiscussion = event.kind === ExtendedKind.DISCUSSION
+    if ((!isProtected || event.pubkey === pubkey) && !isDiscussion) {
       actions.push({
         icon: SatelliteDish,
         label: t('Republish to ...'),
