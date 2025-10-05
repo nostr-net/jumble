@@ -32,6 +32,11 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
   // Extract topic from tags
   const topicTag = thread.tags.find(tag => tag[0] === 't' && tag[1])
   const topic = topicTag?.[1] || 'general'
+  
+  // Extract author and subject for readings threads
+  const authorTag = thread.tags.find(tag => tag[0] === 'author' && tag[1])
+  const subjectTag = thread.tags.find(tag => tag[0] === 'subject' && tag[1])
+  const isReadingGroup = thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')
 
   // Get first 250 characters of content
   const contentPreview = thread.content.length > 250 
@@ -105,6 +110,16 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
                   <Clock className="w-3 h-3" />
                   <span>{timeAgo}</span>
                 </div>
+                {isReadingGroup && (authorTag || subjectTag) && (
+                  <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4">
+                    {authorTag && (
+                      <span><strong>Author:</strong> {authorTag[1]}</span>
+                    )}
+                    {subjectTag && (
+                      <span><strong>Book:</strong> {subjectTag[1]}</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -134,6 +149,16 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
                     {timeAgo}
                   </div>
                 </div>
+                {isReadingGroup && (authorTag || subjectTag) && (
+                  <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 mt-2">
+                    {authorTag && (
+                      <span><strong>Author:</strong> {authorTag[1]}</span>
+                    )}
+                    {subjectTag && (
+                      <span><strong>Book:</strong> {subjectTag[1]}</span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
