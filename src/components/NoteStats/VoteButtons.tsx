@@ -93,13 +93,13 @@ export default function VoteButtons({ event }: { event: Event }) {
       <Button
         variant="ghost"
         size="sm"
-        className={`h-6 w-6 p-0 hover:bg-orange-100 hover:text-orange-600 ${
-          userVote === 'up' ? 'bg-orange-100 text-orange-600' : 'text-muted-foreground'
+        className={`h-6 w-6 p-0 hover:bg-muted hover:text-foreground ${
+          userVote === 'up' ? 'bg-muted text-foreground' : 'text-muted-foreground'
         }`}
         onClick={() => vote('up')}
         disabled={voting !== null || userVote !== null}
       >
-        <ChevronUp className="h-4 w-4" />
+        <ChevronUp className={`h-4 w-4 ${userVote === 'up' ? 'font-bold stroke-2 text-foreground' : ''}`} />
       </Button>
       
       <span className={`text-xs font-medium min-w-[20px] text-center ${
@@ -111,13 +111,13 @@ export default function VoteButtons({ event }: { event: Event }) {
       <Button
         variant="ghost"
         size="sm"
-        className={`h-6 w-6 p-0 hover:bg-blue-100 hover:text-blue-600 ${
-          userVote === 'down' ? 'bg-blue-100 text-blue-600' : 'text-muted-foreground'
+        className={`h-6 w-6 p-0 hover:bg-muted hover:text-foreground ${
+          userVote === 'down' ? 'bg-muted text-foreground' : 'text-muted-foreground'
         }`}
         onClick={() => vote('down')}
-        disabled={voting !== null}
+        disabled={voting !== null || userVote !== null}
       >
-        <ChevronDown className="h-4 w-4" />
+        <ChevronDown className={`h-4 w-4 ${userVote === 'down' ? 'font-bold stroke-2 text-foreground' : ''}`} />
       </Button>
     </div>
   )
