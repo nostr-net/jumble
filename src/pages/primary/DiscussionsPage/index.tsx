@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { DEFAULT_FAVORITE_RELAYS } from '@/constants'
+import { DEFAULT_FAVORITE_RELAYS, FAST_READ_RELAY_URLS } from '@/constants'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { forwardRef, useEffect, useState } from 'react'
@@ -172,8 +172,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const fetchAllThreads = async () => {
     setLoading(true)
     try {
-      // Filter by relay if selected, otherwise use all available relays
-      const relayUrls = selectedRelay ? [selectedRelay] : availableRelays
+      // Filter by relay if selected, otherwise use all available relays plus fast read relays
+      const relayUrls = selectedRelay ? [selectedRelay] : Array.from(new Set([...availableRelays, ...FAST_READ_RELAY_URLS]))
       
       // Fetch all kind 11 events (limit 100, newest first) with relay source tracking
       console.log('Fetching kind 11 events from relays:', relayUrls)
