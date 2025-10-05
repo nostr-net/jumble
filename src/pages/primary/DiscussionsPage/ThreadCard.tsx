@@ -5,7 +5,6 @@ import { NostrEvent } from 'nostr-tools'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import { truncateText } from '@/lib/utils'
 import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 import Username from '@/components/Username'
 import UserAvatar from '@/components/UserAvatar'
@@ -34,8 +33,10 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
   const topicTag = thread.tags.find(tag => tag[0] === 't' && tag[1])
   const topic = topicTag?.[1] || 'general'
 
-  // Get first 250 words of content
-  const contentPreview = truncateText(thread.content, 250)
+  // Get first 250 characters of content
+  const contentPreview = thread.content.length > 250 
+    ? thread.content.substring(0, 250) + '...'
+    : thread.content
 
   // Format creation time
   const createdAt = new Date(thread.created_at * 1000)
@@ -75,7 +76,7 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
             <div className="flex items-start gap-3">
               <VoteButtons event={thread} />
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2">
+                <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 break-words">
                   {title}
                 </h3>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -113,7 +114,7 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
               <VoteButtons event={thread} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-semibold text-lg leading-tight line-clamp-2">
+                  <h3 className="font-semibold text-lg leading-tight line-clamp-2 break-words">
                     {title}
                   </h3>
                   {thread._relaySource && (
@@ -148,7 +149,7 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
       </CardHeader>
       
       <CardContent className="pt-0">
-        <div className="text-sm text-muted-foreground leading-relaxed">
+        <div className="text-sm text-muted-foreground leading-relaxed break-words overflow-hidden">
           {contentPreview}
         </div>
       </CardContent>
