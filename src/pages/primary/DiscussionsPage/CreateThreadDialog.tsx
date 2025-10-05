@@ -74,7 +74,7 @@ export default function CreateThreadDialog({
   const [selectedTopic] = useState(initialTopic)
   const [selectedRelay, setSelectedRelay] = useState<string>(initialRelay || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [errors, setErrors] = useState<{ title?: string; content?: string; relay?: string }>({})
+  const [errors, setErrors] = useState<{ title?: string; content?: string; relay?: string; author?: string; subject?: string }>({})
   const [isNsfw, setIsNsfw] = useState(false)
   const [addClientTag, setAddClientTag] = useState(true)
   const [minPow, setMinPow] = useState(0)
