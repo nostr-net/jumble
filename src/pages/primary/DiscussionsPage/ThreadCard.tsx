@@ -80,13 +80,9 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
                   {title}
                 </h3>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Badge variant="secondary" className="text-xs">
-                    <topicInfo.icon className="w-3 h-3 mr-1" />
-                    {topicInfo.label}
-                  </Badge>
                   <div className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {timeAgo}
+                    <topicInfo.icon className="w-4 h-4" />
+                    <span className="text-xs">{topicInfo.id}</span>
                   </div>
                 </div>
               </div>
@@ -105,6 +101,10 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
                     {formatRelayName(thread._relaySource)}
                   </Badge>
                 )}
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="w-3 h-3" />
+                  <span>{timeAgo}</span>
+                </div>
               </div>
             </div>
           </div>
