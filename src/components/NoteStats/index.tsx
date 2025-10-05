@@ -13,7 +13,6 @@ import RepostButton from './RepostButton'
 import SeenOnButton from './SeenOnButton'
 import TopZaps from './TopZaps'
 import ZapButton from './ZapButton'
-import VoteButtons from './VoteButtons'
 
 export default function NoteStats({
   event,
@@ -60,7 +59,7 @@ export default function NoteStats({
           )}
           onClick={(e) => e.stopPropagation()}
         >
-          {isDiscussion ? <VoteButtons event={event} /> : <ReplyButton event={event} />}
+          <ReplyButton event={event} />
           {!isDiscussion && <RepostButton event={event} />}
           {!isDiscussion && <LikeButton event={event} />}
           <ZapButton event={event} />
