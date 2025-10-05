@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
-import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings } from 'lucide-react'
+import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
@@ -79,9 +79,15 @@ export default function CreateThreadDialog({
   const [addClientTag, setAddClientTag] = useState(true)
   const [minPow, setMinPow] = useState(0)
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
+  
+  // Readings options state
+  const [isReadingGroup, setIsReadingGroup] = useState(false)
+  const [author, setAuthor] = useState('')
+  const [subject, setSubject] = useState('')
+  const [showReadingsPanel, setShowReadingsPanel] = useState(false)
 
   const validateForm = () => {
-    const newErrors: { title?: string; content?: string; relay?: string } = {}
+    const newErrors: { title?: string; content?: string; relay?: string; author?: string; subject?: string } = {}
     
     if (!title.trim()) {
       newErrors.title = t('Title is required')
@@ -97,6 +103,16 @@ export default function CreateThreadDialog({
     
     if (!selectedRelay) {
       newErrors.relay = t('Please select a relay')
+    }
+    
+    // Validate readings fields if reading group is enabled
+    if (isReadingGroup) {
+      if (!author.trim()) {
+        newErrors.author = t('Author is required for reading groups')
+      }
+      if (!subject.trim()) {
+        newErrors.subject = t('Subject (book title) is required for reading groups')
+      }
     }
     
     setErrors(newErrors)
@@ -127,6 +143,13 @@ export default function CreateThreadDialog({
         ['t', selectedTopic],
         ['-'] // Required tag for relay privacy
       ]
+      
+      // Add readings tags if this is a reading group
+      if (isReadingGroup) {
+        tags.push(['t', 'readings'])
+        tags.push(['author', author.trim()])
+        tags.push(['subject', subject.trim()])
+      }
       
       // Add image metadata tags if images are found
       if (images && images.length > 0) {
@@ -271,6 +294,79 @@ export default function CreateThreadDialog({
                 {content.length}/5000 {t('characters')}
               </p>
             </div>
+
+            {/* Readings Options - Only show for literature topic */}
+            {selectedTopic === 'literature' && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Book className="w-4 h-4" />
+                  <Label className="text-sm font-medium">{t('Readings Options')}</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowReadingsPanel(!showReadingsPanel)}
+                    className="ml-auto"
+                  >
+                    {showReadingsPanel ? t('Hide') : t('Configure')}
+                  </Button>
+                </div>
+                
+                {showReadingsPanel && (
+                  <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Book className="w-4 h-4 text-primary" />
+                        <Label htmlFor="reading-group" className="text-sm">
+                          {t('Reading group entry')}
+                        </Label>
+                      </div>
+                      <Switch
+                        id="reading-group"
+                        checked={isReadingGroup}
+                        onCheckedChange={setIsReadingGroup}
+                      />
+                    </div>
+                    
+                    {isReadingGroup && (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="author">{t('Author')}</Label>
+                          <Input
+                            id="author"
+                            value={author}
+                            onChange={(e) => setAuthor(e.target.value)}
+                            placeholder={t('Enter the author name')}
+                            className={errors.author ? 'border-destructive' : ''}
+                          />
+                          {errors.author && (
+                            <p className="text-sm text-destructive">{errors.author}</p>
+                          )}
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="subject">{t('Subject (Book Title)')}</Label>
+                          <Input
+                            id="subject"
+                            value={subject}
+                            onChange={(e) => setSubject(e.target.value)}
+                            placeholder={t('Enter the book title')}
+                            className={errors.subject ? 'border-destructive' : ''}
+                          />
+                          {errors.subject && (
+                            <p className="text-sm text-destructive">{errors.subject}</p>
+                          )}
+                        </div>
+                        
+                        <p className="text-xs text-muted-foreground">
+                          {t('This will add additional tags for author and subject to help organize reading group discussions.')}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Relay Selection */}
             <div className="space-y-2">

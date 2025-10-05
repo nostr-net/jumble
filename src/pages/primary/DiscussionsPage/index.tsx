@@ -6,7 +6,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { forwardRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
-import { MessageSquarePlus } from 'lucide-react'
+import { MessageSquarePlus, Book, BookOpen } from 'lucide-react'
 import ThreadCard from '@/pages/primary/DiscussionsPage/ThreadCard'
 import TopicFilter from '@/pages/primary/DiscussionsPage/TopicFilter'
 import ThreadSort, { SortOption } from '@/pages/primary/DiscussionsPage/ThreadSort'
@@ -25,6 +25,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const { pubkey } = useNostr()
   const { push } = useSecondaryPage()
   const [selectedTopic, setSelectedTopic] = useState('general')
+  const [selectedSubtopic, setSelectedSubtopic] = useState<string | null>(null)
   const [selectedRelay, setSelectedRelay] = useState<string | null>(null)
   const [selectedSort, setSelectedSort] = useState<SortOption>('newest')
   const [allThreads, setAllThreads] = useState<NostrEvent[]>([])
@@ -35,6 +36,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const [customVoteStats, setCustomVoteStats] = useState<Record<string, { upvotes: number; downvotes: number; score: number; controversy: number }>>({})
   const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
   const [groupedThreads, setGroupedThreads] = useState<Record<string, NostrEvent[]>>({})
+  
+  // Search and filter state for readings
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterBy, setFilterBy] = useState<'author' | 'subject' | 'all'>('all')
 
   // Use DEFAULT_FAVORITE_RELAYS for logged-out users, or user's favorite relays for logged-in users
   const availableRelays = pubkey && favoriteRelays.length > 0 ? favoriteRelays : DEFAULT_FAVORITE_RELAYS
@@ -141,7 +146,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
     }
     console.log('Running filterThreadsByTopic with selectedSort:', selectedSort, 'statsLoaded:', statsLoaded, 'viewMode:', viewMode, 'selectedTopic:', selectedTopic)
     filterThreadsByTopic()
-  }, [allThreads, selectedTopic, selectedSort, statsLoaded, viewMode])
+  }, [allThreads, selectedTopic, selectedSubtopic, selectedSort, statsLoaded, viewMode, searchQuery, filterBy])
 
   // Fetch stats when sort changes to top/controversial
   useEffect(() => {
@@ -269,6 +274,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       
       // Find the first matching topic from our available topics
       let matchedTopic = 'general' // Default to general
+      let isReadingGroup = false
       
       for (const topicTag of topicTags) {
         if (availableTopicIds.includes(topicTag[1])) {
@@ -277,9 +283,16 @@ const DiscussionsPage = forwardRef((_, ref) => {
         }
       }
       
+      // Check if this is a reading group thread
+      if (matchedTopic === 'literature') {
+        const readingsTag = thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')
+        isReadingGroup = !!readingsTag
+      }
+      
       return {
         ...thread,
-        _categorizedTopic: matchedTopic
+        _categorizedTopic: matchedTopic,
+        _isReadingGroup: isReadingGroup
       }
     })
 
@@ -287,16 +300,31 @@ const DiscussionsPage = forwardRef((_, ref) => {
     let threadsForTopic = selectedTopic === 'all' 
       ? categorizedThreads.map(thread => {
           // Remove the temporary categorization property but keep relay source
-          const { _categorizedTopic, ...cleanThread } = thread
+          const { _categorizedTopic, _isReadingGroup, ...cleanThread } = thread
           return cleanThread
         })
       : categorizedThreads
-          .filter(thread => thread._categorizedTopic === selectedTopic)
+          .filter(thread => {
+            if (thread._categorizedTopic !== selectedTopic) return false
+            
+            // Handle subtopic filtering for literature
+            if (selectedTopic === 'literature' && selectedSubtopic) {
+              if (selectedSubtopic === 'readings') {
+                return thread._isReadingGroup
+              } else if (selectedSubtopic === 'general') {
+                return !thread._isReadingGroup
+              }
+            }
+            
+            return true
+          })
           .map(thread => {
             // Remove the temporary categorization property but keep relay source
-            const { _categorizedTopic, ...cleanThread } = thread
+            const { _categorizedTopic, _isReadingGroup, ...cleanThread } = thread
             return cleanThread
           })
+
+    // Apply search and filter for readings (handled in display logic)
 
     // Apply sorting based on selectedSort
     console.log('Sorting by:', selectedSort, 'with', threadsForTopic.length, 'threads')
@@ -483,7 +511,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
             <TopicFilter
               topics={DISCUSSION_TOPICS}
               selectedTopic={selectedTopic}
-              onTopicChange={setSelectedTopic}
+              onTopicChange={(topic) => {
+                setSelectedTopic(topic)
+                setSelectedSubtopic(null) // Reset subtopic when changing topic
+              }}
               threads={threads}
               replies={[]}
             />
@@ -538,6 +569,93 @@ const DiscussionsPage = forwardRef((_, ref) => {
         {loading ? (
           <div className="flex justify-center py-8">
             <div className="text-muted-foreground">{t('Loading threads...')}</div>
+          </div>
+        ) : selectedTopic === 'literature' ? (
+          <div className="space-y-6">
+            {/* General Literature and Arts Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <BookOpen className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold">{t('General Topics')}</h2>
+                <span className="text-sm text-muted-foreground">
+                  ({threads.filter(thread => !thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).length} {threads.filter(thread => !thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).length === 1 ? t('thread') : t('threads')})
+                </span>
+              </div>
+              <div className="space-y-3">
+                {threads.filter(thread => !thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).map(thread => (
+                  <ThreadCard
+                    key={thread.id}
+                    thread={thread}
+                    onThreadClick={() => {
+                      push(toNote(thread))
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Readings Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <Book className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold">{t('Readings')}</h2>
+                <span className="text-sm text-muted-foreground">
+                  ({threads.filter(thread => thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).length} {threads.filter(thread => thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).length === 1 ? t('thread') : t('threads')})
+                </span>
+              </div>
+              
+              {/* Readings-specific search and filter */}
+              <div className="flex gap-2 items-center p-3 bg-muted/30 rounded-lg">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('Search by author or book...')}
+                  className="px-3 h-10 rounded border bg-background text-sm w-48"
+                />
+                <select
+                  value={filterBy}
+                  onChange={(e) => setFilterBy(e.target.value as 'author' | 'subject' | 'all')}
+                  className="px-3 h-10 rounded border bg-background text-sm"
+                >
+                  <option value="all">{t('All')}</option>
+                  <option value="author">{t('Author')}</option>
+                  <option value="subject">{t('Subject')}</option>
+                </select>
+              </div>
+              
+              <div className="space-y-3">
+                {threads
+                  .filter(thread => thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings'))
+                  .filter(thread => {
+                    if (!searchQuery.trim()) return true
+                    
+                    const authorTag = thread.tags.find(tag => tag[0] === 'author')
+                    const subjectTag = thread.tags.find(tag => tag[0] === 'subject')
+                    
+                    if (filterBy === 'author' && authorTag) {
+                      return authorTag[1].toLowerCase().includes(searchQuery.toLowerCase())
+                    } else if (filterBy === 'subject' && subjectTag) {
+                      return subjectTag[1].toLowerCase().includes(searchQuery.toLowerCase())
+                    } else if (filterBy === 'all') {
+                      const authorMatch = authorTag && authorTag[1].toLowerCase().includes(searchQuery.toLowerCase())
+                      const subjectMatch = subjectTag && subjectTag[1].toLowerCase().includes(searchQuery.toLowerCase())
+                      return authorMatch || subjectMatch
+                    }
+                    
+                    return false
+                  })
+                  .map(thread => (
+                    <ThreadCard
+                      key={thread.id}
+                      thread={thread}
+                      onThreadClick={() => {
+                        push(toNote(thread))
+                      }}
+                    />
+                  ))}
+              </div>
+            </div>
           </div>
         ) : (viewMode === 'grouped' && selectedTopic === 'all' ? 
           Object.keys(groupedThreads).length === 0 : 
