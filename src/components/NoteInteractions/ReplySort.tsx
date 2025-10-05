@@ -3,17 +3,17 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ChevronDown, Clock, TrendingUp, ArrowUpDown, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-export type SortOption = 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped'
+export type ReplySortOption = 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped'
 
-export default function ThreadSort({ selectedSort, onSortChange }: { selectedSort: SortOption; onSortChange: (sort: SortOption) => void }) {
+export default function ReplySort({ selectedSort, onSortChange }: { selectedSort: ReplySortOption; onSortChange: (sort: ReplySortOption) => void }) {
   const { t } = useTranslation()
 
   const sortOptions = [
-    { id: 'newest' as SortOption, label: t('Newest'), icon: Clock },
-    { id: 'oldest' as SortOption, label: t('Oldest'), icon: Clock },
-    { id: 'top' as SortOption, label: t('Top'), icon: TrendingUp },
-    { id: 'controversial' as SortOption, label: t('Controversial'), icon: ArrowUpDown },
-    { id: 'most-zapped' as SortOption, label: t('Most Zapped'), icon: Zap },
+    { id: 'newest' as ReplySortOption, label: t('Newest'), icon: Clock },
+    { id: 'oldest' as ReplySortOption, label: t('Oldest'), icon: Clock },
+    { id: 'top' as ReplySortOption, label: t('Top'), icon: TrendingUp },
+    { id: 'controversial' as ReplySortOption, label: t('Controversial'), icon: ArrowUpDown },
+    { id: 'most-zapped' as ReplySortOption, label: t('Most Zapped'), icon: Zap },
   ]
 
   const selectedOption = sortOptions.find(option => option.id === selectedSort) || sortOptions[0]

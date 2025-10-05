@@ -18,6 +18,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
 import client from '@/services/client.service'
+import noteStatsService from '@/services/note-stats.service'
 import { Filter, Event as NEvent, kinds } from 'nostr-tools'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -32,7 +33,7 @@ type TRootInfo =
 const LIMIT = 100
 const SHOW_COUNT = 10
 
-export default function ReplyNoteList({ index, event }: { index?: number; event: NEvent }) {
+export default function ReplyNoteList({ index, event, sort = 'newest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
   const { t } = useTranslation()
   const { push, currentIndex } = useSecondaryPage()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
@@ -41,6 +42,46 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
   const { relayList: userRelayList } = useNostr()
   const [rootInfo, setRootInfo] = useState<TRootInfo | undefined>(undefined)
   const { repliesMap, addReplies } = useReply()
+
+  // Helper function to get vote score for a reply
+  const getReplyVoteScore = (reply: NEvent) => {
+    const stats = noteStatsService.getNoteStats(reply.id)
+    if (!stats?.likes) {
+      return 0
+    }
+    
+    const upvoteReactions = stats.likes.filter(r => r.emoji === '⬆️')
+    const downvoteReactions = stats.likes.filter(r => r.emoji === '⬇️')
+    const score = upvoteReactions.length - downvoteReactions.length
+    
+    return score
+  }
+
+  // Helper function to get controversy score for a reply
+  const getReplyControversyScore = (reply: NEvent) => {
+    const stats = noteStatsService.getNoteStats(reply.id)
+    if (!stats?.likes) {
+      return 0
+    }
+    
+    const upvoteReactions = stats.likes.filter(r => r.emoji === '⬆️')
+    const downvoteReactions = stats.likes.filter(r => r.emoji === '⬇️')
+    
+    // Controversy = minimum of upvotes and downvotes (both need to be high)
+    const controversy = Math.min(upvoteReactions.length, downvoteReactions.length)
+    return controversy
+  }
+
+  // Helper function to get total zap amount for a reply
+  const getReplyZapAmount = (reply: NEvent) => {
+    const stats = noteStatsService.getNoteStats(reply.id)
+    if (!stats?.zaps) {
+      return 0
+    }
+    
+    const totalAmount = stats.zaps.reduce((sum, zap) => sum + zap.amount, 0)
+    return totalAmount
+  }
   const replies = useMemo(() => {
     const replyIdSet = new Set<string>()
     const replyEvents: NEvent[] = []
@@ -60,8 +101,46 @@ export default function ReplyNoteList({ index, event }: { index?: number; event:
       })
       parentEventKeys = events.map((evt) => evt.id)
     }
-    return replyEvents.sort((a, b) => a.created_at - b.created_at)
-  }, [event.id, repliesMap])
+    // Apply sorting based on the sort parameter
+    switch (sort) {
+      case 'oldest':
+        return replyEvents.sort((a, b) => a.created_at - b.created_at)
+      case 'newest':
+        return replyEvents.sort((a, b) => b.created_at - a.created_at)
+      case 'top':
+        // Sort by vote score (upvotes - downvotes), then by newest if tied
+        return replyEvents.sort((a, b) => {
+          const scoreA = getReplyVoteScore(a)
+          const scoreB = getReplyVoteScore(b)
+          if (scoreA !== scoreB) {
+            return scoreB - scoreA // Higher scores first
+          }
+          return b.created_at - a.created_at // Newest first if tied
+        })
+      case 'controversial':
+        // Sort by controversy score (min of upvotes and downvotes), then by newest if tied
+        return replyEvents.sort((a, b) => {
+          const controversyA = getReplyControversyScore(a)
+          const controversyB = getReplyControversyScore(b)
+          if (controversyA !== controversyB) {
+            return controversyB - controversyA // Higher controversy first
+          }
+          return b.created_at - a.created_at // Newest first if tied
+        })
+      case 'most-zapped':
+        // Sort by total zap amount, then by newest if tied
+        return replyEvents.sort((a, b) => {
+          const zapAmountA = getReplyZapAmount(a)
+          const zapAmountB = getReplyZapAmount(b)
+          if (zapAmountA !== zapAmountB) {
+            return zapAmountB - zapAmountA // Higher zap amounts first
+          }
+          return b.created_at - a.created_at // Newest first if tied
+        })
+      default:
+        return replyEvents.sort((a, b) => b.created_at - a.created_at)
+    }
+  }, [event.id, repliesMap, sort])
   const [timelineKey, setTimelineKey] = useState<string | undefined>(undefined)
   const [until, setUntil] = useState<number | undefined>(undefined)
   const [loading, setLoading] = useState<boolean>(false)

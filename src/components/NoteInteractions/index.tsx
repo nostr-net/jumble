@@ -10,6 +10,7 @@ import ReplyNoteList from '../ReplyNoteList'
 import RepostList from '../RepostList'
 import ZapList from '../ZapList'
 import { Tabs, TTabValue } from './Tabs'
+import ReplySort, { ReplySortOption } from './ReplySort'
 
 export default function NoteInteractions({
   pageIndex,
@@ -19,12 +20,13 @@ export default function NoteInteractions({
   event: Event
 }) {
   const [type, setType] = useState<TTabValue>('replies')
+  const [replySort, setReplySort] = useState<ReplySortOption>('newest')
   const isDiscussion = event.kind === ExtendedKind.DISCUSSION
   
   let list
   switch (type) {
     case 'replies':
-      list = <ReplyNoteList index={pageIndex} event={event} />
+      list = <ReplyNoteList index={pageIndex} event={event} sort={replySort} />
       break
     case 'quotes':
       if (isDiscussion) return null // Hide quotes for discussions
@@ -52,6 +54,12 @@ export default function NoteInteractions({
           <ScrollBar orientation="horizontal" className="opacity-0 pointer-events-none" />
         </ScrollArea>
         <Separator orientation="vertical" className="h-6" />
+        {type === 'replies' && isDiscussion && (
+          <>
+            <ReplySort selectedSort={replySort} onSortChange={setReplySort} />
+            <Separator orientation="vertical" className="h-6" />
+          </>
+        )}
         <div className="size-10 flex items-center justify-center">
           <HideUntrustedContentButton type="interactions" />
         </div>

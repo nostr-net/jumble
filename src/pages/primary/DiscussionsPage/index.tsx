@@ -113,6 +113,18 @@ const DiscussionsPage = forwardRef((_, ref) => {
     return controversy
   }
 
+  // Helper function to get total zap amount for a thread
+  const getThreadZapAmount = (thread: NostrEvent) => {
+    const stats = noteStatsService.getNoteStats(thread.id)
+    if (!stats?.zaps) {
+      return 0
+    }
+    
+    const totalAmount = stats.zaps.reduce((sum, zap) => sum + zap.amount, 0)
+    console.log(`Thread ${thread.id}: ${stats.zaps.length} zaps, total amount: ${totalAmount}`)
+    return totalAmount
+  }
+
   useEffect(() => {
     setCustomVoteStats({}) // Clear custom stats when relay changes
     fetchAllThreads()
@@ -365,6 +377,24 @@ const DiscussionsPage = forwardRef((_, ref) => {
         threadsForTopic.push(...sortedControversial)
         
         console.log('Sorted by controversial')
+        break
+      case 'most-zapped':
+        // Sort by total zap amount, then by newest if tied
+        const sortedMostZapped = [...threadsForTopic].sort((a, b) => {
+          const zapAmountA = getThreadZapAmount(a)
+          const zapAmountB = getThreadZapAmount(b)
+          console.log(`Comparing ${a.id.slice(0,8)} (zaps: ${zapAmountA}) vs ${b.id.slice(0,8)} (zaps: ${zapAmountB})`)
+          if (zapAmountA !== zapAmountB) {
+            return zapAmountB - zapAmountA // Higher zap amounts first
+          }
+          return b.created_at - a.created_at // Newest first if tied
+        })
+        
+        // Replace the original array
+        threadsForTopic.length = 0
+        threadsForTopic.push(...sortedMostZapped)
+        
+        console.log('Sorted by most zapped')
         break
       default:
         const sortedDefault = [...threadsForTopic].sort((a, b) => b.created_at - a.created_at)
