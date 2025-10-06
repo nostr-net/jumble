@@ -896,6 +896,26 @@ class ClientService extends EventTarget {
     return this.eventDataLoader.load(id)
   }
 
+  // Force retry fetching an event by clearing its cache
+  async fetchEventForceRetry(id: string): Promise<NEvent | undefined> {
+    // Clear the cache for this specific event
+    this.eventCacheMap.delete(id)
+    
+    // Also clear from replaceable event cache if it's a replaceable event
+    if (!/^[0-9a-f]{64}$/.test(id)) {
+      const { type, data } = nip19.decode(id)
+      if (type === 'naddr') {
+        const coordinate = getReplaceableCoordinate(data.kind, data.pubkey, data.identifier)
+        if (coordinate) {
+          this.replaceableEventCacheMap.delete(coordinate)
+        }
+      }
+    }
+    
+    // Now fetch with a fresh attempt
+    return this._fetchEvent(id)
+  }
+
   async fetchTrendingNotes() {
     if (this.trendingNotesCache) {
       return this.trendingNotesCache
@@ -941,12 +961,38 @@ class ClientService extends EventTarget {
   }
 
   private async fetchEventById(relayUrls: string[], id: string): Promise<NEvent | undefined> {
+    // First try the big relays
     const event = await this.fetchEventFromBigRelaysDataloader.load(id)
     if (event) {
       return event
     }
 
-    return this.tryHarderToFetchEvent(relayUrls, { ids: [id], limit: 1 }, true)
+    // Then try the relays where this event was originally seen
+    const seenOnRelays = this.getSeenEventRelayUrls(id)
+    if (seenOnRelays.length > 0) {
+      const seenOnEvent = await this.tryHarderToFetchEvent(seenOnRelays, { ids: [id], limit: 1 }, true)
+      if (seenOnEvent) {
+        return seenOnEvent
+      }
+    }
+
+    // Third, try the provided relay URLs
+    if (relayUrls.length > 0) {
+      const providedEvent = await this.tryHarderToFetchEvent(relayUrls, { ids: [id], limit: 1 }, true)
+      if (providedEvent) {
+        return providedEvent
+      }
+    }
+
+    // Finally, try all available relays as a last resort
+    const allAvailableRelays = Array.from(new Set([
+      ...FAST_READ_RELAY_URLS,
+      ...FAST_WRITE_RELAY_URLS,
+      ...seenOnRelays,
+      ...relayUrls
+    ]))
+    
+    return this.tryHarderToFetchEvent(allAvailableRelays, { ids: [id], limit: 1 }, true)
   }
 
   private async _fetchEvent(id: string): Promise<NEvent | undefined> {

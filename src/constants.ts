@@ -65,8 +65,7 @@ export const BIG_RELAY_URLS = [
   'wss://nostr.land',
   'wss://nostr.wine/',
   'wss://nostr.sovbit.host/',
-  'wss://nostr21.com',
-  'wss://thecitadel.nostr1.com/'
+  'wss://nostr21.com'
 ]
 
 // Optimized relay list for read operations (includes aggregator)
@@ -79,10 +78,12 @@ export const FAST_READ_RELAY_URLS = [
 
 // Optimized relay list for write operations (no aggregator since it's read-only)
 export const FAST_WRITE_RELAY_URLS = [
-  'wss://damus.io/',
-  'wss://primal.net/',
+  'wss://relay.damus.io/',
+  'wss://relay.primal.net/',
   'wss://freelay.sovbit.host/',
-  'wss://thecitadel.nostr1.com/'
+  'wss://thecitadel.nostr1.com/',
+  'wss://nos.lol/',
+  'wss://nostr.mom'
 ]
 
 export const SEARCHABLE_RELAY_URLS = [

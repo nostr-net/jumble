@@ -1,25 +1,52 @@
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFetchEvent } from '@/hooks'
 import { cn } from '@/lib/utils'
+import client from '@/services/client.service'
 import { useTranslation } from 'react-i18next'
+import { useEffect, useState } from 'react'
+import { Event } from 'nostr-tools'
 import ClientSelect from '../ClientSelect'
 import MainNoteCard from '../NoteCard/MainNoteCard'
 
 export function EmbeddedNote({ noteId, className }: { noteId: string; className?: string }) {
   const { event, isFetching } = useFetchEvent(noteId)
+  const [retryEvent, setRetryEvent] = useState<Event | undefined>(undefined)
+  const [isRetrying, setIsRetrying] = useState(false)
 
-  if (isFetching) {
+  // If the first fetch fails, try a force retry with the four-tier system
+  useEffect(() => {
+    if (!isFetching && !event && !isRetrying) {
+      setIsRetrying(true)
+      client.fetchEventForceRetry(noteId)
+        .then((retryResult) => {
+          if (retryResult) {
+            setRetryEvent(retryResult)
+          }
+        })
+        .catch((error) => {
+          console.warn('Force retry failed for event:', noteId, error)
+        })
+        .finally(() => {
+          setIsRetrying(false)
+        })
+    }
+  }, [isFetching, event, noteId, isRetrying])
+
+  const finalEvent = event || retryEvent
+  const finalIsFetching = isFetching || isRetrying
+
+  if (finalIsFetching) {
     return <EmbeddedNoteSkeleton className={className} />
   }
 
-  if (!event) {
+  if (!finalEvent) {
     return <EmbeddedNoteNotFound className={className} noteId={noteId} />
   }
 
   return (
     <MainNoteCard
       className={cn('w-full', className)}
-      event={event}
+      event={finalEvent}
       embedded
       originalNoteId={noteId}
     />
