@@ -219,21 +219,21 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
       setLoading(true)
 
       try {
-        const relayList = await client.fetchRelayList(
-          (rootInfo as { pubkey?: string }).pubkey ?? event.pubkey
-        )
         // Include user's mailbox relays for better reply discovery
         const userRelays = userRelayList?.read || []
-        const relayUrls = Array.from(new Set(relayList.read.concat(userRelays).concat(FAST_READ_RELAY_URLS)))
         const seenOn =
           rootInfo.type === 'E'
             ? client.getSeenEventRelayUrls(rootInfo.id)
             : rootInfo.type === 'A'
               ? client.getSeenEventRelayUrls(rootInfo.eventId)
               : []
-        relayUrls.unshift(...seenOn)
-        // Deduplicate the final list including seenOn relays
-        const finalRelayUrls = Array.from(new Set(relayUrls))
+        
+        // Optimize relay selection: prioritize seen relays, then fast relays, then user relays
+        const finalRelayUrls = Array.from(new Set([
+          ...seenOn, // Highest priority: relays where the event was seen
+          ...FAST_READ_RELAY_URLS, // Second priority: fast, well-connected relays
+          ...userRelays // Third priority: user's mailbox relays
+        ]))
 
         const filters: (Omit<Filter, 'since' | 'until'> & {
           limit: number
@@ -284,7 +284,7 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
         }
         const { closer, timelineKey } = await client.subscribeTimeline(
           filters.map((filter) => ({
-            urls: finalRelayUrls.slice(0, 5),
+            urls: finalRelayUrls.slice(0, 8), // Increased from 5 to 8 for better coverage
             filter
           })),
           {

@@ -418,7 +418,8 @@ class ClientService extends EventTarget {
   ) {
     const newEventIdSet = new Set<string>()
     const requestCount = subRequests.length
-    const threshold = Math.floor(requestCount / 2)
+    // More aggressive threshold for faster loading - respond when 1/3 of relays respond
+    const threshold = Math.max(1, Math.floor(requestCount / 3))
     let eventIdSet = new Set<string>()
     let events: NEvent[] = []
     let eosedCount = 0
