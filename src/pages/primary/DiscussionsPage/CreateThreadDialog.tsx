@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
-import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book } from 'lucide-react'
+import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book, Network, Car } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
@@ -49,6 +49,8 @@ export const DISCUSSION_TOPICS = [
   { id: 'literature', label: 'Literature & Art', icon: BookOpen },
   { id: 'philosophy', label: 'Philosophy & Theology', icon: Scroll },
   { id: 'tech', label: 'Technology & Science', icon: Cpu },
+  { id: 'nostr', label: 'Nostr', icon: Network },
+  { id: 'automotive', label: 'Automotive', icon: Car },
   { id: 'sports', label: 'Sports and Gaming', icon: Trophy },
   { id: 'entertainment', label: 'Entertainment & Pop Culture', icon: Film },
   { id: 'health', label: 'Health & Wellness', icon: Heart },
