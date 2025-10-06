@@ -33,7 +33,7 @@ type TRootInfo =
 const LIMIT = 100
 const SHOW_COUNT = 10
 
-export default function ReplyNoteList({ index, event, sort = 'newest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
+export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
   const { t } = useTranslation()
   const { push, currentIndex } = useSecondaryPage()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()

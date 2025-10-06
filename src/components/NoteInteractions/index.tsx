@@ -20,7 +20,7 @@ export default function NoteInteractions({
   event: Event
 }) {
   const [type, setType] = useState<TTabValue>('replies')
-  const [replySort, setReplySort] = useState<ReplySortOption>('newest')
+  const [replySort, setReplySort] = useState<ReplySortOption>('oldest')
   const isDiscussion = event.kind === ExtendedKind.DISCUSSION
   
   let list
