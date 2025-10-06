@@ -60,6 +60,12 @@ class ClientService extends EventTarget {
     { cache: false, batchScheduleFn: (callback) => setTimeout(callback, 50) }
   )
   private trendingNotesCache: NEvent[] | null = null
+  private requestThrottle = new Map<string, number>() // Track request timestamps per relay
+  private readonly REQUEST_COOLDOWN = 1000 // 1 second cooldown between requests
+  private failureCount = new Map<string, number>() // Track consecutive failures per relay
+  private readonly MAX_FAILURES = 3 // Max failures before exponential backoff
+  private circuitBreaker = new Map<string, number>() // Track when relays are temporarily disabled
+  private readonly CIRCUIT_BREAKER_TIMEOUT = 60000 // 1 minute timeout for circuit breaker
 
   private userIndex = new FlexSearch.Index({
     tokenize: 'forward'
@@ -165,7 +171,7 @@ class ClientService extends EventTarget {
     totalCount: number
   }> {
     const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
-    console.log(`Publishing kind ${event.kind} event to ${uniqueRelayUrls.length} relays`)
+    console.log(`Publishing kind ${event.kind} event to ${uniqueRelayUrls.length} relays:`, uniqueRelayUrls)
     // if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
     //   console.log('Public message event details:', {
     //     id: event.id,
@@ -229,10 +235,15 @@ class ClientService extends EventTarget {
             reject(
               new AggregateError(
                 errors.map(
-                  ({ url, error }) =>
-                    new Error(
-                      `${url}: ${error instanceof Error ? error.message : String(error)}`
-                    )
+                  ({ url, error }) => {
+                    let errorMsg = 'Unknown error'
+                    if (error instanceof Error) {
+                      errorMsg = error.message || 'Empty error message'
+                    } else if (error !== null && error !== undefined) {
+                      errorMsg = String(error)
+                    }
+                    return new Error(`Failed to publish to ${url}: ${errorMsg}`)
+                  }
                 )
               )
             )
@@ -265,12 +276,16 @@ class ClientService extends EventTarget {
           const that = this
           
           try {
+            // Throttle requests to prevent "too many concurrent REQs" errors
+            await this.throttleRequest(url)
+            
             const relay = await this.pool.ensureRelay(url)
             relay.publishTimeout = 8_000 // 8s
             
             await relay.publish(event)
             console.log(`✓ Published to ${url}`)
             this.trackEventSeenOn(event.id, relay)
+            this.recordSuccess(url)
             successCount++
             finishedCount++
             
@@ -281,8 +296,35 @@ class ClientService extends EventTarget {
             
             checkCompletion()
           } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error)
+            let errorMessage = 'Unknown error'
+            if (error instanceof Error) {
+              errorMessage = error.message || 'Empty error message'
+            } else if (error !== null && error !== undefined) {
+              errorMessage = String(error)
+            }
             console.log(`✗ Failed to publish to ${url}:`, errorMessage)
+            
+            // Record failure for exponential backoff
+            this.recordFailure(url)
+            
+            // Check if this is a "too many concurrent REQs" error
+            if (
+              error instanceof Error &&
+              error.message.includes('too many concurrent REQs')
+            ) {
+              console.log(`⚠ Relay ${url} is overloaded, skipping retry`)
+              errors.push({ url, error: new Error('Relay overloaded - too many concurrent requests') })
+              finishedCount++
+              
+              relayStatuses.push({
+                url,
+                success: false,
+                error: 'Relay overloaded - too many concurrent requests'
+              })
+              
+              checkCompletion()
+              return
+            }
             
             // Check if this is an auth-required error and we have a signer
             if (
@@ -292,11 +334,15 @@ class ClientService extends EventTarget {
             ) {
               try {
                 console.log(`Attempting auth for ${url}`)
+                // Throttle auth requests too
+                await this.throttleRequest(url)
+                
                 const relay = await this.pool.ensureRelay(url)
                 await relay.auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
                 await relay.publish(event)
                 console.log(`✓ Published to ${url} after auth`)
                 this.trackEventSeenOn(event.id, relay)
+                this.recordSuccess(url)
                 successCount++
                 finishedCount++
                 
@@ -308,8 +354,14 @@ class ClientService extends EventTarget {
                 
                 checkCompletion()
               } catch (authError) {
-                const authErrorMessage = authError instanceof Error ? authError.message : String(authError)
+                let authErrorMessage = 'Unknown auth error'
+                if (authError instanceof Error) {
+                  authErrorMessage = authError.message || 'Empty auth error message'
+                } else if (authError !== null && authError !== undefined) {
+                  authErrorMessage = String(authError)
+                }
                 console.log(`✗ Auth failed for ${url}:`, authErrorMessage)
+                this.recordFailure(url)
                 errors.push({ url, error: authError })
                 finishedCount++
                 
@@ -425,7 +477,12 @@ class ClientService extends EventTarget {
     let eosedCount = 0
 
     const subs = await Promise.all(
-      subRequests.map(({ urls, filter }) => {
+      subRequests.map(async ({ urls, filter }) => {
+        // Throttle subscription requests to prevent overload
+        for (const url of urls) {
+          await this.throttleRequest(url)
+        }
+        
         return this._subscribeTimeline(
           urls,
           filter,
@@ -1543,30 +1600,91 @@ class ClientService extends EventTarget {
         if (!url || typeof url !== 'string') return false
         
         // Skip localhost URLs that might be misconfigured
-        if (url.includes('localhost:7777')) {
+        if (url.includes('localhost:7777') || url.includes('localhost:5173')) {
           console.warn(`Skipping potentially misconfigured relay: ${url}`)
+          return false
+        }
+        
+        // Skip relays with open circuit breaker
+        if (this.isCircuitBreakerOpen(url)) {
+          console.warn(`Skipping relay with open circuit breaker: ${url}`)
           return false
         }
         
         // Validate websocket URL format
         if (!isWebsocketUrl(url)) return false
-        
+
         // Skip URLs that are clearly invalid
         const normalizedUrl = normalizeUrl(url)
         if (!normalizedUrl) return false
-        
+
         return true
       } catch (error) {
         console.warn(`Skipping invalid relay URL: ${url}`, error)
         return false
       }
     })
-    
+
     // Limit to 4 relays for better performance
     return validRelays.slice(0, 4)
   }
 
   // ================= Utils =================
+
+  private async throttleRequest(relayUrl: string): Promise<void> {
+    const now = Date.now()
+    const lastRequest = this.requestThrottle.get(relayUrl) || 0
+    const failures = this.failureCount.get(relayUrl) || 0
+    
+    // Calculate delay based on failures (exponential backoff)
+    let delay = this.REQUEST_COOLDOWN
+    if (failures >= this.MAX_FAILURES) {
+      delay = Math.min(this.REQUEST_COOLDOWN * Math.pow(2, failures - this.MAX_FAILURES), 30000) // Max 30 seconds
+      console.log(`⏳ Exponential backoff for ${relayUrl}: ${delay}ms (${failures} failures)`)
+    } else if (now - lastRequest < this.REQUEST_COOLDOWN) {
+      delay = this.REQUEST_COOLDOWN - (now - lastRequest)
+      console.log(`⏳ Throttling request to ${relayUrl} for ${delay}ms`)
+    }
+    
+    if (delay > 0) {
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+    
+    this.requestThrottle.set(relayUrl, Date.now())
+  }
+
+  private recordSuccess(relayUrl: string): void {
+    // Reset failure count on success
+    this.failureCount.delete(relayUrl)
+  }
+
+  private recordFailure(relayUrl: string): void {
+    const currentFailures = this.failureCount.get(relayUrl) || 0
+    const newFailures = currentFailures + 1
+    this.failureCount.set(relayUrl, newFailures)
+    
+    // Activate circuit breaker if too many failures
+    if (newFailures >= 5) {
+      this.circuitBreaker.set(relayUrl, Date.now())
+      console.log(`🔴 Circuit breaker activated for ${relayUrl} (${newFailures} failures)`)
+    }
+  }
+
+  private isCircuitBreakerOpen(relayUrl: string): boolean {
+    const breakerTime = this.circuitBreaker.get(relayUrl)
+    if (!breakerTime) return false
+    
+    const now = Date.now()
+    if (now - breakerTime > this.CIRCUIT_BREAKER_TIMEOUT) {
+      // Circuit breaker timeout expired, reset it
+      this.circuitBreaker.delete(relayUrl)
+      this.failureCount.delete(relayUrl)
+      console.log(`🟢 Circuit breaker reset for ${relayUrl}`)
+      return false
+    }
+    
+    return true
+  }
 
   async generateSubRequestsForPubkeys(pubkeys: string[], myPubkey?: string | null) {
     // If many websocket connections are initiated simultaneously, it will be

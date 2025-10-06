@@ -208,15 +208,23 @@ export default function CreateThreadDialog({
       
       let errorMessage = t('Failed to create thread')
       if (error instanceof Error) {
-        if (error.message.includes('auth-required') || error.message.includes('auth required')) {
+        if (error.message.includes('timeout')) {
+          errorMessage = t('Thread creation timed out. Please try again.')
+        } else if (error.message.includes('auth-required') || error.message.includes('auth required')) {
           errorMessage = t('Relay requires authentication for write access. Please try a different relay or contact the relay operator.')
         } else if (error.message.includes('blocked')) {
           errorMessage = t('Your account is blocked from posting to this relay.')
         } else if (error.message.includes('rate limit')) {
           errorMessage = t('Rate limited. Please wait before trying again.')
-        } else {
+        } else if (error.message.includes('writes disabled')) {
+          errorMessage = t('Some relays have temporarily disabled writes.')
+        } else if (error.message && error.message.trim()) {
           errorMessage = `${t('Failed to create thread')}: ${error.message}`
+        } else {
+          errorMessage = t('Failed to create thread. Please try a different relay.')
         }
+      } else if (error instanceof AggregateError) {
+        errorMessage = t('Failed to publish to some relays. Please try again or use different relays.')
       }
       
       alert(errorMessage)
