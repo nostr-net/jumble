@@ -631,7 +631,17 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
     const relays = await client.determineTargetRelays(event, options)
 
-    await client.publishEvent(relays, event)
+    const publishResult = await client.publishEvent(relays, event)
+    
+    console.log('Publish result:', publishResult)
+    
+    // Store relay status for display
+    if (publishResult.relayStatuses.length > 0) {
+      // We'll pass this to the UI components that need it
+      (event as any).relayStatuses = publishResult.relayStatuses
+      console.log('Attached relay statuses to event:', (event as any).relayStatuses)
+    }
+    
     return event
   }
 

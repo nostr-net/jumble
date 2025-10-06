@@ -153,7 +153,17 @@ class ClientService extends EventTarget {
     return relays
   }
 
-  async publishEvent(relayUrls: string[], event: NEvent) {
+  async publishEvent(relayUrls: string[], event: NEvent): Promise<{
+    success: boolean
+    relayStatuses: Array<{
+      url: string
+      success: boolean
+      error?: string
+      authAttempted?: boolean
+    }>
+    successCount: number
+    totalCount: number
+  }> {
     const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
     console.log(`Publishing kind ${event.kind} event to ${uniqueRelayUrls.length} relays`)
     // if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
@@ -166,70 +176,173 @@ class ClientService extends EventTarget {
     //   })
     // }
     
-    await new Promise<void>((resolve, reject) => {
+    const relayStatuses: Array<{
+      url: string
+      success: boolean
+      error?: string
+      authAttempted?: boolean
+    }> = []
+    
+    const result = await new Promise<{
+      success: boolean
+      relayStatuses: typeof relayStatuses
+      successCount: number
+      totalCount: number
+    }>((resolve, reject) => {
       let successCount = 0
       let finishedCount = 0
       const errors: { url: string; error: any }[] = []
+      let resolved = false
+      
+      const checkCompletion = () => {
+        if (resolved) return
+        
+        // If one third of the relays have accepted the event, consider it a success
+        const isSuccess = successCount >= Math.max(1, Math.ceil(uniqueRelayUrls.length / 3))
+        if (isSuccess && !resolved) {
+          console.log(`✓ Publishing successful (${successCount}/${uniqueRelayUrls.length} relays)`)
+          this.emitNewEvent(event)
+          resolved = true
+          resolve({
+            success: true,
+            relayStatuses,
+            successCount,
+            totalCount: uniqueRelayUrls.length
+          })
+          return
+        }
+        
+        if (finishedCount >= uniqueRelayUrls.length && !resolved) {
+          if (successCount > 0) {
+            console.log(`✓ Publishing successful (${successCount}/${uniqueRelayUrls.length} relays)`)
+            this.emitNewEvent(event)
+            resolved = true
+            resolve({
+              success: true,
+              relayStatuses,
+              successCount,
+              totalCount: uniqueRelayUrls.length
+            })
+          } else {
+            console.log(`✗ Publishing failed (0/${uniqueRelayUrls.length} relays)`)
+            resolved = true
+            reject(
+              new AggregateError(
+                errors.map(
+                  ({ url, error }) =>
+                    new Error(
+                      `${url}: ${error instanceof Error ? error.message : String(error)}`
+                    )
+                )
+              )
+            )
+          }
+        }
+      }
+      
+      // Add overall timeout to prevent hanging
+      const overallTimeout = setTimeout(() => {
+        if (!resolved) {
+          console.log(`⚠ Publishing timeout after 15s (${successCount}/${uniqueRelayUrls.length} relays succeeded)`)
+          resolved = true
+          if (successCount > 0) {
+            this.emitNewEvent(event)
+            resolve({
+              success: true,
+              relayStatuses,
+              successCount,
+              totalCount: uniqueRelayUrls.length
+            })
+          } else {
+            reject(new Error('Publishing timeout - no relays responded in time'))
+          }
+        }
+      }, 15_000) // 15 second overall timeout
+      
       Promise.allSettled(
         uniqueRelayUrls.map(async (url) => {
           // eslint-disable-next-line @typescript-eslint/no-this-alias
           const that = this
-          const relay = await this.pool.ensureRelay(url)
-          relay.publishTimeout = 8_000 // 8s
-          return relay
-            .publish(event)
-            .then(() => {
-              console.log(`✓ Published to ${url}`)
-              this.trackEventSeenOn(event.id, relay)
-              successCount++
+          
+          try {
+            const relay = await this.pool.ensureRelay(url)
+            relay.publishTimeout = 8_000 // 8s
+            
+            await relay.publish(event)
+            console.log(`✓ Published to ${url}`)
+            this.trackEventSeenOn(event.id, relay)
+            successCount++
+            finishedCount++
+            
+            relayStatuses.push({
+              url,
+              success: true
             })
-            .catch((error) => {
-              console.log(`✗ Failed to publish to ${url}:`, error.message)
-              if (
-                error instanceof Error &&
-                error.message.startsWith('auth-required') &&
-                !!that.signer
-              ) {
+            
+            checkCompletion()
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error)
+            console.log(`✗ Failed to publish to ${url}:`, errorMessage)
+            
+            // Check if this is an auth-required error and we have a signer
+            if (
+              error instanceof Error &&
+              error.message.startsWith('auth-required') &&
+              !!that.signer
+            ) {
+              try {
                 console.log(`Attempting auth for ${url}`)
-                return relay
-                  .auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
-                  .then(() => relay.publish(event))
-              } else {
-                errors.push({ url, error })
+                const relay = await this.pool.ensureRelay(url)
+                await relay.auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
+                await relay.publish(event)
+                console.log(`✓ Published to ${url} after auth`)
+                this.trackEventSeenOn(event.id, relay)
+                successCount++
+                finishedCount++
+                
+                relayStatuses.push({
+                  url,
+                  success: true,
+                  authAttempted: true
+                })
+                
+                checkCompletion()
+              } catch (authError) {
+                const authErrorMessage = authError instanceof Error ? authError.message : String(authError)
+                console.log(`✗ Auth failed for ${url}:`, authErrorMessage)
+                errors.push({ url, error: authError })
+                finishedCount++
+                
+                relayStatuses.push({
+                  url,
+                  success: false,
+                  error: authErrorMessage,
+                  authAttempted: true
+                })
+                
+                checkCompletion()
               }
-            })
-            .finally(() => {
+            } else {
+              // For permanent errors like "blocked" or "writes disabled", don't retry
+              errors.push({ url, error })
               finishedCount++
-              // If one third of the relays have accepted the event, consider it a success
-              const isSuccess = successCount >= uniqueRelayUrls.length / 3
-              if (isSuccess) {
-                console.log(`✓ Publishing successful (${successCount}/${uniqueRelayUrls.length} relays)`)
-                this.emitNewEvent(event)
-                resolve()
-              }
-              if (finishedCount >= uniqueRelayUrls.length) {
-                if (successCount > 0) {
-                  console.log(`✓ Publishing successful (${successCount}/${uniqueRelayUrls.length} relays)`)
-                  this.emitNewEvent(event)
-                  resolve()
-                } else {
-                  console.log(`✗ Publishing failed (0/${uniqueRelayUrls.length} relays)`)
-                  reject(
-                    new AggregateError(
-                      errors.map(
-                        ({ url, error }) =>
-                          new Error(
-                            `${url}: ${error instanceof Error ? error.message : String(error)}`
-                          )
-                      )
-                    )
-                  )
-                }
-              }
-            })
+              
+              relayStatuses.push({
+                url,
+                success: false,
+                error: errorMessage
+              })
+              
+              checkCompletion()
+            }
+          }
         })
-      )
+      ).finally(() => {
+        clearTimeout(overallTimeout)
+      })
     })
+    
+    return result
   }
 
   emitNewEvent(event: NEvent) {
@@ -1376,8 +1489,34 @@ class ClientService extends EventTarget {
   // ================= Performance Optimization =================
 
   private optimizeRelaySelection(relays: string[]): string[] {
+    // Filter out invalid or problematic relay URLs
+    const validRelays = relays.filter(url => {
+      try {
+        // Skip empty or invalid URLs
+        if (!url || typeof url !== 'string') return false
+        
+        // Skip localhost URLs that might be misconfigured
+        if (url.includes('localhost:7777')) {
+          console.warn(`Skipping potentially misconfigured relay: ${url}`)
+          return false
+        }
+        
+        // Validate websocket URL format
+        if (!isWebsocketUrl(url)) return false
+        
+        // Skip URLs that are clearly invalid
+        const normalizedUrl = normalizeUrl(url)
+        if (!normalizedUrl) return false
+        
+        return true
+      } catch (error) {
+        console.warn(`Skipping invalid relay URL: ${url}`, error)
+        return false
+      }
+    })
+    
     // Limit to 4 relays for better performance
-    return relays.slice(0, 4)
+    return validRelays.slice(0, 4)
   }
 
   // ================= Utils =================
