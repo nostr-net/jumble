@@ -66,7 +66,8 @@ export default function Note({
       ...SUPPORTED_KINDS,
       kinds.CommunityDefinition,
       kinds.LiveEvent,
-      ExtendedKind.GROUP_METADATA
+      ExtendedKind.GROUP_METADATA,
+      ExtendedKind.PUBLIC_MESSAGE
     ].includes(event.kind)
   ) {
     content = <UnknownNote className="mt-2" event={event} />
