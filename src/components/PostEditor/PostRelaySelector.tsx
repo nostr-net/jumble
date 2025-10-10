@@ -8,6 +8,9 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
+import { ExtendedKind } from '@/constants'
+import client from '@/services/client.service'
+import { isWebsocketUrl, normalizeUrl } from '@/lib/url'
 import { simplifyUrl } from '@/lib/url'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
@@ -92,9 +95,46 @@ export default function PostRelaySelector({
       setPostTargetItems(Array.from(new Set(openFrom)).map((url) => ({ type: 'relay', url })))
       return
     }
-    // Privacy: Default to write relays, never parent event's relays
+    
+    // Check if we're replying to a discussion or comment that requires specific relay routing
+    if (_parentEvent && (_parentEvent.kind === ExtendedKind.DISCUSSION || _parentEvent.kind === ExtendedKind.COMMENT)) {
+      let relayHint: string | undefined
+      
+      if (_parentEvent.kind === ExtendedKind.COMMENT) {
+        // For kind 1111 (COMMENT): look for 'E' tag which points to the root event
+        const ETag = _parentEvent.tags.find(tag => tag[0] === 'E')
+        if (ETag && ETag[2]) {
+          relayHint = ETag[2] // Relay hint is the 3rd element
+        }
+        
+        // If no 'E' tag, check lowercase 'e' tag for parent event
+        if (!relayHint) {
+          const eTag = _parentEvent.tags.find(tag => tag[0] === 'e')
+          if (eTag && eTag[2]) {
+            relayHint = eTag[2]
+          }
+        }
+      } else if (_parentEvent.kind === ExtendedKind.DISCUSSION) {
+        // For kind 11 (DISCUSSION): get relay hint from where it was found
+        const eventHints = client.getEventHints(_parentEvent.id)
+        if (eventHints.length > 0) {
+          relayHint = eventHints[0]
+        }
+      }
+      
+      // If we found a valid relay hint, use it instead of write relays
+      if (relayHint && isWebsocketUrl(relayHint)) {
+        const normalizedRelayHint = normalizeUrl(relayHint)
+        if (normalizedRelayHint) {
+          setPostTargetItems([{ type: 'relay', url: normalizedRelayHint }])
+          return
+        }
+      }
+    }
+    
+    // Default to write relays for all other cases
     setPostTargetItems([{ type: 'writeRelays' }])
-  }, [openFrom])
+  }, [openFrom, _parentEvent])
 
   useEffect(() => {
     const isProtectedEvent = postTargetItems.every((item) => item.type !== 'writeRelays')

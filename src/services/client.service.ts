@@ -97,7 +97,59 @@ class ClientService extends EventTarget {
       
       // Check if this is a discussion thread or reply to a discussion
       const isDiscussionRelated = event.kind === ExtendedKind.DISCUSSION || 
-        event.tags.some(tag => tag[0] === 'k' && tag[1] === '11')
+        event.tags.some(tag => tag[0] === 'k' && tag[1] === String(ExtendedKind.DISCUSSION))
+      
+      // Special handling for kind 11 (DISCUSSION) and kind 1111 (COMMENT/NIP-22)
+      // These should only be published to the relay where the original event was found
+      // or to the relay hint specified in the event tags
+      if (event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT) {
+        let rootEventId: string | undefined
+        let relayHint: string | undefined
+        
+        if (event.kind === ExtendedKind.COMMENT) {
+          // Kind 1111 (NIP-22 Comment): look for 'E' tag which points to the root event
+          // Format: ["E", "<id>", "<relay hint>", "<root pubkey>"]
+          const ETag = event.tags.find(tag => tag[0] === 'E')
+          if (ETag) {
+            rootEventId = ETag[1]
+            relayHint = ETag[2] // Relay hint is the 3rd element
+          }
+          
+          // If no 'E' tag, check lowercase 'e' tag for parent event
+          // This handles cases where we're replying to a reply
+          if (!rootEventId) {
+            const eTag = event.tags.find(tag => tag[0] === 'e')
+            if (eTag) {
+              rootEventId = eTag[1]
+              relayHint = eTag[2]
+            }
+          }
+        } else if (event.kind === ExtendedKind.DISCUSSION) {
+          // Kind 11 (DISCUSSION): this is the root event itself
+          // For new root events, we can use the specified relays or fall through to normal handling
+          // But for replies TO kind 11, we should have caught them as kind 1111 above
+          rootEventId = event.id
+        }
+        
+        // Priority 1: Use relay hint from the tag if present and valid
+        if (relayHint && isWebsocketUrl(relayHint)) {
+          const normalizedRelayHint = normalizeUrl(relayHint)
+          if (normalizedRelayHint) {
+            relays = [normalizedRelayHint]
+            return relays
+          }
+        }
+        
+        // Priority 2: Get relay where the root event was found
+        if (rootEventId) {
+          const originalEventRelays = this.getEventHints(rootEventId)
+          if (originalEventRelays.length > 0) {
+            // Only publish to the relay(s) where the original event was found
+            relays = originalEventRelays.slice(0, 1) // Use only the first relay for insular discussions
+            return relays
+          }
+        }
+      }
       
       // Publish to mentioned users' inboxes for all events EXCEPT discussions
       if (!isDiscussionRelated) {
