@@ -95,7 +95,7 @@ export default function LikeButton({ event }: { event: Event }) {
     <button
       className="flex items-center enabled:hover:text-primary gap-1 px-3 h-full text-muted-foreground"
       title={t('Like')}
-      disabled={(isDiscussion || isReplyToDiscussion) && hasVoted}
+      disabled={liking || ((isDiscussion || isReplyToDiscussion) && hasVoted)}
       onClick={() => {
         if (isSmallScreen && !((isDiscussion || isReplyToDiscussion) && hasVoted)) {
           setIsEmojiReactionsOpen(true)
