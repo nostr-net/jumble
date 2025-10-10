@@ -61,7 +61,7 @@ class ClientService extends EventTarget {
   )
   private trendingNotesCache: NEvent[] | null = null
   private requestThrottle = new Map<string, number>() // Track request timestamps per relay
-  private readonly REQUEST_COOLDOWN = 1000 // 1 second cooldown between requests
+  private readonly REQUEST_COOLDOWN = 2000 // 2 second cooldown between requests to prevent "too many REQs"
   private failureCount = new Map<string, number>() // Track consecutive failures per relay
   private readonly MAX_FAILURES = 3 // Max failures before exponential backoff
   private circuitBreaker = new Map<string, number>() // Track when relays are temporarily disabled
@@ -475,6 +475,7 @@ class ClientService extends EventTarget {
     let eventIdSet = new Set<string>()
     let events: NEvent[] = []
     let eosedCount = 0
+    let hasCalledOnEvents = false
 
     const subs = await Promise.all(
       subRequests.map(async ({ urls, filter }) => {
@@ -500,7 +501,11 @@ class ClientService extends EventTarget {
               events = events.sort((a, b) => b.created_at - a.created_at).slice(0, filter.limit)
               eventIdSet = new Set(events.map((evt) => evt.id))
 
-              if (eosedCount >= threshold) {
+              // Call immediately on first events, then on threshold/completion
+              if (!hasCalledOnEvents && events.length > 0) {
+                hasCalledOnEvents = true
+                onEvents(events, eosedCount >= requestCount)
+              } else if (eosedCount >= threshold) {
                 onEvents(events, eosedCount >= requestCount)
               }
             },
@@ -590,7 +595,7 @@ class ClientService extends EventTarget {
 
       async function startSub() {
         startedCount++
-        const relay = await that.pool.ensureRelay(url, { connectionTimeout: 3000 }).catch(() => {
+        const relay = await that.pool.ensureRelay(url, { connectionTimeout: 1500 }).catch(() => {
           return undefined
         })
         // cannot connect to relay
@@ -1601,7 +1606,6 @@ class ClientService extends EventTarget {
         
         // Skip localhost URLs that might be misconfigured
         if (url.includes('localhost:7777') || url.includes('localhost:5173')) {
-          console.warn(`Skipping potentially misconfigured relay: ${url}`)
           return false
         }
         
@@ -1625,8 +1629,8 @@ class ClientService extends EventTarget {
       }
     })
 
-    // Limit to 4 relays for better performance
-    return validRelays.slice(0, 4)
+    // Limit to 3 relays to prevent "too many concurrent REQs" errors
+    return validRelays.slice(0, 3)
   }
 
   // ================= Utils =================

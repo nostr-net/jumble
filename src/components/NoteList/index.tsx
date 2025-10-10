@@ -166,6 +166,8 @@ const NoteList = forwardRef(
             onEvents: (events, eosed) => {
               if (events.length > 0) {
                 setEvents(events)
+                // Stop loading as soon as we have events, don't wait for all relays
+                setLoading(false)
               }
               if (areAlgoRelays) {
                 setHasMore(false)

@@ -99,7 +99,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         let eosed = false
         const relayList = await client.fetchRelayList(pubkey)
         const notificationRelays = relayList.read.length > 0 ? relayList.read.slice(0, 5) : BIG_RELAY_URLS
-        console.log('🔔 Notification subscription for', pubkey.substring(0, 8) + '...', 'using relays:', notificationRelays)
         const subCloser = client.subscribe(
           notificationRelays,
           [
@@ -130,16 +129,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             },
             onevent: (evt) => {
               if (evt.pubkey !== pubkey) {
-                // Debug: Log public message notifications
-                if (evt.kind === ExtendedKind.PUBLIC_MESSAGE) {
-                  const hasUserInPTags = evt.tags.some((tag) => tag[0] === 'p' && tag[1] === pubkey)
-                  console.log(`📨 Public message notification received by ${pubkey.substring(0, 8)}... from ${evt.pubkey.substring(0, 8)}...:`, {
-                    hasUserInPTags,
-                    content: evt.content.substring(0, 50),
-                    tags: evt.tags.map(tag => `${tag[0]}:${tag[1]?.substring(0, 8)}...`),
-                    eventId: evt.id.substring(0, 8) + '...'
-                  })
-                }
                 
                 setNewNotifications((prev) => {
                   if (!eosed) {

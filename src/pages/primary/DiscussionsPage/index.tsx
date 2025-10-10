@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { DEFAULT_FAVORITE_RELAYS, FAST_READ_RELAY_URLS } from '@/constants'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
-import { forwardRef, useEffect, useState } from 'react'
+import { forwardRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
 import { MessageSquarePlus, Book, BookOpen } from 'lucide-react'
@@ -42,101 +42,113 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const [filterBy, setFilterBy] = useState<'author' | 'subject' | 'all'>('all')
 
   // Use DEFAULT_FAVORITE_RELAYS for logged-out users, or user's favorite relays for logged-in users
-  const availableRelays = pubkey && favoriteRelays.length > 0 ? favoriteRelays : DEFAULT_FAVORITE_RELAYS
+  const availableRelays = useMemo(() => 
+    pubkey && favoriteRelays.length > 0 ? favoriteRelays : DEFAULT_FAVORITE_RELAYS,
+    [pubkey, favoriteRelays]
+  )
+
+  // Memoize relay URLs with deduplication
+  const relayUrls = useMemo(() => {
+    if (selectedRelay) return [selectedRelay]
+    // Deduplicate and combine relays
+    return Array.from(new Set([...availableRelays, ...FAST_READ_RELAY_URLS]))
+  }, [selectedRelay, availableRelays])
 
   // Available topic IDs for matching
-  const availableTopicIds = DISCUSSION_TOPICS.map(topic => topic.id)
+  const availableTopicIds = useMemo(() => 
+    DISCUSSION_TOPICS.map(topic => topic.id),
+    []
+  )
 
-  // Custom function to fetch vote stats from selected relays only
-  const fetchVoteStatsFromRelays = async (thread: NostrEvent, relayUrls: string[]) => {
-    try {
-      const reactions = await client.fetchEvents(relayUrls, [
-        {
-          '#e': [thread.id],
-          kinds: [kinds.Reaction],
-          limit: 500
-        }
-      ])
-      
-      // Filter for up/down vote reactions only
-      const upvotes = reactions.filter(r => r.content === '⬆️')
-      const downvotes = reactions.filter(r => r.content === '⬇️')
-      
-      return {
-        upvotes: upvotes.length,
-        downvotes: downvotes.length,
-        score: upvotes.length - downvotes.length,
-        controversy: Math.min(upvotes.length, downvotes.length)
-      }
-    } catch (error) {
-      console.error('Error fetching vote stats for thread', thread.id, error)
-      return { upvotes: 0, downvotes: 0, score: 0, controversy: 0 }
+  // Memoize helper functions to prevent recreating on every render
+  const getThreadVoteScore = useCallback((thread: NostrEvent) => {
+    const threadId = thread.id
+    if (customVoteStats[threadId]) {
+      return customVoteStats[threadId].score
     }
-  }
-
-  // Helper function to get vote score for a thread
-  const getThreadVoteScore = (thread: NostrEvent) => {
-    // Use custom vote stats if available (from selected relays), otherwise fall back to noteStatsService
-    if (customVoteStats[thread.id]) {
-      const stats = customVoteStats[thread.id]
-      console.log(`Thread ${thread.id}: upvotes=${stats.upvotes}, downvotes=${stats.downvotes}, score=${stats.score} (custom)`)
-      return stats.score
-    }
-    
-    const stats = noteStatsService.getNoteStats(thread.id)
-    if (!stats?.likes) {
-      console.log(`No stats for thread ${thread.id}`)
-      return 0
-    }
-    
+    const stats = noteStatsService.getNoteStats(threadId)
+    if (!stats?.likes) return 0
     const upvoteReactions = stats.likes.filter(r => r.emoji === '⬆️')
     const downvoteReactions = stats.likes.filter(r => r.emoji === '⬇️')
-    const score = upvoteReactions.length - downvoteReactions.length
-    
-    console.log(`Thread ${thread.id}: upvotes=${upvoteReactions.length}, downvotes=${downvoteReactions.length}, score=${score} (fallback)`)
-    return score
-  }
+    return upvoteReactions.length - downvoteReactions.length
+  }, [customVoteStats])
 
-  // Helper function to get controversy score (high upvotes AND downvotes)
-  const getThreadControversyScore = (thread: NostrEvent) => {
-    // Use custom vote stats if available (from selected relays), otherwise fall back to noteStatsService
-    if (customVoteStats[thread.id]) {
-      const stats = customVoteStats[thread.id]
-      console.log(`Thread ${thread.id}: upvotes=${stats.upvotes}, downvotes=${stats.downvotes}, controversy=${stats.controversy} (custom)`)
-      return stats.controversy
+  const getThreadControversyScore = useCallback((thread: NostrEvent) => {
+    const threadId = thread.id
+    if (customVoteStats[threadId]) {
+      return customVoteStats[threadId].controversy
     }
-    
-    const stats = noteStatsService.getNoteStats(thread.id)
-    if (!stats?.likes) {
-      console.log(`No stats for thread ${thread.id}`)
-      return 0
-    }
-    
+    const stats = noteStatsService.getNoteStats(threadId)
+    if (!stats?.likes) return 0
     const upvoteReactions = stats.likes.filter(r => r.emoji === '⬆️')
     const downvoteReactions = stats.likes.filter(r => r.emoji === '⬇️')
-    
-    // Controversy = minimum of upvotes and downvotes (both need to be high)
-    const controversy = Math.min(upvoteReactions.length, downvoteReactions.length)
-    console.log(`Thread ${thread.id}: upvotes=${upvoteReactions.length}, downvotes=${downvoteReactions.length}, controversy=${controversy} (fallback)`)
-    return controversy
-  }
+    const balance = Math.min(upvoteReactions.length, downvoteReactions.length)
+    const magnitude = upvoteReactions.length + downvoteReactions.length
+    return balance * magnitude
+  }, [customVoteStats])
 
-  // Helper function to get total zap amount for a thread
-  const getThreadZapAmount = (thread: NostrEvent) => {
+  const getThreadZapAmount = useCallback((thread: NostrEvent) => {
     const stats = noteStatsService.getNoteStats(thread.id)
     if (!stats?.zaps) {
       return 0
     }
-    
     const totalAmount = stats.zaps.reduce((sum, zap) => sum + zap.amount, 0)
     console.log(`Thread ${thread.id}: ${stats.zaps.length} zaps, total amount: ${totalAmount}`)
     return totalAmount
-  }
+  }, [])
+
+  // Memoize fetchAllThreads to prevent recreating on every render
+  const fetchAllThreads = useCallback(async () => {
+    setLoading(true)
+    setCustomVoteStats({}) // Clear custom stats when fetching
+    try {
+      // Fetch all kind 11 events (limit 100, newest first)
+      console.log('Fetching kind 11 events from relays:', relayUrls)
+      // Fetch recent kind 11 events (last 30 days)
+      const thirtyDaysAgo = Math.floor((Date.now() - (30 * 24 * 60 * 60 * 1000)) / 1000)
+      
+      const events = await client.fetchEvents(relayUrls, [
+        {
+          kinds: [11], // Thread events
+          since: thirtyDaysAgo, // Only fetch events from last 30 days
+          limit: 100
+        }
+      ])
+      console.log('Fetched kind 11 events:', events.length)
+      
+      // Debug: Show date range of fetched events
+      if (events.length > 0) {
+        const dates = events.map(e => new Date(e.created_at * 1000))
+        const newest = new Date(Math.max(...dates.map(d => d.getTime())))
+        const oldest = new Date(Math.min(...dates.map(d => d.getTime())))
+        console.log(`Date range: ${oldest.toISOString()} to ${newest.toISOString()}`)
+        console.log(`Newest thread is ${Math.floor((Date.now() - newest.getTime()) / (1000 * 60 * 60 * 24))} days old`)
+      }
+
+      // Filter and sort threads
+      const validThreads = events
+        .filter(event => {
+          // Ensure it has a title tag
+          const titleTag = event.tags.find(tag => tag[0] === 'title' && tag[1])
+          return titleTag && event.content.trim().length > 0
+        })
+        .map(event => ({
+          ...event,
+          _relaySource: selectedRelay || 'multiple'
+        }))
+
+      setAllThreads(validThreads)
+    } catch (error) {
+      console.error('Error fetching threads:', error)
+      setAllThreads([])
+    } finally {
+      setLoading(false)
+    }
+  }, [relayUrls, selectedRelay, selectedSort, pubkey])
 
   useEffect(() => {
-    setCustomVoteStats({}) // Clear custom stats when relay changes
     fetchAllThreads()
-  }, [selectedRelay])
+  }, [fetchAllThreads])
 
   useEffect(() => {
     // Only wait for stats for vote-based sorting
@@ -157,30 +169,39 @@ const DiscussionsPage = forwardRef((_, ref) => {
       // Use the same relay selection as thread fetching
       const relayUrls = selectedRelay ? [selectedRelay] : availableRelays
       
-      // Fetch custom vote stats from selected relays only
-      const statsPromises = allThreads.map(async (thread) => {
-        try {
-          const stats = await fetchVoteStatsFromRelays(thread, relayUrls)
-          return { threadId: thread.id, stats }
-        } catch (error) {
-          console.error('Error fetching stats for thread', thread.id, error)
-          return { threadId: thread.id, stats: { upvotes: 0, downvotes: 0, score: 0, controversy: 0 } }
-        }
-      })
+      // Fetch ALL reactions in a single batch request instead of per-thread
+      const threadIds = allThreads.map(t => t.id)
       
-      Promise.allSettled(statsPromises).then((results) => {
-        const successful = results.filter(r => r.status === 'fulfilled').length
-        console.log(`Vote stats fetch completed: ${successful}/${results.length} successful`)
-        
-        // Store the custom vote stats
+      client.fetchEvents(relayUrls, [
+        {
+          '#e': threadIds,
+          kinds: [kinds.Reaction],
+          limit: 500
+        }
+      ]).then((reactions) => {
+        // Group reactions by thread
         const newCustomStats: Record<string, { upvotes: number; downvotes: number; score: number; controversy: number }> = {}
-        results.forEach(result => {
-          if (result.status === 'fulfilled') {
-            newCustomStats[result.value.threadId] = result.value.stats
+        
+        allThreads.forEach(thread => {
+          const threadReactions = reactions.filter(r => 
+            r.tags.some(tag => tag[0] === 'e' && tag[1] === thread.id)
+          )
+          const upvotes = threadReactions.filter(r => r.content === '⬆️')
+          const downvotes = threadReactions.filter(r => r.content === '⬇️')
+          
+          newCustomStats[thread.id] = {
+            upvotes: upvotes.length,
+            downvotes: downvotes.length,
+            score: upvotes.length - downvotes.length,
+            controversy: Math.min(upvotes.length, downvotes.length)
           }
         })
         
         setCustomVoteStats(newCustomStats)
+        setStatsLoaded(true)
+        console.log(`Vote stats fetch completed for ${allThreads.length} threads`)
+      }).catch((error) => {
+        console.error('Error fetching vote stats:', error)
         setStatsLoaded(true)
       })
     } else {
@@ -189,85 +210,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
     }
   }, [selectedSort, allThreads, selectedRelay, availableRelays])
 
-  const fetchAllThreads = async () => {
-    setLoading(true)
-    try {
-      // Filter by relay if selected, otherwise use all available relays plus fast read relays
-      const relayUrls = selectedRelay ? [selectedRelay] : Array.from(new Set([...availableRelays, ...FAST_READ_RELAY_URLS]))
-      
-      // Fetch all kind 11 events (limit 100, newest first) with relay source tracking
-      console.log('Fetching kind 11 events from relays:', relayUrls)
-      // Fetch recent kind 11 events (last 30 days)
-      const thirtyDaysAgo = Math.floor((Date.now() - (30 * 24 * 60 * 60 * 1000)) / 1000)
-      
-      const events = await client.fetchEvents(relayUrls, [
-        {
-          kinds: [11], // Thread events
-          since: thirtyDaysAgo, // Only fetch events from last 30 days
-          limit: 100
-        }
-      ])
-      console.log('Fetched kind 11 events:', events.length, events.map(e => ({ id: e.id, title: e.tags.find(t => t[0] === 'title')?.[1], pubkey: e.pubkey })))
-      
-      // Debug: Show date range of fetched events
-      if (events.length > 0) {
-        const dates = events.map(e => new Date(e.created_at * 1000))
-        const newest = new Date(Math.max(...dates.map(d => d.getTime())))
-        const oldest = new Date(Math.min(...dates.map(d => d.getTime())))
-        console.log(`Date range: ${oldest.toISOString()} to ${newest.toISOString()}`)
-        console.log(`Current time: ${new Date().toISOString()}`)
-        console.log(`Newest thread is ${Math.floor((Date.now() - newest.getTime()) / (1000 * 60 * 60 * 24))} days old`)
-      } else {
-        console.log('No recent events found, fetching all events...')
-        // If no recent events, fetch all events without time filter
-        const allEvents = await client.fetchEvents(relayUrls, [
-          {
-            kinds: [11], // Thread events
-            limit: 100
-          }
-        ])
-        console.log('Fetched all kind 11 events:', allEvents.length)
-        if (allEvents.length > 0) {
-          const dates = allEvents.map(e => new Date(e.created_at * 1000))
-          const newest = new Date(Math.max(...dates.map(d => d.getTime())))
-          const oldest = new Date(Math.min(...dates.map(d => d.getTime())))
-          console.log(`All events date range: ${oldest.toISOString()} to ${newest.toISOString()}`)
-          console.log(`Newest thread is ${Math.floor((Date.now() - newest.getTime()) / (1000 * 60 * 60 * 24))} days old`)
-        }
-        return // Use the events we already fetched
-      }
-
-      // Filter and sort threads, adding relay source information
-      const validThreads = events
-        .filter(event => {
-          // Ensure it has a title tag
-          const titleTag = event.tags.find(tag => tag[0] === 'title' && tag[1])
-          return titleTag && event.content.trim().length > 0
-        })
-        .map(event => ({
-          ...event,
-          _relaySource: selectedRelay || 'multiple' // Track which relay(s) it was found on
-        }))
-
-      setAllThreads(validThreads)
-      
-      // Fetch stats for all threads to enable proper sorting
-      if (selectedSort === 'top' || selectedSort === 'controversial') {
-        // Fetch stats for all threads in parallel
-        const statsPromises = validThreads.map(thread => 
-          noteStatsService.fetchNoteStats(thread, pubkey)
-        )
-        await Promise.allSettled(statsPromises)
-      }
-    } catch (error) {
-      console.error('Error fetching threads:', error)
-      setAllThreads([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const filterThreadsByTopic = () => {
+  const filterThreadsByTopic = useCallback(() => {
     const categorizedThreads = allThreads.map(thread => {
       // Find all 't' tags in the thread
       const topicTags = thread.tags.filter(tag => tag[0] === 't' && tag[1])
@@ -462,10 +405,23 @@ const DiscussionsPage = forwardRef((_, ref) => {
       setThreads(threadsForTopic)
       setGroupedThreads({}) // Clear grouped threads
     }
-  }
+  }, [
+    allThreads,
+    availableTopicIds,
+    selectedTopic,
+    selectedSubtopic,
+    selectedSort,
+    viewMode,
+    searchQuery,
+    filterBy,
+    customVoteStats,
+    getThreadVoteScore,
+    getThreadControversyScore,
+    getThreadZapAmount
+  ])
 
   // Helper function to sort threads
-  const sortThreads = (threadsToSort: NostrEvent[]) => {
+  const sortThreads = useCallback((threadsToSort: NostrEvent[]) => {
     const sortedThreads = [...threadsToSort]
     
     switch (selectedSort) {
@@ -490,7 +446,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       default:
         return sortedThreads.sort((a, b) => b.created_at - a.created_at)
     }
-  }
+  }, [selectedSort, getThreadVoteScore, getThreadControversyScore])
 
   const handleCreateThread = () => {
     setShowCreateThread(true)
