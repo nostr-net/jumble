@@ -26,13 +26,27 @@ export function NotificationItem({
   const { hideContentMentioningMutedUsers } = useContentPolicy()
   const { hideUntrustedNotifications, isUserTrusted } = useUserTrust()
   const canShow = useMemo(() => {
-    return notificationFilter(notification, {
+    const result = notificationFilter(notification, {
       pubkey,
       mutePubkeySet,
       hideContentMentioningMutedUsers,
       hideUntrustedNotifications,
       isUserTrusted
     })
+    
+    if (notification.kind === 11) {
+      console.log('🔍 Discussion notification filter result:', {
+        id: notification.id,
+        kind: notification.kind,
+        canShow: result,
+        pubkey: notification.pubkey,
+        isMuted: mutePubkeySet.has(notification.pubkey),
+        hideUntrusted: hideUntrustedNotifications,
+        isTrusted: isUserTrusted(notification.pubkey)
+      })
+    }
+    
+    return result
   }, [
     notification,
     mutePubkeySet,

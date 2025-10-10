@@ -389,7 +389,11 @@ class ClientService extends EventTarget {
                 await this.throttleRequest(url)
                 
                 const relay = await this.pool.ensureRelay(url)
-                await relay.auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
+                await relay.auth((authEvt: EventTemplate) => {
+                  // Ensure the auth event has the correct pubkey
+                  const authEventWithPubkey = { ...authEvt, pubkey: that.pubkey }
+                  return that.signer!.signEvent(authEventWithPubkey)
+                })
                 await relay.publish(event)
                 this.trackEventSeenOn(event.id, relay)
                 this.recordSuccess(url)

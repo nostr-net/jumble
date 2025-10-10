@@ -38,16 +38,16 @@ export default function App(): JSX.Element {
                           <UserTrustProvider>
                             <BookmarksProvider>
                               <FeedProvider>
-                              <ReplyProvider>
-                                <MediaUploadServiceProvider>
-                                  <KindFilterProvider>
-                                    <UserPreferencesProvider>
-                                      <PageManager />
-                                      <Toaster />
-                                    </UserPreferencesProvider>
-                                  </KindFilterProvider>
-                                </MediaUploadServiceProvider>
-                              </ReplyProvider>
+                                <ReplyProvider>
+                                  <MediaUploadServiceProvider>
+                                    <KindFilterProvider>
+                                      <UserPreferencesProvider>
+                                        <PageManager />
+                                        <Toaster />
+                                      </UserPreferencesProvider>
+                                    </KindFilterProvider>
+                                  </MediaUploadServiceProvider>
+                                </ReplyProvider>
                               </FeedProvider>
                             </BookmarksProvider>
                           </UserTrustProvider>

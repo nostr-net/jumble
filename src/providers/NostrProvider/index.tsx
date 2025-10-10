@@ -31,7 +31,7 @@ import {
 } from '@/types'
 import { hexToBytes } from '@noble/hashes/utils'
 import dayjs from 'dayjs'
-import { Event, kinds, VerifiedEvent } from 'nostr-tools'
+import { Event, kinds, VerifiedEvent, validateEvent } from 'nostr-tools'
 import * as nip19 from 'nostr-tools/nip19'
 import * as nip49 from 'nostr-tools/nip49'
 import { createContext, useContext, useEffect, useState } from 'react'
@@ -237,7 +237,8 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       }
       setRelayList(relayList)
 
-      const events = await client.fetchEvents(relayList.write.concat(BIG_RELAY_URLS).slice(0, 4), [
+      const fetchRelays = relayList.write.concat(BIG_RELAY_URLS).slice(0, 4)
+      const events = await client.fetchEvents(fetchRelays, [
         {
           kinds: [
             kinds.Metadata,
@@ -607,6 +608,14 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     if (!event) {
       throw new Error('sign event failed')
     }
+    
+    // Validate the event before publishing
+    const isValid = validateEvent(event)
+    if (!isValid) {
+      console.error('Event validation failed:', event)
+      throw new Error('Event validation failed - invalid signature or format. Please try logging in again.')
+    }
+    
     return event as VerifiedEvent
   }
 
@@ -616,6 +625,11 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   ) => {
     if (!account || !signer || account.signerType === 'npub') {
       throw new Error('You need to login first')
+    }
+    
+    // Validate account state before publishing
+    if (!account.pubkey || account.pubkey.length !== 64) {
+      throw new Error('Invalid account state - pubkey is missing or invalid')
     }
 
     const draft = JSON.parse(JSON.stringify(draftEvent)) as TDraftEvent
@@ -645,21 +659,25 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     try {
       const publishResult = await client.publishEvent(relays, event)
       
-      console.log('Publish result:', publishResult)
-      
       // Store relay status for display
       if (publishResult.relayStatuses.length > 0) {
-        // We'll pass this to the UI components that need it
         (event as any).relayStatuses = publishResult.relayStatuses
-        console.log('Attached relay statuses to event:', (event as any).relayStatuses)
       }
       
       return event
     } catch (error) {
-      // Even if publishing fails, try to extract relay statuses from the error
+      // Check for authentication-related errors
       if (error instanceof AggregateError && (error as any).relayStatuses) {
         (event as any).relayStatuses = (error as any).relayStatuses
-        console.log('Attached relay statuses from error:', (event as any).relayStatuses)
+        
+        // Check if any relay returned an "invalid key" error
+        const invalidKeyErrors = (error as any).relayStatuses.filter(
+          (status: any) => status.error && status.error.includes('invalid key')
+        )
+        
+        if (invalidKeyErrors.length > 0) {
+          throw new Error('Authentication failed - invalid key. Please try logging out and logging in again.')
+        }
       }
       
       // Re-throw the error so the UI can handle it appropriately

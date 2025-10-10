@@ -56,7 +56,8 @@ const NotificationList = forwardRef((_, ref) => {
           ExtendedKind.COMMENT,
           ExtendedKind.VOICE_COMMENT,
           ExtendedKind.POLL,
-          ExtendedKind.PUBLIC_MESSAGE
+          ExtendedKind.PUBLIC_MESSAGE,
+          11 // Discussion threads
         ]
       case 'reactions':
         return [kinds.Reaction, kinds.Repost, ExtendedKind.POLL_RESPONSE]
@@ -72,7 +73,8 @@ const NotificationList = forwardRef((_, ref) => {
           ExtendedKind.POLL_RESPONSE,
           ExtendedKind.VOICE_COMMENT,
           ExtendedKind.POLL,
-          ExtendedKind.PUBLIC_MESSAGE
+          ExtendedKind.PUBLIC_MESSAGE,
+          11 // Discussion threads
         ]
     }
   }, [notificationType])
@@ -121,21 +123,48 @@ const NotificationList = forwardRef((_, ref) => {
       setLastReadTime(getNotificationsSeenAt())
       const relayList = await client.fetchRelayList(pubkey)
 
-      const { closer, timelineKey } = await client.subscribeTimeline(
-        [
-          {
-            urls: relayList.read.length > 0 ? relayList.read.slice(0, 5) : BIG_RELAY_URLS,
-            filter: {
-              '#p': [pubkey],
-              kinds: filterKinds,
-              limit: LIMIT
-            }
+      // Create separate subscriptions for different notification types
+      const subscriptions = []
+      
+      // Subscription for mentions (events where user is in p-tags)
+      const mentionKinds = filterKinds.filter(kind => kind !== 11)
+      if (mentionKinds.length > 0) {
+        subscriptions.push({
+          urls: relayList.read.length > 0 ? relayList.read.slice(0, 5) : BIG_RELAY_URLS,
+          filter: {
+            '#p': [pubkey],
+            kinds: mentionKinds,
+            limit: LIMIT
           }
-        ],
+        })
+      }
+      
+      // Separate subscription for discussion notifications (kind 11) - no p-tag requirement
+      if (filterKinds.includes(11)) {
+        subscriptions.push({
+          urls: relayList.read.length > 0 ? relayList.read.slice(0, 5) : BIG_RELAY_URLS,
+          filter: {
+            kinds: [11],
+            limit: LIMIT
+          }
+        })
+      }
+
+      const { closer, timelineKey } = await client.subscribeTimeline(
+        subscriptions,
         {
           onEvents: (events, eosed) => {
             if (events.length > 0) {
-              setNotifications(events.filter((event) => event.pubkey !== pubkey))
+              console.log('📋 NotificationList received events:', events.map(e => ({
+                id: e.id,
+                kind: e.kind,
+                pubkey: e.pubkey,
+                content: e.content.substring(0, 30) + '...'
+              })))
+              
+              const filteredEvents = events.filter((event) => event.pubkey !== pubkey)
+              console.log('📋 After filtering own events:', filteredEvents.length, 'events')
+              setNotifications(filteredEvents)
             }
             if (eosed) {
               setLoading(false)
@@ -144,6 +173,12 @@ const NotificationList = forwardRef((_, ref) => {
             }
           },
           onNew: (event) => {
+            console.log('📋 NotificationList onNew event:', {
+              id: event.id,
+              kind: event.kind,
+              pubkey: event.pubkey,
+              content: event.content.substring(0, 30) + '...'
+            })
             handleNewEvent(event)
           }
         }

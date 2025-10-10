@@ -67,30 +67,42 @@ export function InterestListProvider({ children }: { children: React.ReactNode }
   }
 
   const subscribe = async (topic: string) => {
+    console.log('[InterestListProvider] subscribe called:', { topic, accountPubkey, changing })
     if (!accountPubkey || changing) return
 
     const normalizedTopic = normalizeTopic(topic)
     if (subscribedTopics.has(normalizedTopic)) {
+      console.log('[InterestListProvider] Already subscribed to topic')
       return
     }
 
     setChanging(true)
     try {
+      console.log('[InterestListProvider] Fetching existing interest list event')
       const interestListEvent = await client.fetchInterestListEvent(accountPubkey)
+      console.log('[InterestListProvider] Existing interest list event:', interestListEvent)
+      
       const currentTopics = interestListEvent
         ? interestListEvent.tags
             .filter(tag => tag[0] === 't' && tag[1])
             .map(tag => normalizeTopic(tag[1]))
         : []
 
+      console.log('[InterestListProvider] Current topics:', currentTopics)
+
       if (currentTopics.includes(normalizedTopic)) {
-        // Already subscribed
+        console.log('[InterestListProvider] Already subscribed to topic (from event)')
         return
       }
 
       const newTopics = [...currentTopics, normalizedTopic]
+      console.log('[InterestListProvider] Creating new interest list with topics:', newTopics)
+      
       const newInterestListEvent = await publishNewInterestListEvent(newTopics)
+      console.log('[InterestListProvider] Published new interest list event:', newInterestListEvent)
+      
       await updateInterestListEvent(newInterestListEvent)
+      console.log('[InterestListProvider] Updated interest list event in state')
       
       toast.success(t('Subscribed to topic'))
     } catch (error) {
