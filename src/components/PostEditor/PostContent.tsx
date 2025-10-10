@@ -19,7 +19,7 @@ import { ImageUp, ListTodo, LoaderCircle, MessageCircle, Settings, Smile, X } fr
 import { Event, kinds } from 'nostr-tools'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import { showPublishingFeedback, showSimplePublishSuccess } from '@/lib/publishing-feedback'
 import EmojiPickerDialog from '../EmojiPickerDialog'
 import Mentions, { extractMentions } from './Mentions'
 import PollEditor from './PollEditor'
@@ -27,7 +27,6 @@ import PostOptions from './PostOptions'
 import PostRelaySelector from './PostRelaySelector'
 import PostTextarea, { TPostTextareaHandle } from './PostTextarea'
 import Uploader from './Uploader'
-import RelayStatusDisplay from '@/components/RelayStatusDisplay'
 
 export default function PostContent({
   defaultContent = '',
@@ -65,14 +64,6 @@ export default function PostContent({
     relays: []
   })
   const [minPow, setMinPow] = useState(0)
-  const [relayStatuses, setRelayStatuses] = useState<Array<{
-    url: string
-    success: boolean
-    error?: string
-    authAttempted?: boolean
-  }>>([])
-  const [showRelayStatus, setShowRelayStatus] = useState(false)
-  const [lastPublishedEvent, setLastPublishedEvent] = useState<Event | null>(null)
   const isFirstRender = useRef(true)
   const canPost = useMemo(() => {
     const result = (
@@ -249,82 +240,28 @@ export default function PostContent({
         })
         // console.log('Published event:', newEvent)
         
-        // Check if we have relay status information
-        console.log('Published event:', newEvent)
-        console.log('Relay statuses:', (newEvent as any).relayStatuses)
-        
+        // Show publishing feedback
         if ((newEvent as any).relayStatuses) {
-          setRelayStatuses((newEvent as any).relayStatuses)
-          setLastPublishedEvent(newEvent)
-          setShowRelayStatus(true)
-          
-          // Show success message with relay count
-          const successCount = (newEvent as any).relayStatuses.filter((s: any) => s.success).length
-          const totalCount = (newEvent as any).relayStatuses.length
-          toast.success(t('Post successful - published to {{count}} of {{total}} relays', { 
-            count: successCount, 
-            total: totalCount 
-          }), { duration: 4000 })
-          
-          // Don't close immediately if we have relay status to show
-          setTimeout(() => {
-            postEditorCache.clearPostCache({ defaultContent, parentEvent })
-            deleteDraftEventCache(draftEvent)
-            addReplies([newEvent])
-            close()
-          }, 8000) // Give user more time to see the relay status
+          showPublishingFeedback({
+            success: true,
+            relayStatuses: (newEvent as any).relayStatuses,
+            successCount: (newEvent as any).relayStatuses.filter((s: any) => s.success).length,
+            totalCount: (newEvent as any).relayStatuses.length
+          }, {
+            message: parentEvent ? t('Reply published') : t('Post published'),
+            duration: 6000
+          })
         } else {
-          toast.success(t('Post successful'), { duration: 2000 })
-          postEditorCache.clearPostCache({ defaultContent, parentEvent })
-          deleteDraftEventCache(draftEvent)
-          addReplies([newEvent])
-          close()
+          showSimplePublishSuccess(parentEvent ? t('Reply published') : t('Post published'))
         }
+        
+        postEditorCache.clearPostCache({ defaultContent, parentEvent })
+        deleteDraftEventCache(draftEvent)
+        addReplies([newEvent])
+        close()
       } catch (error) {
         console.error('Publishing error:', error)
-        
-        // Handle different types of errors with user-friendly messages
-        let errorMessage = t('Failed to post')
-        
-        if (error instanceof Error) {
-          if (error.message.includes('timeout')) {
-            errorMessage = t('Posting timed out. Your post may have been published to some relays.')
-          } else if (error.message.includes('auth-required') || error.message.includes('auth required')) {
-            errorMessage = t('Some relays require authentication. Please try again or use different relays.')
-          } else if (error.message.includes('blocked')) {
-            errorMessage = t('You are blocked from posting to some relays.')
-          } else if (error.message.includes('rate limit')) {
-            errorMessage = t('Rate limited. Please wait before trying again.')
-          } else if (error.message.includes('writes disabled')) {
-            errorMessage = t('Some relays have temporarily disabled writes.')
-          } else {
-            errorMessage = `${t('Failed to post')}: ${error.message}`
-          }
-        } else if (error instanceof AggregateError) {
-          // Handle multiple relay failures
-          const hasAuthErrors = error.errors.some(err => 
-            err instanceof Error && err.message.includes('auth-required')
-          )
-          const hasBlockedErrors = error.errors.some(err => 
-            err instanceof Error && err.message.includes('blocked')
-          )
-          const hasWriteDisabledErrors = error.errors.some(err => 
-            err instanceof Error && err.message.includes('writes disabled')
-          )
-          
-          if (hasAuthErrors) {
-            errorMessage = t('Some relays require authentication. Your post may have been published to other relays.')
-          } else if (hasBlockedErrors) {
-            errorMessage = t('You are blocked from some relays. Your post may have been published to other relays.')
-          } else if (hasWriteDisabledErrors) {
-            errorMessage = t('Some relays have disabled writes. Your post may have been published to other relays.')
-          } else {
-            errorMessage = t('Failed to publish to some relays. Your post may have been published to other relays.')
-          }
-        }
-        
-        toast.error(errorMessage, { duration: 8000 })
-        return
+        // Publishing errors are handled via relay status feedback
       } finally {
         setPosting(false)
       }
@@ -578,44 +515,6 @@ export default function PostContent({
           {parentEvent ? t('Reply') : t('Post')}
         </Button>
       </div>
-      
-      {showRelayStatus && relayStatuses.length > 0 && (
-        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border-2 border-blue-200 dark:border-blue-800">
-          <div className="mb-3">
-            <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-1">
-              📡 Publishing Results
-            </h3>
-            <p className="text-xs text-blue-600 dark:text-blue-300">
-              Your post has been published. Here's the status for each relay:
-            </p>
-          </div>
-          <RelayStatusDisplay
-            relayStatuses={relayStatuses}
-            successCount={relayStatuses.filter(s => s.success).length}
-            totalCount={relayStatuses.length}
-          />
-          <div className="mt-3 flex justify-between items-center">
-            <div className="text-xs text-blue-600 dark:text-blue-300">
-              This dialog will close automatically in a few seconds
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setShowRelayStatus(false)
-                if (lastPublishedEvent) {
-                  postEditorCache.clearPostCache({ defaultContent, parentEvent })
-                  // Note: draftEvent is not available here, but that's okay since the event is already published
-                  addReplies([lastPublishedEvent])
-                }
-                close()
-              }}
-            >
-              {t('Close')}
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

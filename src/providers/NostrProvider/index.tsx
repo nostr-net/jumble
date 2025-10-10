@@ -14,6 +14,7 @@ import {
 } from '@/lib/event'
 import { getProfileFromEvent, getRelayListFromEvent } from '@/lib/event-metadata'
 import { formatPubkey, pubkeyToNpub } from '@/lib/pubkey'
+import { showPublishingFeedback, showSimplePublishSuccess } from '@/lib/publishing-feedback'
 import client from '@/services/client.service'
 import customEmojiService from '@/services/custom-emoji.service'
 import indexedDb from '@/services/indexed-db.service'
@@ -657,10 +658,19 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     // Privacy: Only use user's own relays, never connect to "seen on" relays
     const relays = await client.determineTargetRelays(targetEvent)
 
-    await client.publishEvent(relays, deletionRequest)
+    const result = await client.publishEvent(relays, deletionRequest)
 
     addDeletedEvent(targetEvent)
-    toast.success(t('Deletion request sent to {{count}} relays', { count: relays.length }))
+    
+    // Show publishing feedback
+    if (result.relayStatuses) {
+      showPublishingFeedback(result, {
+        message: t('Deletion request sent'),
+        duration: 6000
+      })
+    } else {
+      showSimplePublishSuccess(t('Deletion request sent'))
+    }
   }
 
   const signHttpAuth = async (url: string, method: string, content = '') => {
