@@ -129,14 +129,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             onevent: (evt) => {
               // Don't notify about our own threads
               if (evt.pubkey !== pubkey) {
-                console.log('📢 Discussion notification received:', {
-                  id: evt.id,
-                  pubkey: evt.pubkey,
-                  kind: evt.kind,
-                  content: evt.content.substring(0, 50) + '...',
-                  topics: evt.tags.filter(tag => tag[0] === 't').map(tag => tag[1])
-                })
-                
                 setNewNotifications((prev) => {
                   if (!discussionEosed) {
                     return [evt, ...prev]

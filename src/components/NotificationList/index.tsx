@@ -155,16 +155,7 @@ const NotificationList = forwardRef((_, ref) => {
         {
           onEvents: (events, eosed) => {
             if (events.length > 0) {
-              console.log('📋 NotificationList received events:', events.map(e => ({
-                id: e.id,
-                kind: e.kind,
-                pubkey: e.pubkey,
-                content: e.content.substring(0, 30) + '...'
-              })))
-              
-              const filteredEvents = events.filter((event) => event.pubkey !== pubkey)
-              console.log('📋 After filtering own events:', filteredEvents.length, 'events')
-              setNotifications(filteredEvents)
+              setNotifications(events.filter((event) => event.pubkey !== pubkey))
             }
             if (eosed) {
               setLoading(false)
@@ -173,12 +164,6 @@ const NotificationList = forwardRef((_, ref) => {
             }
           },
           onNew: (event) => {
-            console.log('📋 NotificationList onNew event:', {
-              id: event.id,
-              kind: event.kind,
-              pubkey: event.pubkey,
-              content: event.content.substring(0, 30) + '...'
-            })
             handleNewEvent(event)
           }
         }

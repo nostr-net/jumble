@@ -1,4 +1,4 @@
-import { usePrimaryPage, useSecondaryPage } from '@/PageManager'
+import { useSecondaryPage } from '@/PageManager'
 import { ExtendedKind, SUPPORTED_KINDS } from '@/constants'
 import { getParentBech32Id, isNsfwEvent } from '@/lib/event'
 import { toNote } from '@/lib/link'
@@ -50,7 +50,6 @@ export default function Note({
   showFull?: boolean
 }) {
   const { push } = useSecondaryPage()
-  const { navigate } = usePrimaryPage()
   const { isSmallScreen } = useScreenSize()
   const parentEventId = useMemo(
     () => (hideParentNotePreview ? undefined : getParentBech32Id(event)),
@@ -150,16 +149,26 @@ export default function Note({
         </div>
         <div className="flex items-center gap-1">
           {event.kind === ExtendedKind.DISCUSSION && (
-            <button
+            <>
+              {console.log('🔍 Discussion button should render:', { eventKind: event.kind, discussionKind: ExtendedKind.DISCUSSION })}
+              <button
               className="p-1 hover:bg-muted rounded transition-colors"
               onClick={(e) => {
                 e.stopPropagation()
-                navigate('discussions')
+                console.log('🔗 View in Discussions clicked:', {
+                  eventId: event.id,
+                  eventKind: event.kind,
+                  noteUrl: toNote(event)
+                })
+                console.log('🔗 About to call push with:', toNote(event))
+                push(toNote(event))
+                console.log('🔗 Push called successfully')
               }}
               title="View in Discussions"
-            >
-              <MessageSquare className="w-4 h-4 text-blue-500" />
-            </button>
+              >
+                <MessageSquare className="w-4 h-4 text-blue-500" />
+              </button>
+            </>
           )}
           <TranslateButton event={event} className={size === 'normal' ? '' : 'pr-0'} />
           {size === 'normal' && (
