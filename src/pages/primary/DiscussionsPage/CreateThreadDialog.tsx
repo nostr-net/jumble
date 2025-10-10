@@ -15,6 +15,7 @@ import { TDraftEvent } from '@/types'
 import { prefixNostrAddresses } from '@/lib/nostr-address'
 import { showPublishingError } from '@/lib/publishing-feedback'
 import dayjs from 'dayjs'
+import { extractHashtagsFromContent, normalizeTopic } from '@/lib/discussion-topics'
 
 // Utility functions for thread creation
 function extractImagesFromContent(content: string): string[] {
@@ -145,16 +146,30 @@ export default function CreateThreadDialog({
       // Extract images from processed content
       const images = extractImagesFromContent(processedContent)
       
+      // Extract hashtags from content
+      const hashtags = extractHashtagsFromContent(processedContent)
+      
       // Build tags array
       const tags = [
         ['title', title.trim()],
-        ['t', selectedTopic],
+        ['t', normalizeTopic(selectedTopic)],
         ['-'] // Required tag for relay privacy
       ]
       
+      // Add hashtags as t-tags (deduplicate with selectedTopic)
+      const uniqueHashtags = hashtags.filter(
+        hashtag => hashtag !== normalizeTopic(selectedTopic)
+      )
+      for (const hashtag of uniqueHashtags) {
+        tags.push(['t', hashtag])
+      }
+      
       // Add readings tags if this is a reading group
       if (isReadingGroup) {
-        tags.push(['t', 'readings'])
+        // Only add if not already added from hashtags
+        if (!uniqueHashtags.includes('readings')) {
+          tags.push(['t', 'readings'])
+        }
         tags.push(['author', author.trim()])
         tags.push(['subject', subject.trim()])
       }

@@ -7,18 +7,25 @@ import { useNostr } from '@/providers/NostrProvider'
 import { forwardRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
-import { MessageSquarePlus, Book, BookOpen } from 'lucide-react'
+import { MessageSquarePlus, Book, BookOpen, Hash } from 'lucide-react'
 import ThreadCard from '@/pages/primary/DiscussionsPage/ThreadCard'
 import TopicFilter from '@/pages/primary/DiscussionsPage/TopicFilter'
 import ThreadSort, { SortOption } from '@/pages/primary/DiscussionsPage/ThreadSort'
 import CreateThreadDialog, { DISCUSSION_TOPICS } from '@/pages/primary/DiscussionsPage/CreateThreadDialog'
 import ViewToggle from '@/pages/primary/DiscussionsPage/ViewToggle'
+import SubtopicFilter from '@/pages/primary/DiscussionsPage/SubtopicFilter'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
 import { useSecondaryPage } from '@/PageManager'
 import { toNote } from '@/lib/link'
 import { kinds } from 'nostr-tools'
+import { 
+  analyzeThreadTopics, 
+  getCategorizedTopic, 
+  getDynamicSubtopics,
+  extractAllTopics
+} from '@/lib/discussion-topics'
 
 const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
@@ -41,6 +48,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
   // Search and filter state for readings
   const [searchQuery, setSearchQuery] = useState('')
   const [filterBy, setFilterBy] = useState<'author' | 'subject' | 'all'>('all')
+  
+  // Topic analysis for dynamic subtopics
+  const [topicAnalysis, setTopicAnalysis] = useState<ReturnType<typeof analyzeThreadTopics>>(new Map())
+  const [availableSubtopics, setAvailableSubtopics] = useState<string[]>([])
 
   // Use DEFAULT_FAVORITE_RELAYS for logged-out users, or user's favorite relays for logged-in users
   const availableRelays = useMemo(() => 
@@ -156,6 +167,26 @@ const DiscussionsPage = forwardRef((_, ref) => {
     fetchAllThreads()
   }, [fetchAllThreads])
 
+  // Analyze topics whenever threads change
+  useEffect(() => {
+    if (allThreads.length > 0) {
+      const analysis = analyzeThreadTopics(allThreads, availableTopicIds)
+      setTopicAnalysis(analysis)
+    } else {
+      setTopicAnalysis(new Map())
+    }
+  }, [allThreads, availableTopicIds])
+
+  // Update available subtopics when topic analysis or selected topic changes
+  useEffect(() => {
+    if (selectedTopic && selectedTopic !== 'all') {
+      const subtopics = getDynamicSubtopics(topicAnalysis.get(selectedTopic), 3)
+      setAvailableSubtopics(subtopics)
+    } else {
+      setAvailableSubtopics([])
+    }
+  }, [topicAnalysis, selectedTopic])
+
   useEffect(() => {
     // Only wait for stats for vote-based sorting
     if ((selectedSort === 'top' || selectedSort === 'controversial') && !statsLoaded) {
@@ -213,30 +244,20 @@ const DiscussionsPage = forwardRef((_, ref) => {
 
   const filterThreadsByTopic = useCallback(() => {
     const categorizedThreads = allThreads.map(thread => {
-      // Find all 't' tags in the thread
-      const topicTags = thread.tags.filter(tag => tag[0] === 't' && tag[1])
+      // Use new function to get categorized topic (considers both hashtags and t-tags)
+      const matchedTopic = getCategorizedTopic(thread, availableTopicIds)
       
-      // Find the first matching topic from our available topics
-      let matchedTopic = 'general' // Default to general
-      let isReadingGroup = false
+      // Get all topics (hashtags + t-tags) for this thread
+      const allTopics = extractAllTopics(thread)
       
-      for (const topicTag of topicTags) {
-        if (availableTopicIds.includes(topicTag[1])) {
-          matchedTopic = topicTag[1]
-          break // Use the first match found
-        }
-      }
-      
-      // Check if this is a reading group thread
-      if (matchedTopic === 'literature') {
-        const readingsTag = thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')
-        isReadingGroup = !!readingsTag
-      }
+      // Check if this is a reading group thread (special subtopic for literature)
+      const isReadingGroup = allTopics.includes('readings')
       
       return {
         ...thread,
         _categorizedTopic: matchedTopic,
-        _isReadingGroup: isReadingGroup
+        _isReadingGroup: isReadingGroup,
+        _allTopics: allTopics
       }
     })
 
@@ -244,27 +265,24 @@ const DiscussionsPage = forwardRef((_, ref) => {
     let threadsForTopic = selectedTopic === 'all' 
       ? categorizedThreads.map(thread => {
           // Remove the temporary categorization property but keep relay source
-          const { _categorizedTopic, _isReadingGroup, ...cleanThread } = thread
+          const { _categorizedTopic, _isReadingGroup, _allTopics, ...cleanThread } = thread
           return cleanThread
         })
       : categorizedThreads
           .filter(thread => {
             if (thread._categorizedTopic !== selectedTopic) return false
             
-            // Handle subtopic filtering for literature
-            if (selectedTopic === 'literature' && selectedSubtopic) {
-              if (selectedSubtopic === 'readings') {
-                return thread._isReadingGroup
-              } else if (selectedSubtopic === 'general') {
-                return !thread._isReadingGroup
-              }
+            // Handle subtopic filtering
+            if (selectedSubtopic) {
+              // Check if thread matches the selected subtopic
+              return thread._allTopics.includes(selectedSubtopic)
             }
             
             return true
           })
           .map(thread => {
             // Remove the temporary categorization property but keep relay source
-            const { _categorizedTopic, _isReadingGroup, ...cleanThread } = thread
+            const { _categorizedTopic, _isReadingGroup, _allTopics, ...cleanThread } = thread
             return cleanThread
           })
 
@@ -357,7 +375,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
           groups[topic] = []
         }
         // Remove the temporary categorization property but keep relay source
-        const { _categorizedTopic, ...cleanThread } = thread
+        const { _categorizedTopic, _isReadingGroup, _allTopics, ...cleanThread } = thread
         groups[topic].push(cleanThread)
         return groups
       }, {} as Record<string, NostrEvent[]>)
@@ -525,23 +543,42 @@ const DiscussionsPage = forwardRef((_, ref) => {
           </div>
         </div>
 
+        {/* Subtopic filter */}
+        {selectedTopic !== 'all' && availableSubtopics.length > 0 && (
+          <SubtopicFilter
+            subtopics={availableSubtopics}
+            selectedSubtopic={selectedSubtopic}
+            onSubtopicChange={setSelectedSubtopic}
+          />
+        )}
+
         {loading ? (
           <div className="flex justify-center py-8">
             <div className="text-muted-foreground">{t('Loading threads...')}</div>
           </div>
-        ) : selectedTopic === 'literature' ? (
+        ) : selectedTopic !== 'all' && availableSubtopics.length > 0 && !selectedSubtopic ? (
           <div className="space-y-6">
-            {/* General Literature and Arts Section */}
+            {/* General section for the main topic (without subtopics) */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 pb-2 border-b">
                 <BookOpen className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold">{t('General Topics')}</h2>
+                <h2 className="text-lg font-semibold">{t('General')}</h2>
                 <span className="text-sm text-muted-foreground">
-                  ({threads.filter(thread => !thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).length} {threads.filter(thread => !thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).length === 1 ? t('thread') : t('threads')})
+                  ({threads.filter(thread => {
+                    const allTopics = extractAllTopics(thread)
+                    // Threads that don't have any of the available subtopics
+                    return !availableSubtopics.some(subtopic => allTopics.includes(subtopic))
+                  }).length} {threads.filter(thread => {
+                    const allTopics = extractAllTopics(thread)
+                    return !availableSubtopics.some(subtopic => allTopics.includes(subtopic))
+                  }).length === 1 ? t('thread') : t('threads')})
                 </span>
               </div>
               <div className="space-y-3">
-                {threads.filter(thread => !thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).map(thread => (
+                {threads.filter(thread => {
+                  const allTopics = extractAllTopics(thread)
+                  return !availableSubtopics.some(subtopic => allTopics.includes(subtopic))
+                }).map(thread => (
                   <ThreadCard
                     key={thread.id}
                     thread={thread}
@@ -553,68 +590,90 @@ const DiscussionsPage = forwardRef((_, ref) => {
               </div>
             </div>
 
-            {/* Readings Section */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 pb-2 border-b">
-                <Book className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold">{t('Readings')}</h2>
-                <span className="text-sm text-muted-foreground">
-                  ({threads.filter(thread => thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).length} {threads.filter(thread => thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')).length === 1 ? t('thread') : t('threads')})
-                </span>
-              </div>
+            {/* Dynamic subtopics sections */}
+            {availableSubtopics.map(subtopic => {
+              const subtopicThreads = threads.filter(thread => {
+                const allTopics = extractAllTopics(thread)
+                return allTopics.includes(subtopic)
+              })
               
-              {/* Readings-specific search and filter */}
-              <div className="flex gap-2 items-center p-3 bg-muted/30 rounded-lg">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t('Search by author or book...')}
-                  className="px-3 h-10 rounded border bg-background text-sm w-48"
-                />
-                <select
-                  value={filterBy}
-                  onChange={(e) => setFilterBy(e.target.value as 'author' | 'subject' | 'all')}
-                  className="px-3 h-10 rounded border bg-background text-sm"
-                >
-                  <option value="all">{t('All')}</option>
-                  <option value="author">{t('Author')}</option>
-                  <option value="subject">{t('Subject')}</option>
-                </select>
-              </div>
+              if (subtopicThreads.length === 0) return null
               
-              <div className="space-y-3">
-                {threads
-                  .filter(thread => thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings'))
-                  .filter(thread => {
-                    if (!searchQuery.trim()) return true
-                    
-                    const authorTag = thread.tags.find(tag => tag[0] === 'author')
-                    const subjectTag = thread.tags.find(tag => tag[0] === 'subject')
-                    
-                    if (filterBy === 'author' && authorTag) {
-                      return authorTag[1].toLowerCase().includes(searchQuery.toLowerCase())
-                    } else if (filterBy === 'subject' && subjectTag) {
-                      return subjectTag[1].toLowerCase().includes(searchQuery.toLowerCase())
-                    } else if (filterBy === 'all') {
-                      const authorMatch = authorTag && authorTag[1].toLowerCase().includes(searchQuery.toLowerCase())
-                      const subjectMatch = subjectTag && subjectTag[1].toLowerCase().includes(searchQuery.toLowerCase())
-                      return authorMatch || subjectMatch
-                    }
-                    
-                    return false
-                  })
-                  .map(thread => (
-                    <ThreadCard
-                      key={thread.id}
-                      thread={thread}
-                      onThreadClick={() => {
-                        push(toNote(thread))
-                      }}
-                    />
-                  ))}
-              </div>
-            </div>
+              // Special handling for 'readings' subtopic in literature
+              const isReadingsSubtopic = subtopic === 'readings' && selectedTopic === 'literature'
+              
+              return (
+                <div key={subtopic} className="space-y-3">
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    {isReadingsSubtopic ? (
+                      <Book className="w-5 h-5 text-primary" />
+                    ) : (
+                      <Hash className="w-5 h-5 text-primary" />
+                    )}
+                    <h2 className="text-lg font-semibold">
+                      {subtopic.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </h2>
+                    <span className="text-sm text-muted-foreground">
+                      ({subtopicThreads.length} {subtopicThreads.length === 1 ? t('thread') : t('threads')})
+                    </span>
+                  </div>
+                  
+                  {/* Special search/filter for readings subtopic */}
+                  {isReadingsSubtopic && (
+                    <div className="flex gap-2 items-center p-3 bg-muted/30 rounded-lg">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={t('Search by author or book...')}
+                        className="px-3 h-10 rounded border bg-background text-sm w-48"
+                      />
+                      <select
+                        value={filterBy}
+                        onChange={(e) => setFilterBy(e.target.value as 'author' | 'subject' | 'all')}
+                        className="px-3 h-10 rounded border bg-background text-sm"
+                      >
+                        <option value="all">{t('All')}</option>
+                        <option value="author">{t('Author')}</option>
+                        <option value="subject">{t('Subject')}</option>
+                      </select>
+                    </div>
+                  )}
+                  
+                  <div className="space-y-3">
+                    {subtopicThreads
+                      .filter(thread => {
+                        // Apply search filter only for readings subtopic
+                        if (!isReadingsSubtopic || !searchQuery.trim()) return true
+                        
+                        const authorTag = thread.tags.find(tag => tag[0] === 'author')
+                        const subjectTag = thread.tags.find(tag => tag[0] === 'subject')
+                        
+                        if (filterBy === 'author' && authorTag) {
+                          return authorTag[1].toLowerCase().includes(searchQuery.toLowerCase())
+                        } else if (filterBy === 'subject' && subjectTag) {
+                          return subjectTag[1].toLowerCase().includes(searchQuery.toLowerCase())
+                        } else if (filterBy === 'all') {
+                          const authorMatch = authorTag && authorTag[1].toLowerCase().includes(searchQuery.toLowerCase())
+                          const subjectMatch = subjectTag && subjectTag[1].toLowerCase().includes(searchQuery.toLowerCase())
+                          return authorMatch || subjectMatch
+                        }
+                        
+                        return false
+                      })
+                      .map(thread => (
+                        <ThreadCard
+                          key={thread.id}
+                          thread={thread}
+                          onThreadClick={() => {
+                            push(toNote(thread))
+                          }}
+                        />
+                      ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         ) : (viewMode === 'grouped' && selectedTopic === 'all' ? 
           Object.keys(groupedThreads).length === 0 : 
