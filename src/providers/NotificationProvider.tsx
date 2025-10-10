@@ -11,6 +11,7 @@ import { useContentPolicy } from './ContentPolicyProvider'
 import { useMuteList } from './MuteListProvider'
 import { useNostr } from './NostrProvider'
 import { useUserTrust } from './UserTrustProvider'
+import { useInterestList } from './InterestListProvider'
 
 type TNotificationContext = {
   hasNewNotification: boolean
@@ -36,6 +37,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const { hideUntrustedNotifications, isUserTrusted } = useUserTrust()
   const { mutePubkeySet } = useMuteList()
   const { hideContentMentioningMutedUsers } = useContentPolicy()
+  const { getSubscribedTopics } = useInterestList()
   const [newNotifications, setNewNotifications] = useState<NostrEvent[]>([])
   const [readNotificationIdSet, setReadNotificationIdSet] = useState<Set<string>>(new Set())
   const filteredNewNotifications = useMemo(() => {
@@ -87,11 +89,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const subCloserRef: {
       current: SubCloser | null
     } = { current: null }
+    const topicSubCloserRef: {
+      current: SubCloser | null
+    } = { current: null }
 
     const subscribe = async () => {
       if (subCloserRef.current) {
         subCloserRef.current.close()
         subCloserRef.current = null
+      }
+      if (topicSubCloserRef.current) {
+        topicSubCloserRef.current.close()
+        topicSubCloserRef.current = null
       }
       if (!isMountedRef.current) return null
 
@@ -99,6 +108,48 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         let eosed = false
         const relayList = await client.fetchRelayList(pubkey)
         const notificationRelays = relayList.read.length > 0 ? relayList.read.slice(0, 5) : BIG_RELAY_URLS
+        
+        // Subscribe to subscribed topics (kind 11 discussions)
+        const subscribedTopics = getSubscribedTopics()
+        if (subscribedTopics.length > 0) {
+          let topicEosed = false
+          const topicSubCloser = client.subscribe(
+            notificationRelays,
+            [
+              {
+                kinds: [11], // Discussion threads
+                '#t': subscribedTopics,
+                limit: 10
+              }
+            ],
+            {
+              oneose: (e) => {
+                if (e) {
+                  topicEosed = e
+                }
+              },
+              onevent: (evt) => {
+                // Don't notify about our own threads
+                if (evt.pubkey !== pubkey) {
+                  setNewNotifications((prev) => {
+                    if (!topicEosed) {
+                      return [evt, ...prev]
+                    }
+                    if (prev.length && compareEvents(prev[0], evt) >= 0) {
+                      return prev
+                    }
+
+                    client.emitNewEvent(evt)
+                    return [evt, ...prev]
+                  })
+                }
+              }
+            }
+          )
+          topicSubCloserRef.current = topicSubCloser
+        }
+        
+        // Regular notifications subscription
         const subCloser = client.subscribe(
           notificationRelays,
           [
@@ -187,8 +238,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         subCloserRef.current.close()
         subCloserRef.current = null
       }
+      if (topicSubCloserRef.current) {
+        topicSubCloserRef.current.close()
+        topicSubCloserRef.current = null
+      }
     }
-  }, [pubkey])
+  }, [pubkey, getSubscribedTopics])
 
   useEffect(() => {
     const newNotificationCount = filteredNewNotifications.length

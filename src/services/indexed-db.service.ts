@@ -16,6 +16,7 @@ const StoreNames = {
   MUTE_LIST_EVENTS: 'muteListEvents',
   BOOKMARK_LIST_EVENTS: 'bookmarkListEvents',
   BLOSSOM_SERVER_LIST_EVENTS: 'blossomServerListEvents',
+  INTEREST_LIST_EVENTS: 'interestListEvents',
   MUTE_DECRYPTED_TAGS: 'muteDecryptedTags',
   USER_EMOJI_LIST_EVENTS: 'userEmojiListEvents',
   EMOJI_SET_EVENTS: 'emojiSetEvents',
@@ -69,6 +70,9 @@ class IndexedDbService {
           }
           if (!db.objectStoreNames.contains(StoreNames.BOOKMARK_LIST_EVENTS)) {
             db.createObjectStore(StoreNames.BOOKMARK_LIST_EVENTS, { keyPath: 'key' })
+          }
+          if (!db.objectStoreNames.contains(StoreNames.INTEREST_LIST_EVENTS)) {
+            db.createObjectStore(StoreNames.INTEREST_LIST_EVENTS, { keyPath: 'key' })
           }
           if (!db.objectStoreNames.contains(StoreNames.MUTE_DECRYPTED_TAGS)) {
             db.createObjectStore(StoreNames.MUTE_DECRYPTED_TAGS, { keyPath: 'key' })
@@ -447,6 +451,10 @@ class IndexedDbService {
         return StoreNames.FOLLOW_LIST_EVENTS
       case kinds.Mutelist:
         return StoreNames.MUTE_LIST_EVENTS
+      case kinds.BookmarkList:
+        return StoreNames.BOOKMARK_LIST_EVENTS
+      case 10015: // Interest list
+        return StoreNames.INTEREST_LIST_EVENTS
       case ExtendedKind.BLOSSOM_SERVER_LIST:
         return StoreNames.BLOSSOM_SERVER_LIST_EVENTS
       case kinds.Relaysets:

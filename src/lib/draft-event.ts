@@ -452,6 +452,15 @@ export function createBookmarkDraftEvent(tags: string[][], content = ''): TDraft
   }
 }
 
+export function createInterestListDraftEvent(topics: string[], content = ''): TDraftEvent {
+  return {
+    kind: 10015,
+    content,
+    tags: topics.map(topic => ['t', topic]),
+    created_at: dayjs().unix()
+  }
+}
+
 export function createBlossomServerListDraftEvent(servers: string[]): TDraftEvent {
   return {
     kind: ExtendedKind.BLOSSOM_SERVER_LIST,

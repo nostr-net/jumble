@@ -53,6 +53,7 @@ type TNostrContext = {
   followListEvent: Event | null
   muteListEvent: Event | null
   bookmarkListEvent: Event | null
+  interestListEvent: Event | null
   favoriteRelaysEvent: Event | null
   userEmojiListEvent: Event | null
   notificationsSeenAt: number
@@ -84,6 +85,7 @@ type TNostrContext = {
   updateFollowListEvent: (followListEvent: Event) => Promise<void>
   updateMuteListEvent: (muteListEvent: Event, privateTags: string[][]) => Promise<void>
   updateBookmarkListEvent: (bookmarkListEvent: Event) => Promise<void>
+  updateInterestListEvent: (interestListEvent: Event) => Promise<void>
   updateFavoriteRelaysEvent: (favoriteRelaysEvent: Event) => Promise<void>
   updateNotificationsSeenAt: (skipPublish?: boolean) => Promise<void>
 }
@@ -117,6 +119,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   const [followListEvent, setFollowListEvent] = useState<Event | null>(null)
   const [muteListEvent, setMuteListEvent] = useState<Event | null>(null)
   const [bookmarkListEvent, setBookmarkListEvent] = useState<Event | null>(null)
+  const [interestListEvent, setInterestListEvent] = useState<Event | null>(null)
   const [favoriteRelaysEvent, setFavoriteRelaysEvent] = useState<Event | null>(null)
   const [userEmojiListEvent, setUserEmojiListEvent] = useState<Event | null>(null)
   const [notificationsSeenAt, setNotificationsSeenAt] = useState(-1)
@@ -241,6 +244,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
             kinds.Contacts,
             kinds.Mutelist,
             kinds.BookmarkList,
+            10015, // Interest list
             ExtendedKind.FAVORITE_RELAYS,
             ExtendedKind.BLOSSOM_SERVER_LIST,
             kinds.UserEmojiList
@@ -258,6 +262,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       const followListEvent = sortedEvents.find((e) => e.kind === kinds.Contacts)
       const muteListEvent = sortedEvents.find((e) => e.kind === kinds.Mutelist)
       const bookmarkListEvent = sortedEvents.find((e) => e.kind === kinds.BookmarkList)
+      const interestListEvent = sortedEvents.find((e) => e.kind === 10015)
       const favoriteRelaysEvent = sortedEvents.find((e) => e.kind === ExtendedKind.FAVORITE_RELAYS)
       const blossomServerListEvent = sortedEvents.find(
         (e) => e.kind === ExtendedKind.BLOSSOM_SERVER_LIST
@@ -297,6 +302,12 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         const updateBookmarkListEvent = await indexedDb.putReplaceableEvent(bookmarkListEvent)
         if (updateBookmarkListEvent.id === bookmarkListEvent.id) {
           setBookmarkListEvent(bookmarkListEvent)
+        }
+      }
+      if (interestListEvent) {
+        const updatedInterestListEvent = await indexedDb.putReplaceableEvent(interestListEvent)
+        if (updatedInterestListEvent.id === interestListEvent.id) {
+          setInterestListEvent(interestListEvent)
         }
       }
       if (favoriteRelaysEvent) {
@@ -746,6 +757,13 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     setBookmarkListEvent(newBookmarkListEvent)
   }
 
+  const updateInterestListEvent = async (interestListEvent: Event) => {
+    const newInterestListEvent = await indexedDb.putReplaceableEvent(interestListEvent)
+    if (newInterestListEvent.id !== interestListEvent.id) return
+
+    setInterestListEvent(newInterestListEvent)
+  }
+
   const updateFavoriteRelaysEvent = async (favoriteRelaysEvent: Event) => {
     const newFavoriteRelaysEvent = await indexedDb.putReplaceableEvent(favoriteRelaysEvent)
     if (newFavoriteRelaysEvent.id !== favoriteRelaysEvent.id) return
@@ -786,6 +804,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         followListEvent,
         muteListEvent,
         bookmarkListEvent,
+        interestListEvent,
         favoriteRelaysEvent,
         userEmojiListEvent,
         notificationsSeenAt,
@@ -814,6 +833,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         updateFollowListEvent,
         updateMuteListEvent,
         updateBookmarkListEvent,
+        updateInterestListEvent,
         updateFavoriteRelaysEvent,
         updateNotificationsSeenAt
       }}

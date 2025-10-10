@@ -69,6 +69,7 @@ export function analyzeThreadTopics(
   for (const thread of threads) {
     const allTopics = extractAllTopics(thread)
     
+    
     // Find the primary topic (first match from available topics)
     let primaryTopic = 'general'
     for (const topic of allTopics) {
@@ -117,6 +118,7 @@ export function getDynamicSubtopics(
   if (!analysis) return []
   
   const subtopics: string[] = []
+  
   
   for (const [subtopic, npubs] of analysis.subtopics.entries()) {
     if (npubs.size >= minNpubs) {

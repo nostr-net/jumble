@@ -14,6 +14,7 @@ import ThreadSort, { SortOption } from '@/pages/primary/DiscussionsPage/ThreadSo
 import CreateThreadDialog, { DISCUSSION_TOPICS } from '@/pages/primary/DiscussionsPage/CreateThreadDialog'
 import ViewToggle from '@/pages/primary/DiscussionsPage/ViewToggle'
 import SubtopicFilter from '@/pages/primary/DiscussionsPage/SubtopicFilter'
+import TopicSubscribeButton from '@/components/TopicSubscribeButton'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
@@ -122,7 +123,6 @@ const DiscussionsPage = forwardRef((_, ref) => {
     setCustomVoteStats({}) // Clear custom stats when fetching
     try {
       // Fetch all kind 11 events (limit 100, newest first)
-      console.log('Fetching kind 11 events from relays:', relayUrls)
       // Fetch recent kind 11 events (last 30 days)
       const thirtyDaysAgo = Math.floor((Date.now() - (30 * 24 * 60 * 60 * 1000)) / 1000)
       
@@ -168,14 +168,14 @@ const DiscussionsPage = forwardRef((_, ref) => {
   }, [fetchAllThreads])
 
   // Analyze topics whenever threads change
-  useEffect(() => {
-    if (allThreads.length > 0) {
-      const analysis = analyzeThreadTopics(allThreads, availableTopicIds)
-      setTopicAnalysis(analysis)
-    } else {
-      setTopicAnalysis(new Map())
-    }
-  }, [allThreads, availableTopicIds])
+        useEffect(() => {
+          if (allThreads.length > 0) {
+            const analysis = analyzeThreadTopics(allThreads, availableTopicIds)
+            setTopicAnalysis(analysis)
+          } else {
+            setTopicAnalysis(new Map())
+          }
+        }, [allThreads, availableTopicIds])
 
   // Update available subtopics when topic analysis or selected topic changes
   useEffect(() => {
@@ -526,9 +526,14 @@ const DiscussionsPage = forwardRef((_, ref) => {
     >
       <div className="p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">
-            {t('Discussions')} - {selectedTopic === 'all' ? t('All Topics') : DISCUSSION_TOPICS.find(t => t.id === selectedTopic)?.label}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">
+              {t('Discussions')} - {selectedTopic === 'all' ? t('All Topics') : DISCUSSION_TOPICS.find(t => t.id === selectedTopic)?.label}
+            </h1>
+            {selectedTopic !== 'all' && selectedTopic !== 'general' && (
+              <TopicSubscribeButton topic={selectedTopic} size="sm" />
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {selectedTopic === 'all' && (
               <ViewToggle

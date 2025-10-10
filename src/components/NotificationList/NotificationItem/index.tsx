@@ -6,6 +6,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
 import { Event, kinds } from 'nostr-tools'
 import { useMemo } from 'react'
+import { DiscussionNotification } from './DiscussionNotification'
 import { MentionNotification } from './MentionNotification'
 import { PollResponseNotification } from './PollResponseNotification'
 import { PublicMessageNotification } from './PublicMessageNotification'
@@ -41,6 +42,9 @@ export function NotificationItem({
   ])
   if (!canShow) return null
 
+  if (notification.kind === 11) {
+    return <DiscussionNotification notification={notification} isNew={isNew} />
+  }
   if (notification.kind === kinds.Reaction) {
     return <ReactionNotification notification={notification} isNew={isNew} />
   }

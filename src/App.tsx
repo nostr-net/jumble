@@ -8,6 +8,7 @@ import { DeletedEventProvider } from '@/providers/DeletedEventProvider'
 import { FavoriteRelaysProvider } from '@/providers/FavoriteRelaysProvider'
 import { FeedProvider } from '@/providers/FeedProvider'
 import { FollowListProvider } from '@/providers/FollowListProvider'
+import { InterestListProvider } from '@/providers/InterestListProvider'
 import { KindFilterProvider } from '@/providers/KindFilterProvider'
 import { MediaUploadServiceProvider } from '@/providers/MediaUploadServiceProvider'
 import { MuteListProvider } from '@/providers/MuteListProvider'
@@ -33,9 +34,10 @@ export default function App(): JSX.Element {
                   <FavoriteRelaysProvider>
                     <FollowListProvider>
                       <MuteListProvider>
-                        <UserTrustProvider>
-                          <BookmarksProvider>
-                            <FeedProvider>
+                        <InterestListProvider>
+                          <UserTrustProvider>
+                            <BookmarksProvider>
+                              <FeedProvider>
                               <ReplyProvider>
                                 <MediaUploadServiceProvider>
                                   <KindFilterProvider>
@@ -46,9 +48,10 @@ export default function App(): JSX.Element {
                                   </KindFilterProvider>
                                 </MediaUploadServiceProvider>
                               </ReplyProvider>
-                            </FeedProvider>
-                          </BookmarksProvider>
-                        </UserTrustProvider>
+                              </FeedProvider>
+                            </BookmarksProvider>
+                          </UserTrustProvider>
+                        </InterestListProvider>
                       </MuteListProvider>
                     </FollowListProvider>
                   </FavoriteRelaysProvider>
