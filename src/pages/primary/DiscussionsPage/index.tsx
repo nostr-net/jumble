@@ -24,7 +24,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const { favoriteRelays } = useFavoriteRelays()
   const { pubkey } = useNostr()
   const { push } = useSecondaryPage()
-  const [selectedTopic, setSelectedTopic] = useState('general')
+  const [selectedTopic, setSelectedTopic] = useState('all')
   const [selectedSubtopic, setSelectedSubtopic] = useState<string | null>(null)
   const [selectedRelay, setSelectedRelay] = useState<string | null>(null)
   const [selectedSort, setSelectedSort] = useState<SortOption>('newest')
