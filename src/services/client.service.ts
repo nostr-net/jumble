@@ -991,47 +991,6 @@ class ClientService extends EventTarget {
     }
   }
 
-  private async fetchEventById(_relayUrls: string[], id: string): Promise<NEvent | undefined> {
-    // Get user's relay list if available
-    const userRelayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { read: [], write: [] }
-
-    // Tier 1: User's read relays + fast read relays (deduplicated)
-    const tier1Relays = Array.from(new Set([
-      ...userRelayList.read,
-      ...FAST_READ_RELAY_URLS
-    ]))
-    
-    const tier1Event = await this.tryHarderToFetchEvent(tier1Relays, { ids: [id], limit: 1 })
-    if (tier1Event) {
-      return tier1Event
-    }
-
-    // Tier 2: User's write relays + fast write relays (deduplicated)
-    const tier2Relays = Array.from(new Set([
-      ...userRelayList.write,
-      ...FAST_WRITE_RELAY_URLS
-    ]))
-    
-    const tier2Event = await this.tryHarderToFetchEvent(tier2Relays, { ids: [id], limit: 1 })
-    if (tier2Event) {
-      return tier2Event
-    }
-
-    // Tier 3: Search relays + big relays (deduplicated)
-    const tier3Relays = Array.from(new Set([
-      ...SEARCHABLE_RELAY_URLS,
-      ...BIG_RELAY_URLS
-    ]))
-    
-    const tier3Event = await this.tryHarderToFetchEvent(tier3Relays, { ids: [id], limit: 1 })
-    if (tier3Event) {
-      return tier3Event
-    }
-
-    // Tier 4: Not found - external relays require opt-in (see fetchEventWithExternalRelays)
-    return undefined
-  }
-
   /**
    * Get list of relays that were already tried in tiers 1-3
    */
@@ -1073,13 +1032,18 @@ class ClientService extends EventTarget {
     let author: string | undefined
     
     if (!/^[0-9a-f]{64}$/.test(id)) {
-      const { type, data } = nip19.decode(id)
-      if (type === 'nevent') {
-        if (data.relays) relayHints = data.relays
-        if (data.author) author = data.author
-      } else if (type === 'naddr') {
-        if (data.relays) relayHints = data.relays
-        author = data.pubkey
+      try {
+        const { type, data } = nip19.decode(id)
+        if (type === 'nevent') {
+          if (data.relays) relayHints = data.relays
+          if (data.author) author = data.author
+        } else if (type === 'naddr') {
+          if (data.relays) relayHints = data.relays
+          author = data.pubkey
+        }
+      } catch (err) {
+        console.error('Failed to decode bech32 ID:', id, err)
+        // Continue with empty relay hints and author
       }
     }
 
@@ -1109,45 +1073,40 @@ class ClientService extends EventTarget {
 
   private async _fetchEvent(id: string): Promise<NEvent | undefined> {
     let filter: Filter | undefined
-    let relays: string[] = []
     if (/^[0-9a-f]{64}$/.test(id)) {
       filter = { ids: [id] }
     } else {
-      const { type, data } = nip19.decode(id)
-      switch (type) {
-        case 'note':
-          filter = { ids: [data] }
-          break
-        case 'nevent':
-          filter = { ids: [data.id] }
-          if (data.relays) relays = data.relays
-          break
-        case 'naddr':
-          filter = {
-            authors: [data.pubkey],
-            kinds: [data.kind],
-            limit: 1
-          }
-          if (data.identifier) {
-            filter['#d'] = [data.identifier]
-          }
-          if (data.relays) relays = data.relays
+      try {
+        const { type, data } = nip19.decode(id)
+        switch (type) {
+          case 'note':
+            filter = { ids: [data] }
+            break
+          case 'nevent':
+            filter = { ids: [data.id] }
+            break
+          case 'naddr':
+            filter = {
+              authors: [data.pubkey],
+              kinds: [data.kind],
+              limit: 1
+            }
+            if (data.identifier) {
+              filter['#d'] = [data.identifier]
+            }
+        }
+      } catch (err) {
+        console.error('Failed to decode bech32 ID - likely malformed:', id)
+        // Malformed naddr/nevent from broken clients - can't fetch it
+        return undefined
       }
     }
     if (!filter) {
       throw new Error('Invalid id')
     }
 
-    let event: NEvent | undefined
-    if (filter.ids) {
-      event = await this.fetchEventById(relays, filter.ids[0])
-    } else {
-      // Privacy: Don't fetch author's relays, use defaults
-      if (!relays.length) {
-        relays.push(...BIG_RELAY_URLS)
-      }
-      event = await this.tryHarderToFetchEvent(relays, filter)
-    }
+    // Use unified tiered fetching for both regular and replaceable events
+    const event = await this.fetchEventTiered(filter)
 
     if (event && event.id !== id) {
       this.addEventToCache(event)
@@ -1156,24 +1115,71 @@ class ClientService extends EventTarget {
     return event
   }
 
+  /**
+   * Unified tiered fetching for both regular and replaceable events
+   */
+  private async fetchEventTiered(filter: Filter): Promise<NEvent | undefined> {
+    const userRelayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { read: [], write: [] }
+
+    // Tier 1: User's read relays + fast read relays (deduplicated)
+    const tier1Relays = Array.from(new Set([
+      ...userRelayList.read,
+      ...FAST_READ_RELAY_URLS
+    ]))
+    const tier1Event = await this.tryHarderToFetchEvent(tier1Relays, filter)
+    if (tier1Event) { return tier1Event }
+
+    // Tier 2: User's write relays + fast write relays (deduplicated)
+    const tier2Relays = Array.from(new Set([
+      ...userRelayList.write,
+      ...FAST_WRITE_RELAY_URLS
+    ]))
+    const tier2Event = await this.tryHarderToFetchEvent(tier2Relays, filter)
+    if (tier2Event) { return tier2Event }
+
+    // Tier 3: Search relays + big relays (deduplicated)
+    const tier3Relays = Array.from(new Set([
+      ...SEARCHABLE_RELAY_URLS,
+      ...BIG_RELAY_URLS
+    ]))
+    const tier3Event = await this.tryHarderToFetchEvent(tier3Relays, filter)
+    if (tier3Event) { return tier3Event }
+
+    // Tier 4: Not found - external relays require opt-in (see fetchEventWithExternalRelays)
+    return undefined
+  }
+
   private async tryHarderToFetchEvent(
     relayUrls: string[],
     filter: Filter,
     alreadyFetchedFromBigRelays = false
   ) {
-    // Privacy: Don't fetch author's relays, only use provided relays or defaults
-    if (!relayUrls.length && !alreadyFetchedFromBigRelays) {
-      relayUrls = BIG_RELAY_URLS
-    }
-    if (!relayUrls.length) return
+    try {
+      // Privacy: Don't fetch author's relays, only use provided relays or defaults
+      if (!relayUrls.length && !alreadyFetchedFromBigRelays) {
+        relayUrls = BIG_RELAY_URLS
+      }
+      if (!relayUrls.length) return undefined
 
-    // Normalize relay URLs (remove trailing slashes for consistency)
-    const normalizedUrls = relayUrls.map(url => url.endsWith('/') ? url.slice(0, -1) : url)
-    
-    console.log(`Trying to fetch from ${normalizedUrls.length} relays:`, normalizedUrls)
-    const events = await this.query(normalizedUrls, filter)
-    console.log(`Found ${events.length} events from relays`)
-    return events.sort((a, b) => b.created_at - a.created_at)[0]
+      // Normalize relay URLs (remove trailing slashes for consistency)
+      const normalizedUrls = relayUrls.map(url => url.endsWith('/') ? url.slice(0, -1) : url)
+      
+      console.log(`Trying to fetch from ${normalizedUrls.length} relays:`, normalizedUrls)
+      const events = await this.query(normalizedUrls, filter)
+      console.log(`Found ${events.length} events from relays`)
+      
+      if (events.length === 0) {
+        console.log('No events found, continuing to next tier')
+        return undefined
+      }
+      
+      const result = events.sort((a, b) => b.created_at - a.created_at)[0]
+      console.log('Found event:', result.id)
+      return result
+    } catch (error) {
+      console.error('Error in tryHarderToFetchEvent:', error)
+      return undefined
+    }
   }
 
 
