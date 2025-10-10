@@ -1032,6 +1032,37 @@ class ClientService extends EventTarget {
     return undefined
   }
 
+  /**
+   * Get list of relays that were already tried in tiers 1-3
+   */
+  async getAlreadyTriedRelays(_id: string): Promise<string[]> {
+    const userRelayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { read: [], write: [] }
+    
+    // Tier 1: User's read relays + fast read relays
+    const tier1Relays = Array.from(new Set([
+      ...userRelayList.read,
+      ...FAST_READ_RELAY_URLS
+    ]))
+    
+    // Tier 2: User's write relays + fast write relays  
+    const tier2Relays = Array.from(new Set([
+      ...userRelayList.write,
+      ...FAST_WRITE_RELAY_URLS
+    ]))
+    
+    // Tier 3: Search relays + big relays
+    const tier3Relays = Array.from(new Set([
+      ...SEARCHABLE_RELAY_URLS,
+      ...BIG_RELAY_URLS
+    ]))
+    
+    return Array.from(new Set([
+      ...tier1Relays,
+      ...tier2Relays,
+      ...tier3Relays
+    ]))
+  }
+
   // Opt-in method to fetch from author's relays, relay hints, and "seen on" relays
   async fetchEventWithExternalRelays(id: string): Promise<NEvent | undefined> {
     // Clear cache to force new fetch

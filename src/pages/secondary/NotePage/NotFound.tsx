@@ -18,12 +18,15 @@ export default function NotFound({
   const [triedExternal, setTriedExternal] = useState(false)
   const [externalRelays, setExternalRelays] = useState<string[]>([])
 
-  // Calculate which external relays would be tried
+  // Calculate which external relays would be tried (excluding already-tried relays)
   useEffect(() => {
     if (!bech32Id) return
 
     const getExternalRelays = async () => {
-      const relays: string[] = []
+      // Get all relays that would be tried in tiers 1-3 (already tried)
+      const alreadyTriedRelays = await client.getAlreadyTriedRelays(bech32Id)
+      
+      const externalRelays: string[] = []
       
       // Parse relay hints and author from bech32 ID
       if (!/^[0-9a-f]{64}$/.test(bech32Id)) {
@@ -31,15 +34,15 @@ export default function NotFound({
           const { type, data } = nip19.decode(bech32Id)
           
           if (type === 'nevent') {
-            if (data.relays) relays.push(...data.relays)
+            if (data.relays) externalRelays.push(...data.relays)
             if (data.author) {
               const authorRelayList = await client.fetchRelayList(data.author)
-              relays.push(...authorRelayList.write.slice(0, 6))
+              externalRelays.push(...authorRelayList.write.slice(0, 6))
             }
           } else if (type === 'naddr') {
-            if (data.relays) relays.push(...data.relays)
+            if (data.relays) externalRelays.push(...data.relays)
             const authorRelayList = await client.fetchRelayList(data.pubkey)
-            relays.push(...authorRelayList.write.slice(0, 6))
+            externalRelays.push(...authorRelayList.write.slice(0, 6))
           }
         } catch (err) {
           console.error('Failed to parse external relays:', err)
@@ -47,9 +50,12 @@ export default function NotFound({
       }
       
       const seenOn = client.getSeenEventRelayUrls(bech32Id)
-      relays.push(...seenOn)
+      externalRelays.push(...seenOn)
       
-      setExternalRelays(Array.from(new Set(relays)))
+      // Filter out relays that were already tried in tiers 1-3
+      const newRelays = externalRelays.filter(relay => !alreadyTriedRelays.includes(relay))
+      
+      setExternalRelays(Array.from(new Set(newRelays)))
     }
 
     getExternalRelays()
@@ -99,7 +105,7 @@ export default function NotFound({
             ) : (
               <>
                 <Search className="w-4 h-4" />
-                {t('Try searching author\'s relays')}
+                {t('Try external relays')}
               </>
             )}
           </Button>
