@@ -3,7 +3,7 @@ import { kinds } from 'nostr-tools'
 export const JUMBLE_API_BASE_URL = 'https://api.jumble.social'
 
 export const DEFAULT_FAVORITE_RELAYS = [
-  'wss://theforest.nostr1.com/',
+  'wss://theforest.nostr1.com',
   'wss://orly-relay.imwald.eu',
   'wss://nostr.land'
 ]
@@ -11,9 +11,9 @@ export const DEFAULT_FAVORITE_RELAYS = [
 export const RECOMMENDED_RELAYS = DEFAULT_FAVORITE_RELAYS.concat([])
 
 export const RECOMMENDED_BLOSSOM_SERVERS = [
-  'https://blossom.band/',
-  'https://blossom.primal.net/',
-  'https://nostr.media/'
+  'https://blossom.band',
+  'https://blossom.primal.net',
+  'https://nostr.media'
 ]
 
 export const StorageKey = {
@@ -63,8 +63,8 @@ export const BIG_RELAY_URLS = [
   'wss://theforest.nostr1.com',
   'wss://orly-relay.imwald.eu',
   'wss://nostr.land',
-  'wss://nostr.wine/',
-  'wss://nostr.sovbit.host/',
+  'wss://nostr.wine',
+  'wss://nostr.sovbit.host',
   'wss://nostr21.com'
 ]
 
@@ -78,17 +78,17 @@ export const FAST_READ_RELAY_URLS = [
 
 // Optimized relay list for write operations (no aggregator since it's read-only)
 export const FAST_WRITE_RELAY_URLS = [
-  'wss://relay.damus.io/',
-  'wss://relay.primal.net/',
-  'wss://freelay.sovbit.host/',
-  'wss://thecitadel.nostr1.com/',
-  'wss://nos.lol/',
+  'wss://relay.damus.io',
+  'wss://relay.primal.net',
+  'wss://freelay.sovbit.host',
+  'wss://thecitadel.nostr1.com',
+  'wss://nos.lol',
   'wss://nostr.mom'
 ]
 
 export const SEARCHABLE_RELAY_URLS = [
-  'wss://relay.nostr.band/', 
-  'wss://search.nos.today/',
+  'wss://relay.nostr.band', 
+  'wss://search.nos.today',
   'wss://nostr.wine', 
   'wss://orly-relay.imwald.eu',
   'wss://aggr.nostr.land',
@@ -174,7 +174,7 @@ export const NIP_96_SERVICE = [
 export const DEFAULT_NIP_96_SERVICE = 'https://nostr.build'
 
 export const DEFAULT_NOSTRCONNECT_RELAY = [
-  'wss://relay.nsec.app/',
+  'wss://relay.nsec.app',
   'wss://thecitadel.nostr1.com'
 ]
 

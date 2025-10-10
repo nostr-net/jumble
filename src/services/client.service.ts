@@ -1167,7 +1167,12 @@ class ClientService extends EventTarget {
     }
     if (!relayUrls.length) return
 
-    const events = await this.query(relayUrls, filter)
+    // Normalize relay URLs (remove trailing slashes for consistency)
+    const normalizedUrls = relayUrls.map(url => url.endsWith('/') ? url.slice(0, -1) : url)
+    
+    console.log(`Trying to fetch from ${normalizedUrls.length} relays:`, normalizedUrls)
+    const events = await this.query(normalizedUrls, filter)
+    console.log(`Found ${events.length} events from relays`)
     return events.sort((a, b) => b.created_at - a.created_at)[0]
   }
 
