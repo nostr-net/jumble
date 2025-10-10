@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { createReactionDraftEvent } from '@/lib/draft-event'
 import { useNostr } from '@/providers/NostrProvider'
-import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
 import { Event } from 'nostr-tools'
 import { ChevronDown, ChevronUp } from 'lucide-react'

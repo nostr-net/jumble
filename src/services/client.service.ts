@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, PROFILE_FETCH_RELAY_URLS } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, PROFILE_FETCH_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
 import {
   compareEvents,
   getReplaceableCoordinate,
@@ -55,10 +55,6 @@ class ClientService extends EventTarget {
     (ids) => Promise.all(ids.map((id) => this._fetchEvent(id))),
     { cacheMap: this.eventCacheMap }
   )
-  private fetchEventFromBigRelaysDataloader = new DataLoader<string, NEvent | undefined>(
-    this.fetchEventsFromBigRelays.bind(this),
-    { cache: false, batchScheduleFn: (callback) => setTimeout(callback, 50) }
-  )
   private trendingNotesCache: NEvent[] | null = null
   private requestThrottle = new Map<string, number>() // Track request timestamps per relay
   private readonly REQUEST_COOLDOWN = 2000 // 2 second cooldown between requests to prevent "too many REQs"
@@ -99,8 +95,12 @@ class ClientService extends EventTarget {
     } else {
       const _additionalRelayUrls: string[] = additionalRelayUrls ?? []
       
-      // For kind 1 (notes) and kind 24 (public messages), publish to mentioned users' inboxes
-      if (event.kind === kinds.ShortTextNote || event.kind === ExtendedKind.PUBLIC_MESSAGE) {
+      // Check if this is a discussion thread or reply to a discussion
+      const isDiscussionRelated = event.kind === ExtendedKind.DISCUSSION || 
+        event.tags.some(tag => tag[0] === 'k' && tag[1] === '11')
+      
+      // Publish to mentioned users' inboxes for all events EXCEPT discussions
+      if (!isDiscussionRelated) {
         const mentions: string[] = []
         event.tags.forEach(([tagName, tagValue]) => {
           if (
@@ -137,16 +137,6 @@ class ClientService extends EventTarget {
       const senderWriteRelays = relayList?.write.slice(0, 6) ?? []
       const recipientReadRelays = Array.from(new Set(_additionalRelayUrls))
       relays = senderWriteRelays.concat(recipientReadRelays)
-      
-      // Special logging for public messages
-      if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
-        // console.log('🎯 Final relay selection for public message:', {
-        //   eventId: event.id.substring(0, 8) + '...',
-        //   senderWriteRelays: senderWriteRelays.length,
-        //   recipientReadRelays: recipientReadRelays.length,
-        //   finalRelays: relays.length
-        // })
-      }
     }
 
     if (!relays.length) {
@@ -168,16 +158,6 @@ class ClientService extends EventTarget {
     totalCount: number
   }> {
     const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
-    console.log(`Publishing kind ${event.kind} event to ${uniqueRelayUrls.length} relays:`, uniqueRelayUrls)
-    // if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
-    //   console.log('Public message event details:', {
-    //     id: event.id,
-    //     pubkey: event.pubkey,
-    //     content: event.content.substring(0, 50),
-    //     tags: event.tags,
-    //     targetRelays: uniqueRelayUrls
-    //   })
-    // }
     
     const relayStatuses: Array<{
       url: string
@@ -203,7 +183,6 @@ class ClientService extends EventTarget {
         // If one third of the relays have accepted the event, consider it a success
         const isSuccess = successCount >= Math.max(1, Math.ceil(uniqueRelayUrls.length / 3))
         if (isSuccess && !resolved) {
-          console.log(`✓ Publishing successful (${successCount}/${uniqueRelayUrls.length} relays)`)
           this.emitNewEvent(event)
           resolved = true
           resolve({
@@ -217,7 +196,6 @@ class ClientService extends EventTarget {
         
         if (finishedCount >= uniqueRelayUrls.length && !resolved) {
           if (successCount > 0) {
-            console.log(`✓ Publishing successful (${successCount}/${uniqueRelayUrls.length} relays)`)
             this.emitNewEvent(event)
             resolved = true
             resolve({
@@ -227,7 +205,6 @@ class ClientService extends EventTarget {
               totalCount: uniqueRelayUrls.length
             })
           } else {
-            console.log(`✗ Publishing failed (0/${uniqueRelayUrls.length} relays)`)
             resolved = true
             reject(
               new AggregateError(
@@ -251,7 +228,6 @@ class ClientService extends EventTarget {
       // Add overall timeout to prevent hanging
       const overallTimeout = setTimeout(() => {
         if (!resolved) {
-          console.log(`⚠ Publishing timeout after 15s (${successCount}/${uniqueRelayUrls.length} relays succeeded)`)
           resolved = true
           if (successCount > 0) {
             this.emitNewEvent(event)
@@ -280,7 +256,6 @@ class ClientService extends EventTarget {
             relay.publishTimeout = 8_000 // 8s
             
             await relay.publish(event)
-            console.log(`✓ Published to ${url}`)
             this.trackEventSeenOn(event.id, relay)
             this.recordSuccess(url)
             successCount++
@@ -299,7 +274,6 @@ class ClientService extends EventTarget {
             } else if (error !== null && error !== undefined) {
               errorMessage = String(error)
             }
-            console.log(`✗ Failed to publish to ${url}:`, errorMessage)
             
             // Record failure for exponential backoff
             this.recordFailure(url)
@@ -330,14 +304,12 @@ class ClientService extends EventTarget {
               !!that.signer
             ) {
               try {
-                console.log(`Attempting auth for ${url}`)
                 // Throttle auth requests too
                 await this.throttleRequest(url)
                 
                 const relay = await this.pool.ensureRelay(url)
                 await relay.auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
                 await relay.publish(event)
-                console.log(`✓ Published to ${url} after auth`)
                 this.trackEventSeenOn(event.id, relay)
                 this.recordSuccess(url)
                 successCount++
@@ -357,7 +329,6 @@ class ClientService extends EventTarget {
                 } else if (authError !== null && authError !== undefined) {
                   authErrorMessage = String(authError)
                 }
-                console.log(`✗ Auth failed for ${url}:`, authErrorMessage)
                 this.recordFailure(url)
                 errors.push({ url, error: authError })
                 finishedCount++
@@ -1020,32 +991,89 @@ class ClientService extends EventTarget {
     }
   }
 
-  private async fetchEventById(relayUrls: string[], id: string): Promise<NEvent | undefined> {
-    // First try the big relays
-    const event = await this.fetchEventFromBigRelaysDataloader.load(id)
-    if (event) {
-      return event
+  private async fetchEventById(_relayUrls: string[], id: string): Promise<NEvent | undefined> {
+    // Get user's relay list if available
+    const userRelayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { read: [], write: [] }
+
+    // Tier 1: User's read relays + fast read relays (deduplicated)
+    const tier1Relays = Array.from(new Set([
+      ...userRelayList.read,
+      ...FAST_READ_RELAY_URLS
+    ]))
+    
+    const tier1Event = await this.tryHarderToFetchEvent(tier1Relays, { ids: [id], limit: 1 })
+    if (tier1Event) {
+      return tier1Event
     }
 
-    // Privacy: Don't try "seen on" relays - only use defaults
-    // Fallback to BIG_RELAY_URLS if not found
+    // Tier 2: User's write relays + fast write relays (deduplicated)
+    const tier2Relays = Array.from(new Set([
+      ...userRelayList.write,
+      ...FAST_WRITE_RELAY_URLS
+    ]))
+    
+    const tier2Event = await this.tryHarderToFetchEvent(tier2Relays, { ids: [id], limit: 1 })
+    if (tier2Event) {
+      return tier2Event
+    }
 
-    // Third, try the provided relay URLs
-    if (relayUrls.length > 0) {
-      const providedEvent = await this.tryHarderToFetchEvent(relayUrls, { ids: [id], limit: 1 }, true)
-      if (providedEvent) {
-        return providedEvent
+    // Tier 3: Search relays + big relays (deduplicated)
+    const tier3Relays = Array.from(new Set([
+      ...SEARCHABLE_RELAY_URLS,
+      ...BIG_RELAY_URLS
+    ]))
+    
+    const tier3Event = await this.tryHarderToFetchEvent(tier3Relays, { ids: [id], limit: 1 })
+    if (tier3Event) {
+      return tier3Event
+    }
+
+    // Tier 4: Not found - external relays require opt-in (see fetchEventWithExternalRelays)
+    return undefined
+  }
+
+  // Opt-in method to fetch from author's relays, relay hints, and "seen on" relays
+  async fetchEventWithExternalRelays(id: string): Promise<NEvent | undefined> {
+    // Clear cache to force new fetch
+    this.eventCacheMap.delete(id)
+    
+    // Parse the ID to extract relay hints and author
+    let relayHints: string[] = []
+    let author: string | undefined
+    
+    if (!/^[0-9a-f]{64}$/.test(id)) {
+      const { type, data } = nip19.decode(id)
+      if (type === 'nevent') {
+        if (data.relays) relayHints = data.relays
+        if (data.author) author = data.author
+      } else if (type === 'naddr') {
+        if (data.relays) relayHints = data.relays
+        author = data.pubkey
       }
     }
 
-    // Privacy: Use defaults and provided relays only
-    const allAvailableRelays = Array.from(new Set([
-      ...FAST_READ_RELAY_URLS,
-      ...FAST_WRITE_RELAY_URLS,
-      ...relayUrls
-    ]))
+    // Collect external relays: author's outbox + relay hints + seen on
+    const externalRelays: string[] = []
     
-    return this.tryHarderToFetchEvent(allAvailableRelays, { ids: [id], limit: 1 }, true)
+    if (author) {
+      const authorRelayList = await this.fetchRelayList(author)
+      externalRelays.push(...authorRelayList.write.slice(0, 6))
+    }
+    
+    if (relayHints.length > 0) {
+      externalRelays.push(...relayHints)
+    }
+    
+    const seenOn = this.getSeenEventRelayUrls(id)
+    externalRelays.push(...seenOn)
+
+    const uniqueExternalRelays = Array.from(new Set(externalRelays))
+    
+    if (uniqueExternalRelays.length === 0) {
+      return undefined
+    }
+
+    return this.tryHarderToFetchEvent(uniqueExternalRelays, { ids: [id], limit: 1 })
   }
 
   private async _fetchEvent(id: string): Promise<NEvent | undefined> {
@@ -1112,18 +1140,6 @@ class ClientService extends EventTarget {
     return events.sort((a, b) => b.created_at - a.created_at)[0]
   }
 
-  private async fetchEventsFromBigRelays(ids: readonly string[]) {
-    const events = await this.query(FAST_READ_RELAY_URLS, {
-      ids: Array.from(new Set(ids)),
-      limit: ids.length
-    })
-    const eventsMap = new Map<string, NEvent>()
-    for (const event of events) {
-      eventsMap.set(event.id, event)
-    }
-
-    return ids.map((id) => eventsMap.get(id))
-  }
 
   /** =========== Following favorite relays =========== */
 
@@ -1627,10 +1643,8 @@ class ClientService extends EventTarget {
     let delay = this.REQUEST_COOLDOWN
     if (failures >= this.MAX_FAILURES) {
       delay = Math.min(this.REQUEST_COOLDOWN * Math.pow(2, failures - this.MAX_FAILURES), 30000) // Max 30 seconds
-      console.log(`⏳ Exponential backoff for ${relayUrl}: ${delay}ms (${failures} failures)`)
     } else if (now - lastRequest < this.REQUEST_COOLDOWN) {
       delay = this.REQUEST_COOLDOWN - (now - lastRequest)
-      console.log(`⏳ Throttling request to ${relayUrl} for ${delay}ms`)
     }
     
     if (delay > 0) {

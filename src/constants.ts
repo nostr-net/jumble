@@ -91,7 +91,14 @@ export const SEARCHABLE_RELAY_URLS = [
   'wss://search.nos.today/',
   'wss://nostr.wine', 
   'wss://orly-relay.imwald.eu',
-  'wss://aggr.nostr.land'
+  'wss://aggr.nostr.land',
+  'wss://nos.lol',
+  'wss://thecitadel.nostr1.com',
+  'wss://relay.primal.net',
+  'wss://relay.damus.io',
+  'wss://relay.lumina.rocks',
+  'wss://relay.snort.social',
+  'wss://freelay.sovbit.host'
   ]
 
 export const PROFILE_RELAY_URLS = [

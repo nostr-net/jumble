@@ -8,12 +8,10 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
-import { isProtectedEvent } from '@/lib/event'
 import { simplifyUrl } from '@/lib/url'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
-import client from '@/services/client.service'
 import { Check } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from 'react'
@@ -35,7 +33,7 @@ type TPostTargetItem =
     }
 
 export default function PostRelaySelector({
-  parentEvent,
+  parentEvent: _parentEvent,
   openFrom,
   setIsProtectedEvent,
   setAdditionalRelayUrls
@@ -94,12 +92,9 @@ export default function PostRelaySelector({
       setPostTargetItems(Array.from(new Set(openFrom)).map((url) => ({ type: 'relay', url })))
       return
     }
-    if (parentEventSeenOnRelays && parentEventSeenOnRelays.length) {
-      setPostTargetItems(parentEventSeenOnRelays.map((url) => ({ type: 'relay', url })))
-      return
-    }
+    // Privacy: Default to write relays, never parent event's relays
     setPostTargetItems([{ type: 'writeRelays' }])
-  }, [openFrom, parentEventSeenOnRelays])
+  }, [openFrom])
 
   useEffect(() => {
     const isProtectedEvent = postTargetItems.every((item) => item.type !== 'writeRelays')

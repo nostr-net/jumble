@@ -16,18 +16,21 @@ import { tagNameEquals } from '@/lib/tag'
 import { cn } from '@/lib/utils'
 import { Ellipsis } from 'lucide-react'
 import { Event } from 'nostr-tools'
-import { forwardRef, useMemo } from 'react'
+import { forwardRef, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import NotFound from './NotFound'
 
 const NotePage = forwardRef(({ id, index }: { id?: string; index?: number }, ref) => {
   const { t } = useTranslation()
   const { event, isFetching } = useFetchEvent(id)
-  const parentEventId = useMemo(() => getParentBech32Id(event), [event])
-  const rootEventId = useMemo(() => getRootBech32Id(event), [event])
+  const [externalEvent, setExternalEvent] = useState<Event | undefined>(undefined)
+  const finalEvent = event || externalEvent
+  
+  const parentEventId = useMemo(() => getParentBech32Id(finalEvent), [finalEvent])
+  const rootEventId = useMemo(() => getRootBech32Id(finalEvent), [finalEvent])
   const rootITag = useMemo(
-    () => (event?.kind === ExtendedKind.COMMENT ? event.tags.find(tagNameEquals('I')) : undefined),
-    [event]
+    () => (finalEvent?.kind === ExtendedKind.COMMENT ? finalEvent.tags.find(tagNameEquals('I')) : undefined),
+    [finalEvent]
   )
   const { isFetching: isFetchingRootEvent, event: rootEvent } = useFetchEvent(rootEventId)
   const { isFetching: isFetchingParentEvent, event: parentEvent } = useFetchEvent(parentEventId)
@@ -59,10 +62,10 @@ const NotePage = forwardRef(({ id, index }: { id?: string; index?: number }, ref
       </SecondaryPageLayout>
     )
   }
-  if (!event) {
+  if (!finalEvent) {
     return (
       <SecondaryPageLayout ref={ref} index={index} title={t('Note')} displayScrollToTopButton>
-        <NotFound bech32Id={id} />
+        <NotFound bech32Id={id} onEventFound={setExternalEvent} />
       </SecondaryPageLayout>
     )
   }
@@ -73,7 +76,7 @@ const NotePage = forwardRef(({ id, index }: { id?: string; index?: number }, ref
         {rootITag && <ExternalRoot value={rootITag[1]} />}
         {rootEventId && rootEventId !== parentEventId && (
           <ParentNote
-            key={`root-note-${event.id}`}
+            key={`root-note-${finalEvent.id}`}
             isFetching={isFetchingRootEvent}
             event={rootEvent}
             eventBech32Id={rootEventId}
@@ -82,24 +85,24 @@ const NotePage = forwardRef(({ id, index }: { id?: string; index?: number }, ref
         )}
         {parentEventId && (
           <ParentNote
-            key={`parent-note-${event.id}`}
+            key={`parent-note-${finalEvent.id}`}
             isFetching={isFetchingParentEvent}
             event={parentEvent}
             eventBech32Id={parentEventId}
           />
         )}
         <Note
-          key={`note-${event.id}`}
-          event={event}
+          key={`note-${finalEvent.id}`}
+          event={finalEvent}
           className="select-text"
           hideParentNotePreview
           originalNoteId={id}
           showFull
         />
-        <NoteStats className="mt-3" event={event} fetchIfNotExisting displayTopZapsAndLikes />
+        <NoteStats className="mt-3" event={finalEvent} fetchIfNotExisting displayTopZapsAndLikes />
       </div>
       <Separator className="mt-4" />
-      <NoteInteractions key={`note-interactions-${event.id}`} pageIndex={index} event={event} />
+      <NoteInteractions key={`note-interactions-${finalEvent.id}`} pageIndex={index} event={finalEvent} />
     </SecondaryPageLayout>
   )
 })

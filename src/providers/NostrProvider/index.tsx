@@ -10,7 +10,6 @@ import {
 import {
   getLatestEvent,
   getReplaceableEventIdentifier,
-  isProtectedEvent,
   minePow
 } from '@/lib/event'
 import { getProfileFromEvent, getRelayListFromEvent } from '@/lib/event-metadata'

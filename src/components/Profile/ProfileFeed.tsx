@@ -42,7 +42,7 @@ export default function ProfileFeed({
     const init = async () => {
       // Privacy: Only use user's own relays + defaults, never connect to other users' relays
       const myRelayList = myPubkey ? await client.fetchRelayList(myPubkey) : { write: [], read: [] }
-      const userRelays = myRelayList.read.concat(BIG_RELAY_URLS)
+      const userRelays = [...myRelayList.read, ...BIG_RELAY_URLS]
 
       if (listMode === 'you') {
         if (!myPubkey) {

@@ -6,7 +6,6 @@ import { createPollResponseDraftEvent } from '@/lib/draft-event'
 import { getPollMetadataFromEvent } from '@/lib/event-metadata'
 import { cn, isPartiallyInViewport } from '@/lib/utils'
 import { useNostr } from '@/providers/NostrProvider'
-import client from '@/services/client.service'
 import pollResultsService from '@/services/poll-results.service'
 import dayjs from 'dayjs'
 import { CheckCircle2, Loader2 } from 'lucide-react'
@@ -251,7 +250,7 @@ export default function Poll({ event, className }: { event: Event; className?: s
   )
 }
 
-async function ensurePollRelays(creator: string, poll: { relayUrls: string[] }) {
+async function ensurePollRelays(_creator: string, poll: { relayUrls: string[] }) {
   const relays = poll.relayUrls.slice(0, 4)
   // Privacy: Use defaults instead of fetching creator's relays
   if (!relays.length) {
