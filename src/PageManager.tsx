@@ -258,14 +258,8 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   }
 
   const pushSecondaryPage = (url: string, index?: number) => {
-    console.log('🔗 pushSecondaryPage called with:', url)
     setSecondaryStack((prevStack) => {
-      console.log('🔗 Current stack:', prevStack.map(item => ({ url: item.url, index: item.index })))
-      const isCurrent = isCurrentPage(prevStack, url)
-      console.log('🔗 Is current page?', isCurrent)
-      
-      if (isCurrent) {
-        console.log('🔗 URL is current page, scrolling to top instead of navigating')
+      if (isCurrentPage(prevStack, url)) {
         const currentItem = prevStack[prevStack.length - 1]
         if (currentItem?.ref?.current) {
           currentItem.ref.current.scrollToTop('instant')
@@ -273,10 +267,8 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
         return prevStack
       }
 
-      console.log('🔗 Creating new page for URL:', url)
       const { newStack, newItem } = pushNewPageToStack(prevStack, url, maxStackSize, index)
       if (newItem) {
-        console.log('🔗 Pushing to history:', url)
         window.history.pushState({ index: newItem.index, url }, '', url)
       }
       return newStack

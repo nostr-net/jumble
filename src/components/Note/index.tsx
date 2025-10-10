@@ -149,26 +149,16 @@ export default function Note({
         </div>
         <div className="flex items-center gap-1">
           {event.kind === ExtendedKind.DISCUSSION && (
-            <>
-              {console.log('🔍 Discussion button should render:', { eventKind: event.kind, discussionKind: ExtendedKind.DISCUSSION })}
-              <button
+            <button
               className="p-1 hover:bg-muted rounded transition-colors"
               onClick={(e) => {
                 e.stopPropagation()
-                console.log('🔗 View in Discussions clicked:', {
-                  eventId: event.id,
-                  eventKind: event.kind,
-                  noteUrl: toNote(event)
-                })
-                console.log('🔗 About to call push with:', toNote(event))
                 push(toNote(event))
-                console.log('🔗 Push called successfully')
               }}
               title="View in Discussions"
-              >
-                <MessageSquare className="w-4 h-4 text-blue-500" />
-              </button>
-            </>
+            >
+              <MessageSquare className="w-4 h-4 text-blue-500" />
+            </button>
           )}
           <TranslateButton event={event} className={size === 'normal' ? '' : 'pr-0'} />
           {size === 'normal' && (
