@@ -64,6 +64,9 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
     if (relaySource === 'multiple') {
       return t('Multiple Relays')
     }
+    if (relaySource === 'unknown') {
+      return t('Unknown Relay')
+    }
     return relaySource.replace('wss://', '').replace('ws://', '')
   }
 

@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { DEFAULT_FAVORITE_RELAYS, FAST_READ_RELAY_URLS } from '@/constants'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
@@ -21,7 +22,7 @@ import { kinds } from 'nostr-tools'
 
 const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
-  const { favoriteRelays } = useFavoriteRelays()
+  const { favoriteRelays, relaySets } = useFavoriteRelays()
   const { pubkey } = useNostr()
   const { push } = useSecondaryPage()
   const [selectedTopic, setSelectedTopic] = useState('all')
@@ -49,10 +50,18 @@ const DiscussionsPage = forwardRef((_, ref) => {
 
   // Memoize relay URLs with deduplication
   const relayUrls = useMemo(() => {
-    if (selectedRelay) return [selectedRelay]
+    if (selectedRelay) {
+      // Check if it's a relay set
+      const relaySet = relaySets.find(set => set.id === selectedRelay)
+      if (relaySet) {
+        return relaySet.relayUrls
+      }
+      // It's an individual relay
+      return [selectedRelay]
+    }
     // Deduplicate and combine relays
     return Array.from(new Set([...availableRelays, ...FAST_READ_RELAY_URLS]))
-  }, [selectedRelay, availableRelays])
+  }, [selectedRelay, availableRelays, relaySets])
 
   // Available topic IDs for matching
   const availableTopicIds = useMemo(() => 
@@ -123,10 +132,16 @@ const DiscussionsPage = forwardRef((_, ref) => {
           const titleTag = event.tags.find(tag => tag[0] === 'title' && tag[1])
           return titleTag && event.content.trim().length > 0
         })
-        .map(event => ({
-          ...event,
-          _relaySource: selectedRelay || 'multiple'
-        }))
+        .map(event => {
+          // Get the relay where this event was actually found
+          const eventHints = client.getEventHints(event.id)
+          const relaySource = eventHints.length > 0 ? eventHints[0] : 'unknown'
+          
+          return {
+            ...event,
+            _relaySource: relaySource
+          }
+        })
 
       setAllThreads(validThreads)
     } catch (error) {
@@ -440,19 +455,41 @@ const DiscussionsPage = forwardRef((_, ref) => {
               threads={viewMode === 'grouped' && selectedTopic === 'all' ? allThreads : threads}
               replies={[]}
             />
-            {availableRelays.length > 1 && (
-              <select
-                value={selectedRelay || ''}
-                onChange={(e) => setSelectedRelay(e.target.value || null)}
-                className="px-3 h-10 rounded border bg-background text-sm"
-              >
-                <option value="">All Relays</option>
-                {availableRelays.map(relay => (
-                  <option key={relay} value={relay}>
-                    {relay.replace('wss://', '').replace('ws://', '')}
-                  </option>
-                ))}
-              </select>
+            {(availableRelays.length > 1 || relaySets.length > 0) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="h-10 text-sm">
+                    {selectedRelay ? (
+                      relaySets.find(set => set.id === selectedRelay)?.name || 
+                      selectedRelay.replace('wss://', '').replace('ws://', '')
+                    ) : (
+                      'All Relays'
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => setSelectedRelay(null)}>
+                    All Relays
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {relaySets.map(relaySet => (
+                    <DropdownMenuItem 
+                      key={relaySet.id} 
+                      onClick={() => setSelectedRelay(relaySet.id)}
+                    >
+                      {relaySet.name}
+                    </DropdownMenuItem>
+                  ))}
+                  {availableRelays.map(relay => (
+                    <DropdownMenuItem 
+                      key={relay} 
+                      onClick={() => setSelectedRelay(relay)}
+                    >
+                      {relay.replace('wss://', '').replace('ws://', '')}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
           <div className="flex gap-1 items-center">
