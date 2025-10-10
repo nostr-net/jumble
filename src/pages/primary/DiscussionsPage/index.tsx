@@ -34,7 +34,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const [showCreateThread, setShowCreateThread] = useState(false)
   const [statsLoaded, setStatsLoaded] = useState(false)
   const [customVoteStats, setCustomVoteStats] = useState<Record<string, { upvotes: number; downvotes: number; score: number; controversy: number }>>({})
-  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
+  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped')
   const [groupedThreads, setGroupedThreads] = useState<Record<string, NostrEvent[]>>({})
   
   // Search and filter state for readings
@@ -93,7 +93,6 @@ const DiscussionsPage = forwardRef((_, ref) => {
       return 0
     }
     const totalAmount = stats.zaps.reduce((sum, zap) => sum + zap.amount, 0)
-    console.log(`Thread ${thread.id}: ${stats.zaps.length} zaps, total amount: ${totalAmount}`)
     return totalAmount
   }, [])
 
@@ -114,16 +113,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
           limit: 100
         }
       ])
-      console.log('Fetched kind 11 events:', events.length)
       
       // Debug: Show date range of fetched events
-      if (events.length > 0) {
-        const dates = events.map(e => new Date(e.created_at * 1000))
-        const newest = new Date(Math.max(...dates.map(d => d.getTime())))
-        const oldest = new Date(Math.min(...dates.map(d => d.getTime())))
-        console.log(`Date range: ${oldest.toISOString()} to ${newest.toISOString()}`)
-        console.log(`Newest thread is ${Math.floor((Date.now() - newest.getTime()) / (1000 * 60 * 60 * 24))} days old`)
-      }
 
       // Filter and sort threads
       const validThreads = events
@@ -153,10 +144,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
   useEffect(() => {
     // Only wait for stats for vote-based sorting
     if ((selectedSort === 'top' || selectedSort === 'controversial') && !statsLoaded) {
-      console.log('Waiting for stats to load before sorting...')
       return
     }
-    console.log('Running filterThreadsByTopic with selectedSort:', selectedSort, 'statsLoaded:', statsLoaded, 'viewMode:', viewMode, 'selectedTopic:', selectedTopic)
     filterThreadsByTopic()
   }, [allThreads, selectedTopic, selectedSubtopic, selectedSort, statsLoaded, viewMode, searchQuery, filterBy])
 
@@ -164,7 +153,6 @@ const DiscussionsPage = forwardRef((_, ref) => {
   useEffect(() => {
     if ((selectedSort === 'top' || selectedSort === 'controversial') && allThreads.length > 0) {
       setStatsLoaded(false)
-      console.log('Fetching vote stats for', allThreads.length, 'threads from relays:', selectedRelay || availableRelays)
       
       // Use the same relay selection as thread fetching
       const relayUrls = selectedRelay ? [selectedRelay] : availableRelays
@@ -199,14 +187,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
         
         setCustomVoteStats(newCustomStats)
         setStatsLoaded(true)
-        console.log(`Vote stats fetch completed for ${allThreads.length} threads`)
       }).catch((error) => {
         console.error('Error fetching vote stats:', error)
         setStatsLoaded(true)
       })
     } else {
       setStatsLoaded(true) // For non-vote-based sorting, stats don't matter
-      console.log('Set statsLoaded to true for non-vote sorting')
     }
   }, [selectedSort, allThreads, selectedRelay, availableRelays])
 
@@ -270,29 +256,13 @@ const DiscussionsPage = forwardRef((_, ref) => {
     // Apply search and filter for readings (handled in display logic)
 
     // Apply sorting based on selectedSort
-    console.log('Sorting by:', selectedSort, 'with', threadsForTopic.length, 'threads')
-    
-    // Debug: show timestamps before sorting
-    if (selectedSort === 'newest' || selectedSort === 'oldest') {
-      console.log('Timestamps before sorting:', threadsForTopic.map(t => ({
-        id: t.id.slice(0, 8),
-        created_at: t.created_at,
-        date: new Date(t.created_at * 1000).toISOString()
-      })))
-    }
     
     switch (selectedSort) {
       case 'newest':
-        console.log('BEFORE newest sort - first 3 threads:', threadsForTopic.slice(0, 3).map(t => ({
-          id: t.id.slice(0, 8),
-          created_at: t.created_at,
-          date: new Date(t.created_at * 1000).toISOString()
-        })))
         
         // Create a new sorted array instead of mutating
         const sortedNewest = [...threadsForTopic].sort((a, b) => {
           const result = b.created_at - a.created_at
-          console.log(`Comparing ${a.id.slice(0,8)} (${new Date(a.created_at * 1000).toISOString()}) vs ${b.id.slice(0,8)} (${new Date(b.created_at * 1000).toISOString()}) = ${result}`)
           return result
         })
         
@@ -300,11 +270,6 @@ const DiscussionsPage = forwardRef((_, ref) => {
         threadsForTopic.length = 0
         threadsForTopic.push(...sortedNewest)
         
-        console.log('AFTER newest sort - first 3 threads:', threadsForTopic.slice(0, 3).map(t => ({
-          id: t.id.slice(0, 8),
-          created_at: t.created_at,
-          date: new Date(t.created_at * 1000).toISOString()
-        })))
         break
       case 'oldest':
         // Create a new sorted array instead of mutating
@@ -314,14 +279,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
         threadsForTopic.length = 0
         threadsForTopic.push(...sortedOldest)
         
-        console.log('Sorted by oldest - first thread created_at:', new Date(threadsForTopic[0]?.created_at * 1000), 'last thread created_at:', new Date(threadsForTopic[threadsForTopic.length - 1]?.created_at * 1000))
         break
       case 'top':
         // Sort by vote score (upvotes - downvotes), then by newest if tied
         const sortedTop = [...threadsForTopic].sort((a, b) => {
           const scoreA = getThreadVoteScore(a)
           const scoreB = getThreadVoteScore(b)
-          console.log(`Comparing ${a.id.slice(0,8)} (score: ${scoreA}) vs ${b.id.slice(0,8)} (score: ${scoreB})`)
           if (scoreA !== scoreB) {
             return scoreB - scoreA // Higher scores first
           }
@@ -332,14 +295,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
         threadsForTopic.length = 0
         threadsForTopic.push(...sortedTop)
         
-        console.log('Sorted by top (vote score)')
         break
       case 'controversial':
         // Sort by controversy score (min of upvotes and downvotes), then by newest if tied
         const sortedControversial = [...threadsForTopic].sort((a, b) => {
           const controversyA = getThreadControversyScore(a)
           const controversyB = getThreadControversyScore(b)
-          console.log(`Comparing ${a.id.slice(0,8)} (controversy: ${controversyA}) vs ${b.id.slice(0,8)} (controversy: ${controversyB})`)
           if (controversyA !== controversyB) {
             return controversyB - controversyA // Higher controversy first
           }
@@ -350,14 +311,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
         threadsForTopic.length = 0
         threadsForTopic.push(...sortedControversial)
         
-        console.log('Sorted by controversial')
         break
       case 'most-zapped':
         // Sort by total zap amount, then by newest if tied
         const sortedMostZapped = [...threadsForTopic].sort((a, b) => {
           const zapAmountA = getThreadZapAmount(a)
           const zapAmountB = getThreadZapAmount(b)
-          console.log(`Comparing ${a.id.slice(0,8)} (zaps: ${zapAmountA}) vs ${b.id.slice(0,8)} (zaps: ${zapAmountB})`)
           if (zapAmountA !== zapAmountB) {
             return zapAmountB - zapAmountA // Higher zap amounts first
           }
@@ -367,14 +326,11 @@ const DiscussionsPage = forwardRef((_, ref) => {
         // Replace the original array
         threadsForTopic.length = 0
         threadsForTopic.push(...sortedMostZapped)
-        
-        console.log('Sorted by most zapped')
         break
       default:
         const sortedDefault = [...threadsForTopic].sort((a, b) => b.created_at - a.created_at)
         threadsForTopic.length = 0
         threadsForTopic.push(...sortedDefault)
-        console.log('Sorted by default (newest)')
     }
 
     // If grouped view and showing all topics, group threads by topic
@@ -396,9 +352,19 @@ const DiscussionsPage = forwardRef((_, ref) => {
         groupedThreads[topic] = sortThreads(groupedThreads[topic])
       })
 
+      // Sort groups by the newest thread in each group
+      const sortedGroupedThreads = Object.fromEntries(
+        Object.entries(groupedThreads)
+          .sort(([, threadsA], [, threadsB]) => {
+            // Get the newest thread from each group
+            const newestA = threadsA[0]?.created_at || 0 // First thread is newest after sorting
+            const newestB = threadsB[0]?.created_at || 0
+            return newestB - newestA // Newest groups first
+          })
+      )
+
       // Store grouped data in a different state
-      console.log('Setting grouped threads:', groupedThreads)
-      setGroupedThreads(groupedThreads)
+      setGroupedThreads(sortedGroupedThreads)
       setThreads([]) // Clear flat threads
     } else {
       // Flat view or specific topic selected
@@ -471,7 +437,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                 setSelectedTopic(topic)
                 setSelectedSubtopic(null) // Reset subtopic when changing topic
               }}
-              threads={threads}
+              threads={viewMode === 'grouped' && selectedTopic === 'all' ? allThreads : threads}
               replies={[]}
             />
             {availableRelays.length > 1 && (

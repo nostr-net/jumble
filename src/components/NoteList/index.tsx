@@ -81,16 +81,11 @@ const NoteList = forwardRef(
         
         // Special handling for zaps - always check threshold, then check hideReplies for non-zap replies
         if (evt.kind === kinds.Zap) {
-          console.log(`[NoteList] Processing zap ${evt.id.slice(0, 8)}: isReply=${isReplyNoteEvent(evt)}, hideReplies=${hideReplies}`)
           const zapInfo = getZapInfoFromEvent(evt)
-          console.log(`[NoteList] Zap ${evt.id.slice(0, 8)}: amount=${zapInfo?.amount} sats, threshold=${zapReplyThreshold}`)
           
           // Always filter zaps by threshold regardless of hideReplies setting
           if (zapInfo && zapInfo.amount < zapReplyThreshold) {
-            console.log(`[NoteList] HIDING zap ${evt.id.slice(0, 8)}: ${zapInfo.amount} < ${zapReplyThreshold} (threshold filter)`)
             return true
-          } else {
-            console.log(`[NoteList] SHOWING zap ${evt.id.slice(0, 8)}: ${zapInfo?.amount} >= ${zapReplyThreshold}`)
           }
         } else if (hideReplies && isReplyNoteEvent(evt)) {
           return true

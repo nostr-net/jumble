@@ -176,13 +176,6 @@ export default function CreateThreadDialog({
         created_at: dayjs().unix()
       }
       
-      console.log('Creating kind 11 thread event:', {
-        kind: threadEvent.kind,
-        content: threadEvent.content.substring(0, 50) + '...',
-        tags: threadEvent.tags,
-        selectedRelay,
-        minPow
-      })
       
       // Publish to the selected relay only
       const publishedEvent = await publish(threadEvent, {
@@ -190,7 +183,6 @@ export default function CreateThreadDialog({
         minPow
       })
       
-      console.log('Published event result:', publishedEvent)
       
       if (publishedEvent) {
         onThreadCreated()
