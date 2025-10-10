@@ -21,6 +21,7 @@ import DefaultZapAmountInput from './DefaultZapAmountInput'
 import DefaultZapCommentInput from './DefaultZapCommentInput'
 import LightningAddressInput from './LightningAddressInput'
 import QuickZapSwitch from './QuickZapSwitch'
+import ZapReplyThresholdInput from './ZapReplyThresholdInput'
 
 const WalletPage = forwardRef(({ index }: { index?: number }, ref) => {
   const { t } = useTranslation()
@@ -29,55 +30,60 @@ const WalletPage = forwardRef(({ index }: { index?: number }, ref) => {
 
   return (
     <SecondaryPageLayout ref={ref} index={index} title={t('Wallet')}>
-      {isWalletConnected ? (
-        <div className="px-4 pt-3 space-y-4">
-          <div>
-            {walletInfo?.node.alias && (
-              <div className="mb-2">
-                {t('Connected to')} <strong>{walletInfo.node.alias}</strong>
-              </div>
-            )}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive">{t('Disconnect Wallet')}</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>{t('Are you absolutely sure?')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('You will not be able to send zaps to others.')}
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
-                  <AlertDialogAction variant="destructive" onClick={() => disconnect()}>
-                    {t('Disconnect')}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+      <div className="px-4 pt-3 space-y-4">
+        {isWalletConnected ? (
+          <>
+            <div>
+              {walletInfo?.node.alias && (
+                <div className="mb-2">
+                  {t('Connected to')} <strong>{walletInfo.node.alias}</strong>
+                </div>
+              )}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive">{t('Disconnect Wallet')}</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>{t('Are you absolutely sure?')}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t('You will not be able to send zaps to others.')}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+                    <AlertDialogAction variant="destructive" onClick={() => disconnect()}>
+                      {t('Disconnect')}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+            <DefaultZapAmountInput />
+            <DefaultZapCommentInput />
+            <QuickZapSwitch />
+            <LightningAddressInput />
+          </>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button className="bg-foreground hover:bg-foreground/90" onClick={() => push(toRizful())}>
+              {t('Start with a Rizful Vault')}
+            </Button>
+            <Button
+              variant="link"
+              className="text-muted-foreground hover:text-foreground px-0"
+              onClick={() => {
+                launchModal()
+              }}
+            >
+              {t('or other wallets')}
+            </Button>
           </div>
-          <DefaultZapAmountInput />
-          <DefaultZapCommentInput />
-          <QuickZapSwitch />
-          <LightningAddressInput />
-        </div>
-      ) : (
-        <div className="px-4 pt-3 flex items-center gap-2">
-          <Button className="bg-foreground hover:bg-foreground/90" onClick={() => push(toRizful())}>
-            {t('Start with a Rizful Vault')}
-          </Button>
-          <Button
-            variant="link"
-            className="text-muted-foreground hover:text-foreground px-0"
-            onClick={() => {
-              launchModal()
-            }}
-          >
-            {t('or other wallets')}
-          </Button>
-        </div>
-      )}
+        )}
+        
+        {/* Zap Reply Threshold - always visible as it's just a display setting */}
+        <ZapReplyThresholdInput />
+      </div>
     </SecondaryPageLayout>
   )
 })

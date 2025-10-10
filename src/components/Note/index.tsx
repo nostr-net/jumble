@@ -32,6 +32,7 @@ import Poll from './Poll'
 import UnknownNote from './UnknownNote'
 import VideoNote from './VideoNote'
 import RelayReview from './RelayReview'
+import Zap from './Zap'
 
 export default function Note({
   event,
@@ -67,7 +68,9 @@ export default function Note({
       kinds.CommunityDefinition,
       kinds.LiveEvent,
       ExtendedKind.GROUP_METADATA,
-      ExtendedKind.PUBLIC_MESSAGE
+      ExtendedKind.PUBLIC_MESSAGE,
+      ExtendedKind.ZAP_REQUEST,
+      ExtendedKind.ZAP_RECEIPT
     ].includes(event.kind)
   ) {
     content = <UnknownNote className="mt-2" event={event} />
@@ -115,6 +118,8 @@ export default function Note({
     content = <RelayReview className="mt-2" event={event} />
   } else if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
     content = <Content className="mt-2" event={event} />
+  } else if (event.kind === ExtendedKind.ZAP_REQUEST || event.kind === ExtendedKind.ZAP_RECEIPT) {
+    content = <Zap className="mt-2" event={event} />
   } else {
     content = <Content className="mt-2" event={event} />
   }

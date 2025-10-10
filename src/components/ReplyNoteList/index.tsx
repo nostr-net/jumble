@@ -9,6 +9,7 @@ import {
   isReplaceableEvent,
   isReplyNoteEvent
 } from '@/lib/event'
+import { getZapInfoFromEvent } from '@/lib/event-metadata'
 import { toNote } from '@/lib/link'
 import { generateBech32IdFromETag, tagNameEquals } from '@/lib/tag'
 import { useSecondaryPage } from '@/PageManager'
@@ -17,6 +18,7 @@ import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
+import { useZap } from '@/providers/ZapProvider'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
 import { Filter, Event as NEvent, kinds } from 'nostr-tools'
@@ -33,7 +35,7 @@ type TRootInfo =
 const LIMIT = 100
 const SHOW_COUNT = 10
 
-export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
+function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
   const { t } = useTranslation()
   const { push, currentIndex } = useSecondaryPage()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
@@ -42,6 +44,8 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
   const { relayList: userRelayList } = useNostr()
   const [rootInfo, setRootInfo] = useState<TRootInfo | undefined>(undefined)
   const { repliesMap, addReplies } = useReply()
+  const [zapEvents, setZapEvents] = useState<NEvent[]>([])
+  const { zapReplyThreshold } = useZap()
 
   // Helper function to get vote score for a reply
   const getReplyVoteScore = (reply: NEvent) => {
@@ -83,6 +87,10 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
     return totalAmount
   }
   const replies = useMemo(() => {
+    console.log(`[ReplyNoteList] Processing replies for event ${event.id.slice(0, 8)}...`)
+    console.log(`[ReplyNoteList] zapEvents.length: ${zapEvents.length}`)
+    console.log(`[ReplyNoteList] zapReplyThreshold: ${zapReplyThreshold}`)
+    
     const replyIdSet = new Set<string>()
     const replyEvents: NEvent[] = []
     const currentEventKey = isReplaceableEvent(event.kind)
@@ -101,6 +109,46 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
       })
       parentEventKeys = events.map((evt) => evt.id)
     }
+
+    // Add zap receipts that are above the threshold
+    console.log(`========== ZAP FILTERING START ==========`)
+    console.log(`Processing ${zapEvents.length} zap events with threshold ${zapReplyThreshold} sats`)
+    zapEvents.forEach((zapEvt) => {
+      console.log(`\n--- Processing zap: ${zapEvt.id.slice(0, 8)}... ---`)
+      console.log(`Created: ${new Date(zapEvt.created_at * 1000).toISOString()}`)
+      
+      if (replyIdSet.has(zapEvt.id)) {
+        console.log(`❌ Already in set, skipping`)
+        return
+      }
+      if (mutePubkeySet.has(zapEvt.pubkey)) {
+        console.log(`❌ From muted user, skipping`)
+        return
+      }
+      
+      const zapInfo = getZapInfoFromEvent(zapEvt)
+      
+      if (!zapInfo) {
+        console.log(`❌ No valid zapInfo`)
+        return
+      }
+      
+      console.log(`💰 Zap amount: ${zapInfo.amount} sats`)
+      console.log(`🎯 Threshold: ${zapReplyThreshold} sats`)
+      console.log(`🔢 Comparison: ${zapInfo.amount} >= ${zapReplyThreshold} = ${zapInfo.amount >= zapReplyThreshold}`)
+      
+      if (zapInfo.amount >= zapReplyThreshold) {
+        console.log(`✅ PASSED - Adding to replies`)
+        replyIdSet.add(zapEvt.id)
+        replyEvents.push(zapEvt)
+      } else {
+        console.log(`❌ FILTERED OUT - ${zapInfo.amount} < ${zapReplyThreshold}`)
+      }
+    })
+    console.log(`\n========== ZAP FILTERING END ==========`)
+    console.log(`Total zaps that passed: ${replyEvents.filter(e => e.kind === kinds.Zap).length}`)
+    console.log(`Total reply events: ${replyEvents.length}`)
+
     // Apply sorting based on the sort parameter
     switch (sort) {
       case 'oldest':
@@ -140,7 +188,7 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
       default:
         return replyEvents.sort((a, b) => b.created_at - a.created_at)
     }
-  }, [event.id, repliesMap, sort])
+  }, [event.id, repliesMap, zapEvents, zapReplyThreshold, mutePubkeySet, hideContentMentioningMutedUsers, sort])
   const [timelineKey, setTimelineKey] = useState<string | undefined>(undefined)
   const [until, setUntil] = useState<number | undefined>(undefined)
   const [loading, setLoading] = useState<boolean>(false)
@@ -215,16 +263,18 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
   useEffect(() => {
     if (loading || !rootInfo || currentIndex !== index) return
 
-    const init = async () => {
-      setLoading(true)
+        const init = async () => {
+          setLoading(true)
 
-      try {
-        // Privacy: Only use user's own relays + defaults, never connect to other users' relays
-        const userRelays = userRelayList?.read || []
-        const finalRelayUrls = Array.from(new Set([
-          ...FAST_READ_RELAY_URLS, // Fast, well-connected relays
-          ...userRelays // User's mailbox relays
-        ]))
+          try {
+            console.log(`[ReplyNoteList] Starting init with rootInfo:`, rootInfo)
+            
+            // Privacy: Only use user's own relays + defaults, never connect to other users' relays
+            const userRelays = userRelayList?.read || []
+            const finalRelayUrls = Array.from(new Set([
+              ...FAST_READ_RELAY_URLS, // Fast, well-connected relays
+              ...userRelays // User's mailbox relays
+            ]))
 
         const filters: (Omit<Filter, 'since' | 'until'> & {
           limit: number
@@ -273,6 +323,29 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
             limit: LIMIT
           })
         }
+
+        // Fetch zap receipts for the event
+        if (rootInfo.type === 'E') {
+          console.log(`[ReplyNoteList] Adding zap filter for E type: #e=[${rootInfo.id}], kinds=[${kinds.Zap}]`)
+          filters.push({
+            '#e': [rootInfo.id],
+            kinds: [kinds.Zap],
+            limit: LIMIT
+          })
+        } else if (rootInfo.type === 'A') {
+          console.log(`[ReplyNoteList] Adding zap filter for A type: #a=[${rootInfo.id}], kinds=[${kinds.Zap}]`)
+          filters.push({
+            '#a': [rootInfo.id],
+            kinds: [kinds.Zap],
+            limit: LIMIT
+          })
+        }
+        
+        console.log(`[ReplyNoteList] Total filters: ${filters.length}`)
+        filters.forEach((filter, i) => {
+          console.log(`[ReplyNoteList] Filter ${i}:`, filter)
+        })
+
         const { closer, timelineKey } = await client.subscribeTimeline(
           filters.map((filter) => ({
             urls: finalRelayUrls.slice(0, 8), // Increased from 5 to 8 for better coverage
@@ -281,7 +354,21 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
           {
             onEvents: (evts, eosed) => {
               if (evts.length > 0) {
-                addReplies(evts.filter((evt) => isReplyNoteEvent(evt)))
+                const regularReplies = evts.filter((evt) => isReplyNoteEvent(evt))
+                const zaps = evts.filter((evt) => evt.kind === kinds.Zap)
+
+                console.log(`[ReplyNoteList] Received ${evts.length} events: ${regularReplies.length} regular replies, ${zaps.length} zaps`)
+
+                addReplies(regularReplies)
+                if (zaps.length > 0) {
+                  console.log(`[ReplyNoteList] Adding ${zaps.length} new zap events`)
+                  setZapEvents(prev => {
+                    const zapIdSet = new Set(prev.map(z => z.id))
+                    const newZaps = zaps.filter(z => !zapIdSet.has(z.id))
+                    console.log(`[ReplyNoteList] ${newZaps.length} are actually new (not duplicates)`)
+                    return [...prev, ...newZaps]
+                  })
+                }
               }
               if (eosed) {
                 setUntil(evts.length >= LIMIT ? evts[evts.length - 1].created_at - 1 : undefined)
@@ -289,8 +376,19 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
               }
             },
             onNew: (evt) => {
-              if (!isReplyNoteEvent(evt)) return
-              addReplies([evt])
+              if (evt.kind === kinds.Zap) {
+                console.log(`[ReplyNoteList] New zap event received: ${evt.id.slice(0, 8)}...`)
+                setZapEvents(prev => {
+                  if (prev.some(z => z.id === evt.id)) {
+                    console.log(`[ReplyNoteList] Zap ${evt.id.slice(0, 8)} already exists, skipping`)
+                    return prev
+                  }
+                  console.log(`[ReplyNoteList] Adding new zap: ${evt.id.slice(0, 8)}...`)
+                  return [...prev, evt]
+                })
+              } else if (isReplyNoteEvent(evt)) {
+                addReplies([evt])
+              }
             }
           }
         )
@@ -426,3 +524,5 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
     </div>
   )
 }
+
+export default ReplyNoteList

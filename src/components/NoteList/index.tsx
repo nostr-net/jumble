@@ -6,16 +6,18 @@ import {
   isReplaceableEvent,
   isReplyNoteEvent
 } from '@/lib/event'
+import { getZapInfoFromEvent } from '@/lib/event-metadata'
 import { isTouchDevice } from '@/lib/utils'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useDeletedEvent } from '@/providers/DeletedEventProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
+import { useZap } from '@/providers/ZapProvider'
 import client from '@/services/client.service'
 import { TFeedSubRequest } from '@/types'
 import dayjs from 'dayjs'
-import { Event } from 'nostr-tools'
+import { Event, kinds } from 'nostr-tools'
 import {
   forwardRef,
   useCallback,
@@ -61,6 +63,7 @@ const NoteList = forwardRef(
     const { mutePubkeySet } = useMuteList()
     const { hideContentMentioningMutedUsers } = useContentPolicy()
     const { isEventDeleted } = useDeletedEvent()
+    const { zapReplyThreshold } = useZap()
     const [events, setEvents] = useState<Event[]>([])
     const [newEvents, setNewEvents] = useState<Event[]>([])
     const [hasMore, setHasMore] = useState<boolean>(true)
@@ -75,7 +78,24 @@ const NoteList = forwardRef(
     const shouldHideEvent = useCallback(
       (evt: Event) => {
         if (isEventDeleted(evt)) return true
-        if (hideReplies && isReplyNoteEvent(evt)) return true
+        
+        // Special handling for zaps - always check threshold, then check hideReplies for non-zap replies
+        if (evt.kind === kinds.Zap) {
+          console.log(`[NoteList] Processing zap ${evt.id.slice(0, 8)}: isReply=${isReplyNoteEvent(evt)}, hideReplies=${hideReplies}`)
+          const zapInfo = getZapInfoFromEvent(evt)
+          console.log(`[NoteList] Zap ${evt.id.slice(0, 8)}: amount=${zapInfo?.amount} sats, threshold=${zapReplyThreshold}`)
+          
+          // Always filter zaps by threshold regardless of hideReplies setting
+          if (zapInfo && zapInfo.amount < zapReplyThreshold) {
+            console.log(`[NoteList] HIDING zap ${evt.id.slice(0, 8)}: ${zapInfo.amount} < ${zapReplyThreshold} (threshold filter)`)
+            return true
+          } else {
+            console.log(`[NoteList] SHOWING zap ${evt.id.slice(0, 8)}: ${zapInfo?.amount} >= ${zapReplyThreshold}`)
+          }
+        } else if (hideReplies && isReplyNoteEvent(evt)) {
+          return true
+        }
+        
         if (hideUntrustedNotes && !isUserTrusted(evt.pubkey)) return true
         if (filterMutedNotes && mutePubkeySet.has(evt.pubkey)) return true
         if (
@@ -88,7 +108,7 @@ const NoteList = forwardRef(
 
         return false
       },
-      [hideReplies, hideUntrustedNotes, mutePubkeySet, isEventDeleted]
+      [hideReplies, hideUntrustedNotes, mutePubkeySet, isEventDeleted, zapReplyThreshold]
     )
 
     const filteredEvents = useMemo(() => {

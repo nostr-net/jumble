@@ -5,7 +5,7 @@ import { buildATag } from './draft-event'
 import { getReplaceableEventIdentifier } from './event'
 import { getAmountFromInvoice, getLightningAddressFromProfile } from './lightning'
 import { formatPubkey, pubkeyToNpub } from './pubkey'
-import { generateBech32IdFromETag, tagNameEquals } from './tag'
+import { generateBech32IdFromATag, generateBech32IdFromETag, tagNameEquals } from './tag'
 import { isWebsocketUrl, normalizeHttpUrl, normalizeUrl } from './url'
 import { isTorBrowser } from './utils'
 
@@ -121,6 +121,10 @@ export function getZapInfoFromEvent(receiptEvent: Event) {
           originalEventId = tag[1]
           eventId = generateBech32IdFromETag(tag)
           break
+        case 'a':
+          originalEventId = tag[1]
+          eventId = generateBech32IdFromATag(tag)
+          break
         case 'bolt11':
           invoice = tagValue
           break
@@ -133,13 +137,31 @@ export function getZapInfoFromEvent(receiptEvent: Event) {
       }
     })
     if (!recipientPubkey || !invoice) return null
-    amount = invoice ? getAmountFromInvoice(invoice) : 0
+    
+    // Try to parse amount from invoice, fallback to description if invoice is invalid
+    try {
+      amount = getAmountFromInvoice(invoice)
+    } catch {
+      amount = 0
+    }
+    
     if (description) {
       try {
         const zapRequest = JSON.parse(description)
         comment = zapRequest.content
         if (!senderPubkey) {
           senderPubkey = zapRequest.pubkey
+        }
+        // If invoice parsing failed, try to get amount from zap request tags
+        if (amount === 0 && zapRequest.tags) {
+          const amountTag = zapRequest.tags.find((tag: string[]) => tag[0] === 'amount')
+          if (amountTag && amountTag[1]) {
+            const millisats = parseInt(amountTag[1])
+            amount = millisats / 1000 // Convert millisats to sats
+            console.log(`📝 Parsed amount from description tag: ${amountTag[1]} millisats = ${amount} sats`)
+          }
+        } else if (amount > 0) {
+          console.log(`📝 Parsed amount from invoice: ${amount} sats`)
         }
       } catch {
         // ignore

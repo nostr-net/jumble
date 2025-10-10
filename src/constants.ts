@@ -28,6 +28,7 @@ export const StorageKey = {
   DEFAULT_ZAP_SATS: 'defaultZapSats',
   DEFAULT_ZAP_COMMENT: 'defaultZapComment',
   QUICK_ZAP: 'quickZap',
+  ZAP_REPLY_THRESHOLD: 'zapReplyThreshold',
   LAST_READ_NOTIFICATION_TIME_MAP: 'lastReadNotificationTimeMap',
   ACCOUNT_FEED_INFO_MAP: 'accountFeedInfoMap',
   AUTOPLAY: 'autoplay',
@@ -125,7 +126,9 @@ export const ExtendedKind = {
   FAVORITE_RELAYS: 10012,
   BLOSSOM_SERVER_LIST: 10063,
   RELAY_REVIEW: 31987,
-  GROUP_METADATA: 39000
+  GROUP_METADATA: 39000,
+  ZAP_REQUEST: 9734,
+  ZAP_RECEIPT: 9735
 }
 
 export const SUPPORTED_KINDS = [
@@ -142,7 +145,8 @@ export const SUPPORTED_KINDS = [
   kinds.Highlights,
   kinds.LongFormArticle,
   ExtendedKind.RELAY_REVIEW,
-  ExtendedKind.DISCUSSION
+  ExtendedKind.DISCUSSION,
+  ExtendedKind.ZAP_RECEIPT
 ]
 
 export const URL_REGEX =

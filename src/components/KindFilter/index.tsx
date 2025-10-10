@@ -21,7 +21,8 @@ const KIND_FILTER_OPTIONS = [
   { kindGroup: [ExtendedKind.VOICE, ExtendedKind.VOICE_COMMENT], label: 'Voice Posts' },
   { kindGroup: [ExtendedKind.PICTURE], label: 'Photo Posts' },
   { kindGroup: [ExtendedKind.VIDEO, ExtendedKind.SHORT_VIDEO], label: 'Video Posts' },
-  { kindGroup: [ExtendedKind.DISCUSSION], label: 'Discussions' }
+  { kindGroup: [ExtendedKind.DISCUSSION], label: 'Discussions' },
+  { kindGroup: [ExtendedKind.ZAP_RECEIPT], label: 'Zaps' }
 ]
 
 export default function KindFilter({

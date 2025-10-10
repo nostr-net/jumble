@@ -26,6 +26,12 @@ export function isReplyNoteEvent(event: Event) {
   if ([ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT].includes(event.kind)) {
     return true
   }
+
+  // Zap receipts are considered replies if they have an 'e' tag (zapping a note) or 'a' tag (zapping an addressable event)
+  if (event.kind === kinds.Zap) {
+    return event.tags.some(tag => tag[0] === 'e' || tag[0] === 'a')
+  }
+
   if (event.kind !== kinds.ShortTextNote) return false
 
   const cache = EVENT_IS_REPLY_NOTE_CACHE.get(event.id)

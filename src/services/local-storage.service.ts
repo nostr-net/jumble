@@ -6,6 +6,7 @@ import {
   SUPPORTED_KINDS,
   StorageKey
 } from '@/constants'
+import { kinds } from 'nostr-tools'
 import { isSameAccount } from '@/lib/account'
 import { randomString } from '@/lib/random'
 import {
@@ -33,6 +34,7 @@ class LocalStorageService {
   private defaultZapSats: number = 21
   private defaultZapComment: string = 'Zap!'
   private quickZap: boolean = false
+  private zapReplyThreshold: number = 210
   private accountFeedInfoMap: Record<string, TFeedInfo | undefined> = {}
   private mediaUploadService: string = DEFAULT_NIP_96_SERVICE
   private autoplay: boolean = true
@@ -106,6 +108,14 @@ class LocalStorageService {
     this.defaultZapComment = window.localStorage.getItem(StorageKey.DEFAULT_ZAP_COMMENT) ?? 'Zap!'
     this.quickZap = window.localStorage.getItem(StorageKey.QUICK_ZAP) === 'true'
 
+    const zapReplyThresholdStr = window.localStorage.getItem(StorageKey.ZAP_REPLY_THRESHOLD)
+    if (zapReplyThresholdStr) {
+      const num = parseInt(zapReplyThresholdStr)
+      if (!isNaN(num)) {
+        this.zapReplyThreshold = num
+      }
+    }
+
     const accountFeedInfoMapStr =
       window.localStorage.getItem(StorageKey.ACCOUNT_FEED_INFO_MAP) ?? '{}'
     this.accountFeedInfoMap = JSON.parse(accountFeedInfoMapStr)
@@ -156,7 +166,8 @@ class LocalStorageService {
 
     const showKindsStr = window.localStorage.getItem(StorageKey.SHOW_KINDS)
     if (!showKindsStr) {
-      this.showKinds = SUPPORTED_KINDS
+      // Default: show all supported kinds except reposts
+      this.showKinds = SUPPORTED_KINDS.filter(kind => kind !== kinds.Repost)
     } else {
       const showKindsVersionStr = window.localStorage.getItem(StorageKey.SHOW_KINDS_VERSION)
       const showKindsVersion = showKindsVersionStr ? parseInt(showKindsVersionStr) : 0
@@ -164,10 +175,13 @@ class LocalStorageService {
       if (showKindsVersion < 1) {
         showKinds.push(ExtendedKind.VIDEO, ExtendedKind.SHORT_VIDEO)
       }
+      if (showKindsVersion < 2) {
+        showKinds.push(ExtendedKind.ZAP_RECEIPT)
+      }
       this.showKinds = showKinds
     }
     window.localStorage.setItem(StorageKey.SHOW_KINDS, JSON.stringify(this.showKinds))
-    window.localStorage.setItem(StorageKey.SHOW_KINDS_VERSION, '1')
+    window.localStorage.setItem(StorageKey.SHOW_KINDS_VERSION, '2')
 
     this.hideContentMentioningMutedUsers =
       window.localStorage.getItem(StorageKey.HIDE_CONTENT_MENTIONING_MUTED_USERS) === 'true'
@@ -308,6 +322,15 @@ class LocalStorageService {
   setQuickZap(quickZap: boolean) {
     this.quickZap = quickZap
     window.localStorage.setItem(StorageKey.QUICK_ZAP, quickZap.toString())
+  }
+
+  getZapReplyThreshold() {
+    return this.zapReplyThreshold
+  }
+
+  setZapReplyThreshold(sats: number) {
+    this.zapReplyThreshold = sats
+    window.localStorage.setItem(StorageKey.ZAP_REPLY_THRESHOLD, sats.toString())
   }
 
   getLastReadNotificationTime(pubkey: string) {
