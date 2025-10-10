@@ -2,6 +2,7 @@ import { ApplicationDataKey, EMBEDDED_EVENT_REGEX, ExtendedKind, POLL_TYPE } fro
 import client from '@/services/client.service'
 import customEmojiService from '@/services/custom-emoji.service'
 import mediaUpload from '@/services/media-upload.service'
+import { prefixNostrAddresses } from '@/lib/nostr-address'
 import {
   TDraftEvent,
   TEmoji,
@@ -112,7 +113,9 @@ export async function createShortTextNoteDraftEvent(
     isNsfw?: boolean
   } = {}
 ): Promise<TDraftEvent> {
-  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(content)
+  // Process content to prefix nostr addresses before other transformations
+  const contentWithPrefixedAddresses = prefixNostrAddresses(content)
+  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(contentWithPrefixedAddresses)
   const { quoteEventHexIds, quoteReplaceableCoordinates, rootETag, parentETag } =
     await extractRelatedEventIds(transformedEmojisContent, options.parentEvent)
   const hashtags = extractHashtags(transformedEmojisContent)
@@ -175,6 +178,7 @@ export function createRelaySetDraftEvent(relaySet: Omit<TRelaySet, 'aTag'>): TDr
   }
 }
 
+
 export async function createCommentDraftEvent(
   content: string,
   parentEvent: Event,
@@ -185,7 +189,9 @@ export async function createCommentDraftEvent(
     isNsfw?: boolean
   } = {}
 ): Promise<TDraftEvent> {
-  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(content)
+  // Process content to prefix nostr addresses before other transformations
+  const contentWithPrefixedAddresses = prefixNostrAddresses(content)
+  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(contentWithPrefixedAddresses)
   const {
     quoteEventHexIds,
     quoteReplaceableCoordinates,
@@ -265,7 +271,9 @@ export async function createPublicMessageReplyDraftEvent(
     isNsfw?: boolean
   } = {}
 ): Promise<TDraftEvent> {
-  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(content)
+  // Process content to prefix nostr addresses before other transformations
+  const contentWithPrefixedAddresses = prefixNostrAddresses(content)
+  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(contentWithPrefixedAddresses)
   const {
     quoteEventHexIds,
     quoteReplaceableCoordinates
@@ -332,7 +340,9 @@ export async function createPublicMessageDraftEvent(
     isNsfw?: boolean
   } = {}
 ): Promise<TDraftEvent> {
-  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(content)
+  // Process content to prefix nostr addresses before other transformations
+  const contentWithPrefixedAddresses = prefixNostrAddresses(content)
+  const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(contentWithPrefixedAddresses)
   const hashtags = extractHashtags(transformedEmojisContent)
 
   const tags = emojiTags

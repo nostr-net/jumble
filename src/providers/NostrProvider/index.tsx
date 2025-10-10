@@ -631,18 +631,29 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
     const relays = await client.determineTargetRelays(event, options)
 
-    const publishResult = await client.publishEvent(relays, event)
-    
-    console.log('Publish result:', publishResult)
-    
-    // Store relay status for display
-    if (publishResult.relayStatuses.length > 0) {
-      // We'll pass this to the UI components that need it
-      (event as any).relayStatuses = publishResult.relayStatuses
-      console.log('Attached relay statuses to event:', (event as any).relayStatuses)
+    try {
+      const publishResult = await client.publishEvent(relays, event)
+      
+      console.log('Publish result:', publishResult)
+      
+      // Store relay status for display
+      if (publishResult.relayStatuses.length > 0) {
+        // We'll pass this to the UI components that need it
+        (event as any).relayStatuses = publishResult.relayStatuses
+        console.log('Attached relay statuses to event:', (event as any).relayStatuses)
+      }
+      
+      return event
+    } catch (error) {
+      // Even if publishing fails, try to extract relay statuses from the error
+      if (error instanceof AggregateError && (error as any).relayStatuses) {
+        (event as any).relayStatuses = (error as any).relayStatuses
+        console.log('Attached relay statuses from error:', (event as any).relayStatuses)
+      }
+      
+      // Re-throw the error so the UI can handle it appropriately
+      throw error
     }
-    
-    return event
   }
 
   const attemptDelete = async (targetEvent: Event) => {

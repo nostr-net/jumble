@@ -12,6 +12,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
 import { TDraftEvent } from '@/types'
+import { prefixNostrAddresses } from '@/lib/nostr-address'
+import { showPublishingError } from '@/lib/publishing-feedback'
 import dayjs from 'dayjs'
 
 // Utility functions for thread creation
@@ -31,6 +33,7 @@ function buildNsfwTag(): string[] {
 function buildClientTag(): string[] {
   return ['client', 'jumble']
 }
+
 
 interface CreateThreadDialogProps {
   topic: string
@@ -125,7 +128,7 @@ export default function CreateThreadDialog({
     e.preventDefault()
     
     if (!pubkey) {
-      alert(t('You must be logged in to create a thread'))
+      showPublishingError(t('You must be logged in to create a thread'))
       return
     }
     
@@ -136,8 +139,11 @@ export default function CreateThreadDialog({
     setIsSubmitting(true)
     
     try {
-      // Extract images from content
-      const images = extractImagesFromContent(content.trim())
+      // Process content to prefix nostr addresses
+      const processedContent = prefixNostrAddresses(content.trim())
+      
+      // Extract images from processed content
+      const images = extractImagesFromContent(processedContent)
       
       // Build tags array
       const tags = [
@@ -171,7 +177,7 @@ export default function CreateThreadDialog({
       // Create the thread event (kind 11)
       const threadEvent: TDraftEvent = {
         kind: 11,
-        content: content.trim(),
+        content: processedContent,
         tags,
         created_at: dayjs().unix()
       }
@@ -219,7 +225,7 @@ export default function CreateThreadDialog({
         errorMessage = t('Failed to publish to some relays. Please try again or use different relays.')
       }
       
-      alert(errorMessage)
+      showPublishingError(errorMessage)
     } finally {
       setIsSubmitting(false)
     }

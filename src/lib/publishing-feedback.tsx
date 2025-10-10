@@ -39,10 +39,13 @@ export function showPublishingFeedback(
   }
 
   // Show toast with custom relay status display
-  toast.success(
+  const isSuccess = successCount > 0
+  const toastFunction = isSuccess ? toast.success : toast.error
+  
+  toastFunction(
     <div className="w-full">
       <div className="flex items-center gap-2 mb-3">
-        <CheckCircle2 className="w-5 h-5 text-green-500" />
+        <CheckCircle2 className={`w-5 h-5 ${isSuccess ? 'text-green-500' : 'text-red-500'}`} />
         <div className="font-semibold">{message}</div>
       </div>
       <div className="text-xs text-muted-foreground mb-2">

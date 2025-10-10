@@ -90,66 +90,22 @@ class ClientService extends EventTarget {
     { specifiedRelayUrls, additionalRelayUrls }: TPublishOptions = {}
   ) {
     let relays: string[]
-    if (specifiedRelayUrls?.length) {
+    
+    // Check if this is a discussion thread or reply to a discussion
+    const isDiscussionRelated = event.kind === ExtendedKind.DISCUSSION || 
+      event.tags.some(tag => tag[0] === 'k' && tag[1] === String(ExtendedKind.DISCUSSION))
+    
+    // Special handling for discussion-related events: try specified relay first, then fallback
+    if (specifiedRelayUrls?.length && (event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT)) {
+      // For discussion replies, try ONLY the specified relay first
+      // The fallback will be handled in the publishing logic if this fails
+      relays = specifiedRelayUrls
+      return relays
+    } else if (specifiedRelayUrls?.length) {
+      // For non-discussion events, use specified relays as-is
       relays = specifiedRelayUrls
     } else {
       const _additionalRelayUrls: string[] = additionalRelayUrls ?? []
-      
-      // Check if this is a discussion thread or reply to a discussion
-      const isDiscussionRelated = event.kind === ExtendedKind.DISCUSSION || 
-        event.tags.some(tag => tag[0] === 'k' && tag[1] === String(ExtendedKind.DISCUSSION))
-      
-      // Special handling for kind 11 (DISCUSSION) and kind 1111 (COMMENT/NIP-22)
-      // These should only be published to the relay where the original event was found
-      // or to the relay hint specified in the event tags
-      if (event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT) {
-        let rootEventId: string | undefined
-        let relayHint: string | undefined
-        
-        if (event.kind === ExtendedKind.COMMENT) {
-          // Kind 1111 (NIP-22 Comment): look for 'E' tag which points to the root event
-          // Format: ["E", "<id>", "<relay hint>", "<root pubkey>"]
-          const ETag = event.tags.find(tag => tag[0] === 'E')
-          if (ETag) {
-            rootEventId = ETag[1]
-            relayHint = ETag[2] // Relay hint is the 3rd element
-          }
-          
-          // If no 'E' tag, check lowercase 'e' tag for parent event
-          // This handles cases where we're replying to a reply
-          if (!rootEventId) {
-            const eTag = event.tags.find(tag => tag[0] === 'e')
-            if (eTag) {
-              rootEventId = eTag[1]
-              relayHint = eTag[2]
-            }
-          }
-        } else if (event.kind === ExtendedKind.DISCUSSION) {
-          // Kind 11 (DISCUSSION): this is the root event itself
-          // For new root events, we can use the specified relays or fall through to normal handling
-          // But for replies TO kind 11, we should have caught them as kind 1111 above
-          rootEventId = event.id
-        }
-        
-        // Priority 1: Use relay hint from the tag if present and valid
-        if (relayHint && isWebsocketUrl(relayHint)) {
-          const normalizedRelayHint = normalizeUrl(relayHint)
-          if (normalizedRelayHint) {
-            relays = [normalizedRelayHint]
-            return relays
-          }
-        }
-        
-        // Priority 2: Get relay where the root event was found
-        if (rootEventId) {
-          const originalEventRelays = this.getEventHints(rootEventId)
-          if (originalEventRelays.length > 0) {
-            // Only publish to the relay(s) where the original event was found
-            relays = originalEventRelays.slice(0, 1) // Use only the first relay for insular discussions
-            return relays
-          }
-        }
-      }
       
       // Publish to mentioned users' inboxes for all events EXCEPT discussions
       if (!isDiscussionRelated) {
@@ -209,6 +165,78 @@ class ClientService extends EventTarget {
     successCount: number
     totalCount: number
   }> {
+    // Special handling for discussion events: try relay hint first, then fallback
+    if ((event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT) && relayUrls.length === 1) {
+      try {
+        // Try publishing to the relay hint first
+        const result = await this._publishToRelays(relayUrls, event)
+        
+        // If successful, return the result
+        if (result.success) {
+          return result
+        }
+        
+        // If failed, try fallback relays
+        const userRelays = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
+        const fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
+        
+        console.log('Relay hint failed, trying fallback relays:', fallbackRelays)
+        const fallbackResult = await this._publishToRelays(fallbackRelays, event)
+        
+        // Combine relay statuses from both attempts
+        const combinedRelayStatuses = [...result.relayStatuses, ...fallbackResult.relayStatuses]
+        const combinedSuccessCount = combinedRelayStatuses.filter(s => s.success).length
+        
+        return {
+          success: combinedSuccessCount > 0,
+          relayStatuses: combinedRelayStatuses,
+          successCount: combinedSuccessCount,
+          totalCount: combinedRelayStatuses.length
+        }
+      } catch (error) {
+        // If relay hint throws an error, try fallback relays
+        console.log('Relay hint threw error, trying fallback relays:', error)
+        
+        // Extract relay statuses from the error if available
+        let hintRelayStatuses: any[] = []
+        if (error instanceof AggregateError && (error as any).relayStatuses) {
+          hintRelayStatuses = (error as any).relayStatuses
+        }
+        
+        const userRelays = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
+        const fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
+        
+        console.log('Trying fallback relays:', fallbackRelays)
+        const fallbackResult = await this._publishToRelays(fallbackRelays, event)
+        
+        // Combine relay statuses from both attempts
+        const combinedRelayStatuses = [...hintRelayStatuses, ...fallbackResult.relayStatuses]
+        const combinedSuccessCount = combinedRelayStatuses.filter(s => s.success).length
+        
+        return {
+          success: combinedSuccessCount > 0,
+          relayStatuses: combinedRelayStatuses,
+          successCount: combinedSuccessCount,
+          totalCount: combinedRelayStatuses.length
+        }
+      }
+    }
+    
+    // For non-discussion events, use normal publishing
+    return await this._publishToRelays(relayUrls, event)
+  }
+
+  private async _publishToRelays(relayUrls: string[], event: NEvent): Promise<{
+    success: boolean
+    relayStatuses: Array<{
+      url: string
+      success: boolean
+      error?: string
+      authAttempted?: boolean
+    }>
+    successCount: number
+    totalCount: number
+  }> {
     const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
     
     const relayStatuses: Array<{
@@ -258,21 +286,22 @@ class ClientService extends EventTarget {
             })
           } else {
             resolved = true
-            reject(
-              new AggregateError(
-                errors.map(
-                  ({ url, error }) => {
-                    let errorMsg = 'Unknown error'
-                    if (error instanceof Error) {
-                      errorMsg = error.message || 'Empty error message'
-                    } else if (error !== null && error !== undefined) {
-                      errorMsg = String(error)
-                    }
-                    return new Error(`Failed to publish to ${url}: ${errorMsg}`)
+            const aggregateError = new AggregateError(
+              errors.map(
+                ({ url, error }) => {
+                  let errorMsg = 'Unknown error'
+                  if (error instanceof Error) {
+                    errorMsg = error.message || 'Empty error message'
+                  } else if (error !== null && error !== undefined) {
+                    errorMsg = String(error)
                   }
-                )
+                  return new Error(`Failed to publish to ${url}: ${errorMsg}`)
+                }
               )
             )
+            // Attach relay statuses to the error so they can be displayed
+            ;(aggregateError as any).relayStatuses = relayStatuses
+            reject(aggregateError)
           }
         }
       }
@@ -1216,17 +1245,13 @@ class ClientService extends EventTarget {
       // Normalize relay URLs (remove trailing slashes for consistency)
       const normalizedUrls = relayUrls.map(url => url.endsWith('/') ? url.slice(0, -1) : url)
       
-      console.log(`Trying to fetch from ${normalizedUrls.length} relays:`, normalizedUrls)
       const events = await this.query(normalizedUrls, filter)
-      console.log(`Found ${events.length} events from relays`)
       
       if (events.length === 0) {
-        console.log('No events found, continuing to next tier')
         return undefined
       }
       
       const result = events.sort((a, b) => b.created_at - a.created_at)[0]
-      console.log('Found event:', result.id)
       return result
     } catch (error) {
       console.error('Error in tryHarderToFetchEvent:', error)

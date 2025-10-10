@@ -19,7 +19,7 @@ import { ImageUp, ListTodo, LoaderCircle, MessageCircle, Settings, Smile, X } fr
 import { Event, kinds } from 'nostr-tools'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { showPublishingFeedback, showSimplePublishSuccess } from '@/lib/publishing-feedback'
+import { showPublishingFeedback, showSimplePublishSuccess, showPublishingError } from '@/lib/publishing-feedback'
 import EmojiPickerDialog from '../EmojiPickerDialog'
 import Mentions, { extractMentions } from './Mentions'
 import PollEditor from './PollEditor'
@@ -261,7 +261,41 @@ export default function PostContent({
         close()
       } catch (error) {
         console.error('Publishing error:', error)
-        // Publishing errors are handled via relay status feedback
+        console.error('Error details:', {
+          name: error instanceof Error ? error.name : 'Unknown',
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        })
+        
+        // Check if we have relay statuses to display (even if publishing failed)
+        if (error instanceof AggregateError && (error as any).relayStatuses) {
+          const relayStatuses = (error as any).relayStatuses
+          const successCount = relayStatuses.filter((s: any) => s.success).length
+          const totalCount = relayStatuses.length
+          
+          // Show proper relay status feedback
+          showPublishingFeedback({
+            success: successCount > 0,
+            relayStatuses,
+            successCount,
+            totalCount
+          }, {
+            message: successCount > 0 ? 
+              (parentEvent ? t('Reply published to some relays') : t('Post published to some relays')) :
+              (parentEvent ? t('Failed to publish reply') : t('Failed to publish post')),
+            duration: 6000
+          })
+        } else {
+          // Use standard publishing error feedback for cases without relay statuses
+          if (error instanceof AggregateError) {
+            const errorMessages = error.errors.map((err: any) => err.message).join('; ')
+            showPublishingError(`Failed to publish to relays: ${errorMessages}`)
+          } else if (error instanceof Error) {
+            showPublishingError(error.message)
+          } else {
+            showPublishingError('Failed to publish')
+          }
+        }
       } finally {
         setPosting(false)
       }

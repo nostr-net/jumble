@@ -158,10 +158,7 @@ export function getZapInfoFromEvent(receiptEvent: Event) {
           if (amountTag && amountTag[1]) {
             const millisats = parseInt(amountTag[1])
             amount = millisats / 1000 // Convert millisats to sats
-            console.log(`📝 Parsed amount from description tag: ${amountTag[1]} millisats = ${amount} sats`)
           }
-        } else if (amount > 0) {
-          console.log(`📝 Parsed amount from invoice: ${amount} sats`)
         }
       } catch {
         // ignore
