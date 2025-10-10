@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { QrCodeIcon } from 'lucide-react'
@@ -50,6 +50,10 @@ export default function NpubQrCode({ pubkey }: { pubkey: string }) {
     <Dialog>
       <DialogTrigger>{trigger}</DialogTrigger>
       <DialogContent className="w-80 p-0 m-0" onOpenAutoFocus={(e) => e.preventDefault()}>
+        <DialogHeader className="sr-only">
+          <DialogTitle>Profile QR Code</DialogTitle>
+          <DialogDescription>Share your Nostr profile with a QR code</DialogDescription>
+        </DialogHeader>
         {content}
       </DialogContent>
     </Dialog>

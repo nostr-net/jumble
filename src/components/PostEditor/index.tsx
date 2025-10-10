@@ -2,7 +2,8 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader
+  DialogHeader,
+  DialogTitle
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -84,8 +85,9 @@ export default function PostEditor({
       >
         <ScrollArea className="px-4 h-full max-h-screen">
           <div className="space-y-4 px-2 py-6">
-            <DialogHeader>
-              <DialogDescription className="hidden" />
+            <DialogHeader className="sr-only">
+              <DialogTitle>Post Editor</DialogTitle>
+              <DialogDescription>Create a new post or reply</DialogDescription>
             </DialogHeader>
             {content}
           </div>
