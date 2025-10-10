@@ -51,6 +51,7 @@ export default function ReplyNote({
     return true
   }, [showMuted, mutePubkeySet, event, hideContentMentioningMutedUsers])
 
+
   return (
     <div
       className={`pb-3 border-b transition-colors duration-500 clickable ${highlight ? 'bg-primary/50' : ''}`}

@@ -128,7 +128,8 @@ export default function KindFilter({
         <Button
           variant="secondary"
           onClick={() => {
-            setTemporaryShowKinds(SUPPORTED_KINDS)
+            // Select all supported kinds except reposts (matching default behavior)
+            setTemporaryShowKinds(SUPPORTED_KINDS.filter(kind => kind !== kinds.Repost))
           }}
         >
           {t('Select All')}

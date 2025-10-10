@@ -32,16 +32,21 @@ export default function Zap({ event, className }: { event: Event; className?: st
       {/* Zapped note/profile link in top-right corner */}
       {(targetEvent || recipientPubkey) && (
         <button
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation()
             if (targetEvent) {
               push(toNote(targetEvent.id))
             } else if (recipientPubkey) {
               push(toProfile(recipientPubkey))
             }
           }}
-          className="absolute top-2 right-2 text-xs text-muted-foreground hover:text-foreground hover:underline"
+          className="absolute top-2 right-2 px-2 py-1 bg-white/80 dark:bg-black/40 border border-gray-200 dark:border-gray-700 rounded-md text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-black hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200 shadow-sm hover:shadow-md"
         >
-          {targetEvent ? t('Zapped note') : t('Zapped profile')}
+          {targetEvent ? (
+            <span className="font-mono text-[10px]">{zapInfo.eventId?.substring(0, 12)}...</span>
+          ) : (
+            t('Zapped profile')
+          )}
         </button>
       )}
       

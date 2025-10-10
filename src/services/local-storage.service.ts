@@ -178,10 +178,17 @@ class LocalStorageService {
       if (showKindsVersion < 2) {
         showKinds.push(ExtendedKind.ZAP_RECEIPT)
       }
+      if (showKindsVersion < 3) {
+        // Remove reposts from existing users' filters
+        const repostIndex = showKinds.indexOf(kinds.Repost)
+        if (repostIndex !== -1) {
+          showKinds.splice(repostIndex, 1)
+        }
+      }
       this.showKinds = showKinds
     }
     window.localStorage.setItem(StorageKey.SHOW_KINDS, JSON.stringify(this.showKinds))
-    window.localStorage.setItem(StorageKey.SHOW_KINDS_VERSION, '2')
+    window.localStorage.setItem(StorageKey.SHOW_KINDS_VERSION, '3')
 
     this.hideContentMentioningMutedUsers =
       window.localStorage.getItem(StorageKey.HIDE_CONTENT_MENTIONING_MUTED_USERS) === 'true'
