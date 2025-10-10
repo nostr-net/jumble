@@ -40,27 +40,26 @@ export default function ProfileFeed({
 
   useEffect(() => {
     const init = async () => {
+      // Privacy: Only use user's own relays + defaults, never connect to other users' relays
+      const myRelayList = myPubkey ? await client.fetchRelayList(myPubkey) : { write: [], read: [] }
+      const userRelays = myRelayList.read.concat(BIG_RELAY_URLS)
+
       if (listMode === 'you') {
         if (!myPubkey) {
           setSubRequests([])
           return
         }
 
-        const [relayList, myRelayList] = await Promise.all([
-          client.fetchRelayList(pubkey),
-          client.fetchRelayList(myPubkey)
-        ])
-
         setSubRequests([
           {
-            urls: myRelayList.write.concat(BIG_RELAY_URLS).slice(0, 5),
+            urls: userRelays.slice(0, 5),
             filter: {
               authors: [myPubkey],
               '#p': [pubkey]
             }
           },
           {
-            urls: relayList.write.concat(BIG_RELAY_URLS).slice(0, 5),
+            urls: userRelays.slice(0, 5),
             filter: {
               authors: [pubkey],
               '#p': [myPubkey]
@@ -70,10 +69,9 @@ export default function ProfileFeed({
         return
       }
 
-      const relayList = await client.fetchRelayList(pubkey)
       setSubRequests([
         {
-          urls: relayList.write.concat(BIG_RELAY_URLS).slice(0, 8),
+          urls: userRelays.slice(0, 8),
           filter: {
             authors: [pubkey]
           }
@@ -81,7 +79,7 @@ export default function ProfileFeed({
       ])
     }
     init()
-  }, [pubkey, listMode])
+  }, [pubkey, listMode, myPubkey])
 
   const handleListModeChange = (mode: TNoteListMode) => {
     setListMode(mode)

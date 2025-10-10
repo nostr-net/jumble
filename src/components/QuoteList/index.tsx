@@ -29,14 +29,9 @@ export default function QuoteList({ event, className }: { event: Event; classNam
       setEvents([])
       setHasMore(true)
 
-      const relayList = await client.fetchRelayList(event.pubkey)
-      // Include user's mailbox relays for better quote discovery
+      // Privacy: Only use user's own relays + defaults, never connect to other users' relays
       const userRelays = userRelayList?.read || []
-      const relayUrls = Array.from(new Set(relayList.read.concat(userRelays).concat(FAST_READ_RELAY_URLS)))
-      const seenOn = client.getSeenEventRelayUrls(event.id)
-      relayUrls.unshift(...seenOn)
-      // Deduplicate the final list including seenOn relays
-      const finalRelayUrls = Array.from(new Set(relayUrls))
+      const finalRelayUrls = Array.from(new Set(userRelays.concat(FAST_READ_RELAY_URLS)))
 
       const { closer, timelineKey } = await client.subscribeTimeline(
         [

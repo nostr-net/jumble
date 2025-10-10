@@ -61,22 +61,19 @@ export default function VoteButtons({ event }: { event: Event }) {
         if (existingVote) {
           // Remove vote by creating a reaction with the same emoji (this will toggle it off)
           const reaction = createReactionDraftEvent(event, emoji)
-          const seenOn = client.getSeenEventRelayUrls(event.id)
-          const evt = await publish(reaction, { additionalRelayUrls: seenOn })
+          const evt = await publish(reaction)
           noteStatsService.updateNoteStatsByEvents([evt])
         } else {
           // If user voted the opposite way, first remove the old vote
           if (userVote) {
             const oldEmoji = userVote === 'up' ? '⬆️' : '⬇️'
             const removeReaction = createReactionDraftEvent(event, oldEmoji)
-            const seenOn = client.getSeenEventRelayUrls(event.id)
-            await publish(removeReaction, { additionalRelayUrls: seenOn })
+            await publish(removeReaction)
           }
           
           // Then add the new vote
           const reaction = createReactionDraftEvent(event, emoji)
-          const seenOn = client.getSeenEventRelayUrls(event.id)
-          const evt = await publish(reaction, { additionalRelayUrls: seenOn })
+          const evt = await publish(reaction)
           noteStatsService.updateNoteStatsByEvents([evt])
         }
       } catch (error) {

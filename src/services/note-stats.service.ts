@@ -35,8 +35,9 @@ class NoteStatsService {
     if (oldStats?.updatedAt) {
       since = oldStats.updatedAt
     }
+    // Privacy: Only use current user's relays + defaults, never connect to other users' relays
     const [relayList, authorProfile] = await Promise.all([
-      client.fetchRelayList(event.pubkey),
+      pubkey ? client.fetchRelayList(pubkey) : Promise.resolve({ write: [], read: [] }),
       client.fetchProfile(event.pubkey)
     ])
 

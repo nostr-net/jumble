@@ -7,7 +7,7 @@ import {
 } from '@/lib/event'
 import { getProfileFromEvent, getRelayListFromEvent } from '@/lib/event-metadata'
 import { formatPubkey, isValidPubkey, pubkeyToNpub, userIdToPubkey } from '@/lib/pubkey'
-import { getPubkeysFromPTags, getServersFromServerTags, tagNameEquals } from '@/lib/tag'
+import { getPubkeysFromPTags, getServersFromServerTags } from '@/lib/tag'
 import { isLocalNetworkUrl, isWebsocketUrl, normalizeUrl } from '@/lib/url'
 import { isSafari } from '@/lib/utils'
 import { ISigner, TProfile, TPublishOptions, TRelayList, TSubRequestFilter } from '@/types'
@@ -93,19 +93,14 @@ class ClientService extends EventTarget {
     event: NEvent,
     { specifiedRelayUrls, additionalRelayUrls }: TPublishOptions = {}
   ) {
-    if (event.kind === kinds.Report) {
-      const targetEventId = event.tags.find(tagNameEquals('e'))?.[1]
-      if (targetEventId) {
-        return this.getSeenEventRelayUrls(targetEventId)
-      }
-    }
-
     let relays: string[]
     if (specifiedRelayUrls?.length) {
       relays = specifiedRelayUrls
     } else {
       const _additionalRelayUrls: string[] = additionalRelayUrls ?? []
-      if (!specifiedRelayUrls?.length && ![kinds.Contacts, kinds.Mutelist].includes(event.kind)) {
+      
+      // For kind 1 (notes) and kind 24 (public messages), publish to mentioned users' inboxes
+      if (event.kind === kinds.ShortTextNote || event.kind === ExtendedKind.PUBLIC_MESSAGE) {
         const mentions: string[] = []
         event.tags.forEach(([tagName, tagValue]) => {
           if (
@@ -124,6 +119,7 @@ class ClientService extends EventTarget {
           })
         }
       }
+      
       if (
         [
           kinds.RelayList,
@@ -136,7 +132,8 @@ class ClientService extends EventTarget {
         _additionalRelayUrls.push(...BIG_RELAY_URLS)
       }
 
-      const relayList = await this.fetchRelayList(event.pubkey)
+      // Use current user's relay list
+      const relayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
       const senderWriteRelays = relayList?.write.slice(0, 6) ?? []
       const recipientReadRelays = Array.from(new Set(_additionalRelayUrls))
       relays = senderWriteRelays.concat(recipientReadRelays)
@@ -1030,14 +1027,8 @@ class ClientService extends EventTarget {
       return event
     }
 
-    // Then try the relays where this event was originally seen
-    const seenOnRelays = this.getSeenEventRelayUrls(id)
-    if (seenOnRelays.length > 0) {
-      const seenOnEvent = await this.tryHarderToFetchEvent(seenOnRelays, { ids: [id], limit: 1 }, true)
-      if (seenOnEvent) {
-        return seenOnEvent
-      }
-    }
+    // Privacy: Don't try "seen on" relays - only use defaults
+    // Fallback to BIG_RELAY_URLS if not found
 
     // Third, try the provided relay URLs
     if (relayUrls.length > 0) {
@@ -1047,11 +1038,10 @@ class ClientService extends EventTarget {
       }
     }
 
-    // Finally, try all available relays as a last resort
+    // Privacy: Use defaults and provided relays only
     const allAvailableRelays = Array.from(new Set([
       ...FAST_READ_RELAY_URLS,
       ...FAST_WRITE_RELAY_URLS,
-      ...seenOnRelays,
       ...relayUrls
     ]))
     
@@ -1061,7 +1051,6 @@ class ClientService extends EventTarget {
   private async _fetchEvent(id: string): Promise<NEvent | undefined> {
     let filter: Filter | undefined
     let relays: string[] = []
-    let author: string | undefined
     if (/^[0-9a-f]{64}$/.test(id)) {
       filter = { ids: [id] }
     } else {
@@ -1073,7 +1062,6 @@ class ClientService extends EventTarget {
         case 'nevent':
           filter = { ids: [data.id] }
           if (data.relays) relays = data.relays
-          if (data.author) author = data.author
           break
         case 'naddr':
           filter = {
@@ -1081,7 +1069,6 @@ class ClientService extends EventTarget {
             kinds: [data.kind],
             limit: 1
           }
-          author = data.pubkey
           if (data.identifier) {
             filter['#d'] = [data.identifier]
           }
@@ -1096,9 +1083,9 @@ class ClientService extends EventTarget {
     if (filter.ids) {
       event = await this.fetchEventById(relays, filter.ids[0])
     } else {
-      if (author) {
-        const relayList = await this.fetchRelayList(author)
-        relays.push(...relayList.write.slice(0, 4))
+      // Privacy: Don't fetch author's relays, use defaults
+      if (!relays.length) {
+        relays.push(...BIG_RELAY_URLS)
       }
       event = await this.tryHarderToFetchEvent(relays, filter)
     }
@@ -1115,12 +1102,8 @@ class ClientService extends EventTarget {
     filter: Filter,
     alreadyFetchedFromBigRelays = false
   ) {
-    if (!relayUrls.length && filter.authors?.length) {
-      const relayList = await this.fetchRelayList(filter.authors[0])
-      relayUrls = alreadyFetchedFromBigRelays
-        ? relayList.write.filter((url) => !BIG_RELAY_URLS.includes(url)).slice(0, 4)
-        : relayList.write.slice(0, 4)
-    } else if (!relayUrls.length && !alreadyFetchedFromBigRelays) {
+    // Privacy: Don't fetch author's relays, only use provided relays or defaults
+    if (!relayUrls.length && !alreadyFetchedFromBigRelays) {
       relayUrls = BIG_RELAY_URLS
     }
     if (!relayUrls.length) return
@@ -1691,50 +1674,21 @@ class ClientService extends EventTarget {
   }
 
   async generateSubRequestsForPubkeys(pubkeys: string[], myPubkey?: string | null) {
+    // Privacy: Only use user's own relays + defaults, never fetch other users' relays
+    let urls = BIG_RELAY_URLS
+    if (myPubkey) {
+      const relayList = await this.fetchRelayList(myPubkey)
+      urls = relayList.read.concat(BIG_RELAY_URLS).slice(0, 5)
+    }
+    
     // If many websocket connections are initiated simultaneously, it will be
     // very slow on Safari (for unknown reason)
     if (isSafari()) {
-      let urls = BIG_RELAY_URLS
-      if (myPubkey) {
-        const relayList = await this.fetchRelayList(myPubkey)
-        urls = relayList.read.concat(BIG_RELAY_URLS).slice(0, 5)
-      }
       return [{ urls, filter: { authors: pubkeys } }]
     }
 
-    const relayLists = await this.fetchRelayLists(pubkeys)
-    const group: Record<string, Set<string>> = {}
-    relayLists.forEach((relayList, index) => {
-      relayList.write.slice(0, 4).forEach((url) => {
-        if (!group[url]) {
-          group[url] = new Set()
-        }
-        group[url].add(pubkeys[index])
-      })
-    })
-
-    const relayCount = Object.keys(group).length
-    const coveredCount = new Map<string, number>()
-    Object.entries(group)
-      .sort(([, a], [, b]) => b.size - a.size)
-      .forEach(([url, pubkeys]) => {
-        if (
-          relayCount > 10 &&
-          pubkeys.size < 10 &&
-          Array.from(pubkeys).every((pubkey) => (coveredCount.get(pubkey) ?? 0) >= 2)
-        ) {
-          delete group[url]
-        } else {
-          pubkeys.forEach((pubkey) => {
-            coveredCount.set(pubkey, (coveredCount.get(pubkey) ?? 0) + 1)
-          })
-        }
-      })
-
-    return Object.entries(group).map(([url, authors]) => ({
-      urls: [url],
-      filter: { authors: Array.from(authors) }
-    }))
+    // Simplified: Use user's relays for all followed users instead of individual relay lists
+    return [{ urls, filter: { authors: pubkeys } }]
   }
 }
 

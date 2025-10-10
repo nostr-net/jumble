@@ -47,9 +47,9 @@ class LightningService {
         ? { recipient: recipientOrEvent }
         : { recipient: recipientOrEvent.pubkey, event: recipientOrEvent }
 
-    const [profile, receiptRelayList, senderRelayList] = await Promise.all([
+    // Privacy: Only use current user's relays + defaults
+    const [profile, senderRelayList] = await Promise.all([
       client.fetchProfile(recipient, true),
-      client.fetchRelayList(recipient),
       sender
         ? client.fetchRelayList(sender)
         : Promise.resolve({ read: BIG_RELAY_URLS, write: BIG_RELAY_URLS })
@@ -66,10 +66,8 @@ class LightningService {
     const zapRequestDraft = makeZapRequest({
       ...(event ? { event } : { pubkey: recipient }),
       amount,
-      relays: receiptRelayList.read
-        .slice(0, 4)
-        .concat(senderRelayList.write.slice(0, 3))
-        .concat(BIG_RELAY_URLS),
+      // Privacy: Only use sender's relays + defaults, not recipient's relays
+      relays: senderRelayList.write.slice(0, 4).concat(BIG_RELAY_URLS),
       comment
     })
     const zapRequest = await client.signer.signEvent(zapRequestDraft)
@@ -175,8 +173,8 @@ class LightningService {
     if (this.recentSupportersCache) {
       return this.recentSupportersCache
     }
-    const relayList = await client.fetchRelayList(CODY_PUBKEY)
-    const events = await client.fetchEvents(relayList.read.slice(0, 4), {
+    // Privacy: Use defaults instead of fetching CODY_PUBKEY's relays
+    const events = await client.fetchEvents(BIG_RELAY_URLS.slice(0, 4), {
       authors: ['79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432'], // alby
       kinds: [kinds.Zap],
       '#p': OFFICIAL_PUBKEYS,

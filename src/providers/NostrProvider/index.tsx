@@ -655,11 +655,8 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
     const deletionRequest = await signEvent(createDeletionRequestDraftEvent(targetEvent))
 
-    const seenOn = client.getSeenEventRelayUrls(targetEvent.id)
-    const relays = await client.determineTargetRelays(targetEvent, {
-      specifiedRelayUrls: isProtectedEvent(targetEvent) ? seenOn : undefined,
-      additionalRelayUrls: seenOn
-    })
+    // Privacy: Only use user's own relays, never connect to "seen on" relays
+    const relays = await client.determineTargetRelays(targetEvent)
 
     await client.publishEvent(relays, deletionRequest)
 

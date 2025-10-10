@@ -51,15 +51,10 @@ export default function PostRelaySelector({
   const { relayUrls } = useCurrentRelays()
   const { relaySets, favoriteRelays } = useFavoriteRelays()
   const [postTargetItems, setPostTargetItems] = useState<TPostTargetItem[]>([])
-  const parentEventSeenOnRelays = useMemo(() => {
-    if (!parentEvent || !isProtectedEvent(parentEvent)) {
-      return []
-    }
-    return client.getSeenEventRelayUrls(parentEvent.id)
-  }, [parentEvent])
+  // Privacy: Only show user's own relays + defaults, never other users' relays
   const selectableRelays = useMemo(() => {
-    return Array.from(new Set(parentEventSeenOnRelays.concat(relayUrls).concat(favoriteRelays)))
-  }, [parentEventSeenOnRelays, relayUrls, favoriteRelays])
+    return Array.from(new Set(relayUrls.concat(favoriteRelays)))
+  }, [relayUrls, favoriteRelays])
   const description = useMemo(() => {
     if (postTargetItems.length === 0) {
       return t('No relays selected')

@@ -80,8 +80,7 @@ export default function LikeButton({ event }: { event: Event }) {
         }
 
         const reaction = createReactionDraftEvent(event, emoji)
-        const seenOn = client.getSeenEventRelayUrls(event.id)
-        const evt = await publish(reaction, { additionalRelayUrls: seenOn })
+        const evt = await publish(reaction)
         noteStatsService.updateNoteStatsByEvents([evt])
       } catch (error) {
         console.error('like failed', error)

@@ -219,20 +219,11 @@ export default function ReplyNoteList({ index, event, sort = 'oldest' }: { index
       setLoading(true)
 
       try {
-        // Include user's mailbox relays for better reply discovery
+        // Privacy: Only use user's own relays + defaults, never connect to other users' relays
         const userRelays = userRelayList?.read || []
-        const seenOn =
-          rootInfo.type === 'E'
-            ? client.getSeenEventRelayUrls(rootInfo.id)
-            : rootInfo.type === 'A'
-              ? client.getSeenEventRelayUrls(rootInfo.eventId)
-              : []
-        
-        // Optimize relay selection: prioritize seen relays, then fast relays, then user relays
         const finalRelayUrls = Array.from(new Set([
-          ...seenOn, // Highest priority: relays where the event was seen
-          ...FAST_READ_RELAY_URLS, // Second priority: fast, well-connected relays
-          ...userRelays // Third priority: user's mailbox relays
+          ...FAST_READ_RELAY_URLS, // Fast, well-connected relays
+          ...userRelays // User's mailbox relays
         ]))
 
         const filters: (Omit<Filter, 'since' | 'until'> & {
