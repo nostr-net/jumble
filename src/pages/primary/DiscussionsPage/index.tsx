@@ -239,9 +239,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
         }
       ])
       
-      // Debug: Show date range of fetched events
-
-      // Filter and sort threads
+     // Filter and sort threads
       const validThreads = events
         .filter(event => {
           // Ensure it has a title tag
@@ -829,11 +827,6 @@ const DiscussionsPage = forwardRef((_, ref) => {
           </Card>
         ) : viewMode === 'grouped' && selectedTopic === 'all' ? (
           <div className="space-y-6">
-            {Object.entries(groupedThreads).length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                Debug: No grouped threads found. groupedThreads keys: {Object.keys(groupedThreads).join(', ')}
-              </div>
-            )}
             {Object.entries(groupedThreads).map(([topicId, topicThreads]) => {
               const topicInfo = DISCUSSION_TOPICS.find(t => t.id === topicId)
               if (!topicInfo || topicThreads.length === 0) return null
@@ -880,18 +873,6 @@ const DiscussionsPage = forwardRef((_, ref) => {
                 ? ['readings'] // Always include readings for literature threads
                 : getDynamicSubtopics(topicAnalysis.get(categorizedTopic), 3)
               
-              // Debug logging
-              if (thread.content.includes('readin')) {
-                console.log('DEBUG DiscussionsPage ThreadCard props:', {
-                  threadId: thread.id,
-                  content: thread.content.substring(0, 50),
-                  allTopics: extractAllTopics(thread),
-                  categorizedTopic,
-                  threadSubtopics,
-                  availableTopicIds,
-                  topicAnalysisForCategorizedTopic: topicAnalysis.get(categorizedTopic)
-                })
-              }
               
               return (
                 <ThreadCard

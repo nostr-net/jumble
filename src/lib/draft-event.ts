@@ -146,6 +146,7 @@ export async function createShortTextNoteDraftEvent(
 
   if (options.addClientTag) {
     tags.push(buildClientTag())
+    tags.push(buildAltTag())
   }
 
   if (options.isNsfw) {
@@ -243,6 +244,7 @@ export async function createCommentDraftEvent(
 
   if (options.addClientTag) {
     tags.push(buildClientTag())
+    tags.push(buildAltTag())
   }
 
   if (options.isNsfw) {
@@ -311,6 +313,7 @@ export async function createPublicMessageReplyDraftEvent(
 
   if (options.addClientTag) {
     tags.push(buildClientTag())
+    tags.push(buildAltTag())
   }
 
   if (options.isNsfw) {
@@ -360,6 +363,7 @@ export async function createPublicMessageDraftEvent(
 
   if (options.addClientTag) {
     tags.push(buildClientTag())
+    tags.push(buildAltTag())
   }
 
   if (options.isNsfw) {
@@ -522,6 +526,7 @@ export async function createPollDraftEvent(
 
   if (addClientTag) {
     tags.push(buildClientTag())
+    tags.push(buildAltTag())
   }
 
   if (isNsfw) {
@@ -847,6 +852,10 @@ function buildClientTag() {
   return ['client', 'jumble']
 }
 
+function buildAltTag() {
+  return ['alt', 'This event was published by https://jumble.imwald.eu.']
+}
+
 function buildNsfwTag() {
   return ['content-warning', 'NSFW']
 }
@@ -862,4 +871,148 @@ function trimTagEnd(tag: string[]) {
   }
 
   return tag.slice(0, endIndex + 1)
+}
+
+/**
+ * Create a highlight draft event (NIP-84 kind 9802)
+ * @param highlightedText - The highlighted text (goes in .content)
+ * @param sourceType - Type of source ('nostr' or 'url')
+ * @param sourceValue - The source identifier (hex ID, naddr) or URL
+ * @param description - Optional comment/description
+ * @param options - Additional options (client tag, nsfw)
+ */
+export async function createHighlightDraftEvent(
+  highlightedText: string,
+  sourceType: 'nostr' | 'url',
+  sourceValue: string,
+  description?: string,
+  options?: {
+    addClientTag?: boolean
+    isNsfw?: boolean
+  }
+): Promise<TDraftEvent> {
+  const tags: string[][] = []
+
+  // Add source tag (e or a tag for nostr, r tag for URL)
+  if (sourceType === 'nostr') {
+    // Check if it's an naddr (addressable event)
+    if (sourceValue.startsWith('naddr')) {
+      try {
+        const decoded = nip19.decode(sourceValue)
+        if (decoded.type === 'naddr') {
+          const { kind, pubkey, identifier } = decoded.data
+          const relays = decoded.data.relays && decoded.data.relays.length > 0 
+            ? decoded.data.relays[0] 
+            : ''
+          // Build a-tag: ["a", "<kind>:<pubkey>:<d-identifier>", <relay-url>]
+          // Format: kind:pubkey:d-tag-value
+          const aTagValue = `${kind}:${pubkey}:${identifier}`
+          if (relays) {
+            tags.push(['a', aTagValue, relays])
+          } else {
+            tags.push(['a', aTagValue])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to decode naddr:', err)
+      }
+    } else if (sourceValue.startsWith('nevent')) {
+      // Handle nevent
+      try {
+        const decoded = nip19.decode(sourceValue)
+        if (decoded.type === 'nevent') {
+          const eventId = decoded.data.id
+          const relays = decoded.data.relays && decoded.data.relays.length > 0 
+            ? decoded.data.relays[0] 
+            : client.getEventHint(eventId)
+          const author = decoded.data.author
+          // Build e-tag: ["e", <event-id>, <relay-url>, <author-pubkey>]
+          if (author) {
+            tags.push(trimTagEnd(['e', eventId, relays, author]))
+          } else if (relays) {
+            tags.push(['e', eventId, relays])
+          } else {
+            tags.push(['e', eventId])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to decode nevent:', err)
+      }
+    } else if (sourceValue.startsWith('note')) {
+      // Handle note1... (bech32 encoded event ID)
+      try {
+        const decoded = nip19.decode(sourceValue)
+        if (decoded.type === 'note') {
+          const eventId = decoded.data
+          const relay = client.getEventHint(eventId)
+          // Build e-tag: ["e", <event-id>, <relay-url>]
+          if (relay) {
+            tags.push(['e', eventId, relay])
+          } else {
+            tags.push(['e', eventId])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to decode note:', err)
+      }
+    } else {
+      // Regular hex event ID
+      const relay = client.getEventHint(sourceValue)
+      if (relay) {
+        tags.push(['e', sourceValue, relay])
+      } else {
+        tags.push(['e', sourceValue])
+      }
+    }
+  } else if (sourceType === 'url') {
+    // Add r-tag with 'source' attribute
+    tags.push(['r', sourceValue, 'source'])
+  }
+
+  // Add context tag if provided (user's comment about the highlight)
+  // NIP-84 specifies using 'context' for additional context around the highlight
+  if (description && description.trim()) {
+    tags.push(['context', description.trim()])
+  }
+
+  // Add p-tag for the author of the source material (if we can determine it)
+  if (sourceType === 'nostr') {
+    if (sourceValue.startsWith('naddr')) {
+      try {
+        const decoded = nip19.decode(sourceValue)
+        if (decoded.type === 'naddr') {
+          const { pubkey } = decoded.data
+          tags.push(['p', pubkey])
+        }
+      } catch (err) {
+        // Already logged above
+      }
+    } else if (sourceValue.startsWith('nevent')) {
+      try {
+        const decoded = nip19.decode(sourceValue)
+        if (decoded.type === 'nevent' && decoded.data.author) {
+          tags.push(['p', decoded.data.author])
+        }
+      } catch (err) {
+        // Already logged above
+      }
+    }
+    // Note: For regular event IDs, we don't have the author pubkey readily available
+  }
+
+  // Add optional tags
+  if (options?.addClientTag) {
+    tags.push(buildClientTag())
+    tags.push(buildAltTag())
+  }
+
+  if (options?.isNsfw) {
+    tags.push(buildNsfwTag())
+  }
+
+  return setDraftEventCache({
+    kind: 9802, // NIP-84 highlight kind
+    tags,
+    content: highlightedText
+  })
 }

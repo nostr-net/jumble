@@ -78,16 +78,6 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
     return false
   })
   
-  // Debug logging
-  if (thread.content.includes('readings')) {
-    console.log('DEBUG ThreadCard:', {
-      threadId: thread.id,
-      content: thread.content.substring(0, 50),
-      allTopics,
-      subtopics,
-      matchingSubtopics
-    })
-  }
 
   // Format relay name for display
   const formatRelayName = (relaySource: string) => {

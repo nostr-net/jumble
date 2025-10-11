@@ -114,6 +114,43 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   const [signer, setSigner] = useState<ISigner | null>(null)
   const [openLoginDialog, setOpenLoginDialog] = useState(false)
   const [profile, setProfile] = useState<TProfile | null>(null)
+
+  // Cleanup on page unload to prevent extension UI issues
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Try to clean up any pending operations
+      if (signer && 'disconnect' in signer) {
+        try {
+          (signer as any).disconnect()
+        } catch (error) {
+          console.warn('Failed to disconnect signer:', error)
+        }
+      }
+    }
+
+    const handleUnload = () => {
+      // Additional cleanup for extensions that might leave UI elements
+      try {
+        // Clear any pending timeouts or intervals
+        if (window.nostr && typeof window.nostr === 'object') {
+          // Some extensions might have cleanup methods
+          if ('cleanup' in window.nostr && typeof window.nostr.cleanup === 'function') {
+            window.nostr.cleanup()
+          }
+        }
+      } catch (error) {
+        console.warn('Extension cleanup failed:', error)
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('unload', handleUnload)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('unload', handleUnload)
+    }
+  }, [signer])
   const [profileEvent, setProfileEvent] = useState<Event | null>(null)
   const [relayList, setRelayList] = useState<TRelayList | null>(null)
   const [followListEvent, setFollowListEvent] = useState<Event | null>(null)
@@ -604,7 +641,23 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signEvent = async (draftEvent: TDraftEvent) => {
-    const event = await signer?.signEvent(draftEvent)
+    // Add timeout to prevent hanging
+    const signEventWithTimeout = new Promise(async (resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Signing request timed out. Your Nostr extension may be waiting for authorization. Try closing this tab and restarting your browser to surface any pending authorization requests from your extension.'))
+      }, 30000) // 30 second timeout
+      
+      try {
+        const event = await signer?.signEvent(draftEvent)
+        clearTimeout(timeout)
+        resolve(event)
+      } catch (error) {
+        clearTimeout(timeout)
+        reject(error)
+      }
+    })
+    
+    const event = await signEventWithTimeout as VerifiedEvent
     if (!event) {
       throw new Error('sign event failed')
     }

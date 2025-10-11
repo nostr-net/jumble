@@ -252,8 +252,8 @@ export default function CreateThreadDialog({
   const selectedTopicInfo = DISCUSSION_TOPICS.find(t => t.id === selectedTopic) || DISCUSSION_TOPICS[0]
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
+      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto relative bg-background">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-xl font-semibold">{t('Create New Thread')}</CardTitle>
           <Button

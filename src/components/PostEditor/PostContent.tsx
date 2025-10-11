@@ -7,6 +7,7 @@ import {
   createPublicMessageDraftEvent,
   createPublicMessageReplyDraftEvent,
   createShortTextNoteDraftEvent,
+  createHighlightDraftEvent,
   deleteDraftEventCache
 } from '@/lib/draft-event'
 import { ExtendedKind } from '@/constants'
@@ -15,7 +16,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import postEditorCache from '@/services/post-editor-cache.service'
 import { TPollCreateData } from '@/types'
-import { ImageUp, ListTodo, LoaderCircle, MessageCircle, Settings, Smile, X } from 'lucide-react'
+import { ImageUp, ListTodo, LoaderCircle, MessageCircle, Settings, Smile, X, Highlighter } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -27,6 +28,7 @@ import PostOptions from './PostOptions'
 import PostRelaySelector from './PostRelaySelector'
 import PostTextarea, { TPostTextareaHandle } from './PostTextarea'
 import Uploader from './Uploader'
+import HighlightEditor, { HighlightData } from './HighlightEditor'
 
 export default function PostContent({
   defaultContent = '',
@@ -49,7 +51,7 @@ export default function PostContent({
     { file: File; progress: number; cancel: () => void }[]
   >([])
   const [showMoreOptions, setShowMoreOptions] = useState(false)
-  const [addClientTag, setAddClientTag] = useState(false)
+  const [addClientTag, setAddClientTag] = useState(true) // Default to true to always add client tag
   const [mentions, setMentions] = useState<string[]>([])
   const [isNsfw, setIsNsfw] = useState(false)
   const [isPoll, setIsPoll] = useState(false)
@@ -57,6 +59,12 @@ export default function PostContent({
   const [publicMessageRecipients, setPublicMessageRecipients] = useState<string[]>([])
   const [isProtectedEvent, setIsProtectedEvent] = useState(false)
   const [additionalRelayUrls, setAdditionalRelayUrls] = useState<string[]>([])
+  const [isHighlight, setIsHighlight] = useState(false)
+  const [highlightData, setHighlightData] = useState<HighlightData>({
+    sourceType: 'nostr',
+    sourceValue: '',
+    description: ''
+  })
   const [pollCreateData, setPollCreateData] = useState<TPollCreateData>({
     isMultipleChoice: false,
     options: ['', ''],
@@ -73,23 +81,9 @@ export default function PostContent({
       !uploadProgresses.length &&
       (!isPoll || pollCreateData.options.filter((option) => !!option.trim()).length >= 2) &&
       (!isPublicMessage || publicMessageRecipients.length > 0 || parentEvent?.kind === ExtendedKind.PUBLIC_MESSAGE) &&
-      (!isProtectedEvent || additionalRelayUrls.length > 0)
+      (!isProtectedEvent || additionalRelayUrls.length > 0) &&
+      (!isHighlight || highlightData.sourceValue.trim() !== '')
     )
-    
-    // Debug logging for public message replies
-    if (parentEvent?.kind === ExtendedKind.PUBLIC_MESSAGE) {
-      console.log('Public message reply debug:', {
-        pubkey: !!pubkey,
-        text: !!text,
-        posting,
-        uploadProgresses: uploadProgresses.length,
-        isPoll,
-        pollCreateDataValid: !isPoll || pollCreateData.options.filter((option) => !!option.trim()).length >= 2,
-        publicMessageCheck: !isPublicMessage || publicMessageRecipients.length > 0 || parentEvent?.kind === ExtendedKind.PUBLIC_MESSAGE,
-        protectedEventCheck: !isProtectedEvent || additionalRelayUrls.length > 0,
-        canPost: result
-      })
-    }
     
     return result
   }, [
@@ -103,7 +97,9 @@ export default function PostContent({
     publicMessageRecipients,
     parentEvent?.kind,
     isProtectedEvent,
-    additionalRelayUrls
+    additionalRelayUrls,
+    isHighlight,
+    highlightData
   ])
 
   useEffect(() => {
@@ -124,7 +120,7 @@ export default function PostContent({
             relays: []
           }
         )
-        setAddClientTag(cachedSettings.addClientTag ?? false)
+        setAddClientTag(cachedSettings.addClientTag ?? true) // Default to true
       }
       return
     }
@@ -202,7 +198,20 @@ export default function PostContent({
       try {
         
         let draftEvent
-        if (isPublicMessage) {
+        if (isHighlight) {
+          // For highlights, pass the original sourceValue which contains the full identifier
+          // The createHighlightDraftEvent function will parse it correctly
+          draftEvent = await createHighlightDraftEvent(
+            text,
+            highlightData.sourceType,
+            highlightData.sourceValue,
+            highlightData.description,
+            {
+              addClientTag,
+              isNsfw
+            }
+          )
+        } else if (isPublicMessage) {
           draftEvent = await createPublicMessageDraftEvent(text, publicMessageRecipients, {
             addClientTag,
             isNsfw
@@ -306,6 +315,11 @@ export default function PostContent({
     if (parentEvent) return
 
     setIsPoll((prev) => !prev)
+    if (!isPoll) {
+      // When enabling poll mode, clear other modes
+      setIsPublicMessage(false)
+      setIsHighlight(false)
+    }
   }
 
   const handlePublicMessageToggle = () => {
@@ -315,6 +329,19 @@ export default function PostContent({
     if (!isPublicMessage) {
       // When enabling public message mode, clear other modes
       setIsPoll(false)
+      setIsHighlight(false)
+    }
+  }
+
+  const handleHighlightToggle = () => {
+    if (parentEvent) return
+
+    setIsHighlight((prev) => !prev)
+    if (!isHighlight) {
+      // When enabling highlight mode, clear other modes and set client tag to true
+      setIsPoll(false)
+      setIsPublicMessage(false)
+      setAddClientTag(true)
     }
   }
 
@@ -349,6 +376,8 @@ export default function PostContent({
           t('New Poll')
         ) : isPublicMessage ? (
           t('New Public Message')
+        ) : isHighlight ? (
+          t('New Highlight')
         ) : (
           t('New Note')
         )}
@@ -379,6 +408,13 @@ export default function PostContent({
           pollCreateData={pollCreateData}
           setPollCreateData={setPollCreateData}
           setIsPoll={setIsPoll}
+        />
+      )}
+      {isHighlight && (
+        <HighlightEditor
+          highlightData={highlightData}
+          setHighlightData={setHighlightData}
+          setIsHighlight={setIsHighlight}
         />
       )}
       {isPublicMessage && (
@@ -488,6 +524,17 @@ export default function PostContent({
               onClick={handlePublicMessageToggle}
             >
               <MessageCircle />
+            </Button>
+          )}
+          {!parentEvent && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title={t('Create Highlight')}
+              className={isHighlight ? 'bg-accent' : ''}
+              onClick={handleHighlightToggle}
+            >
+              <Highlighter />
             </Button>
           )}
           <Button

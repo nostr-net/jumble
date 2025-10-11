@@ -27,7 +27,8 @@ export default function PostOptions({
   const { t } = useTranslation()
 
   useEffect(() => {
-    setAddClientTag(window.localStorage.getItem(StorageKey.ADD_CLIENT_TAG) === 'true')
+    const stored = window.localStorage.getItem(StorageKey.ADD_CLIENT_TAG)
+    setAddClientTag(stored === null ? true : stored === 'true') // Default to true if not set
   }, [])
 
   if (!show) return null
