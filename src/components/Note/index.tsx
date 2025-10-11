@@ -22,6 +22,7 @@ import CommunityDefinition from './CommunityDefinition'
 import DiscussionContent from './DiscussionContent'
 import GroupMetadata from './GroupMetadata'
 import Highlight from './Highlight'
+
 import IValue from './IValue'
 import LiveEvent from './LiveEvent'
 import LongFormArticle from './LongFormArticle'
@@ -62,24 +63,38 @@ export default function Note({
   const [showMuted, setShowMuted] = useState(false)
 
   let content: React.ReactNode
-  if (
-    ![
-      ...SUPPORTED_KINDS,
-      kinds.CommunityDefinition,
-      kinds.LiveEvent,
-      ExtendedKind.GROUP_METADATA,
-      ExtendedKind.PUBLIC_MESSAGE,
-      ExtendedKind.ZAP_REQUEST,
-      ExtendedKind.ZAP_RECEIPT
-    ].includes(event.kind)
-  ) {
+  
+  const supportedKindsList = [
+    ...SUPPORTED_KINDS,
+    kinds.CommunityDefinition,
+    kinds.LiveEvent,
+    ExtendedKind.GROUP_METADATA,
+    ExtendedKind.PUBLIC_MESSAGE,
+    ExtendedKind.ZAP_REQUEST,
+    ExtendedKind.ZAP_RECEIPT
+  ]
+  
+  
+  if (!supportedKindsList.includes(event.kind)) {
+    console.log('Note component - rendering UnknownNote for unsupported kind:', event.kind)
     content = <UnknownNote className="mt-2" event={event} />
   } else if (mutePubkeySet.has(event.pubkey) && !showMuted) {
     content = <MutedNote show={() => setShowMuted(true)} />
   } else if (!defaultShowNsfw && isNsfwEvent(event) && !showNsfw) {
     content = <NsfwNote show={() => setShowNsfw(true)} />
   } else if (event.kind === kinds.Highlights) {
-    content = <Highlight className="mt-2" event={event} />
+    // Try to render the Highlight component with error boundary
+    try {
+      content = <Highlight className="mt-2" event={event} />
+    } catch (error) {
+      console.error('Note component - Error rendering Highlight component:', error)
+      content = <div className="mt-2 p-4 bg-red-100 border border-red-500 rounded">
+        <div className="font-bold text-red-800">HIGHLIGHT ERROR:</div>
+        <div className="text-red-700">Error: {String(error)}</div>
+        <div className="mt-2">Content: {event.content}</div>
+        <div>Context: {event.tags.find(tag => tag[0] === 'context')?.[1] || 'No context found'}</div>
+      </div>
+    }
   } else if (event.kind === kinds.LongFormArticle) {
     content = showFull ? (
       <LongFormArticle className="mt-2" event={event} />

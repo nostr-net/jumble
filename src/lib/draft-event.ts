@@ -885,6 +885,7 @@ export async function createHighlightDraftEvent(
   highlightedText: string,
   sourceType: 'nostr' | 'url',
   sourceValue: string,
+  context?: string, // The full text/quote that the highlight is from
   description?: string,
   options?: {
     addClientTag?: boolean
@@ -969,10 +970,14 @@ export async function createHighlightDraftEvent(
     tags.push(['r', sourceValue, 'source'])
   }
 
-  // Add context tag if provided (user's comment about the highlight)
-  // NIP-84 specifies using 'context' for additional context around the highlight
+  // Add context tag if provided (the full text/quote that the highlight is from)
+  if (context && context.trim()) {
+    tags.push(['context', context.trim()])
+  }
+
+  // Add description tag if provided (user's explanation/comment)
   if (description && description.trim()) {
-    tags.push(['context', description.trim()])
+    tags.push(['description', description.trim()])
   }
 
   // Add p-tag for the author of the source material (if we can determine it)

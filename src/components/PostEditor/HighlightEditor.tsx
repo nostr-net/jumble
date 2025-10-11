@@ -11,7 +11,7 @@ export interface HighlightData {
   sourceType: 'nostr' | 'url'
   sourceValue: string // nevent/naddr/note/hex for nostr, https:// URL for url
   sourceHexId?: string // converted hex ID for nostr sources
-  description?: string // optional comment/description
+  context?: string // the full text/quote that the highlight is from
 }
 
 interface HighlightEditorProps {
@@ -27,7 +27,7 @@ export default function HighlightEditor({
 }: HighlightEditorProps) {
   const { t } = useTranslation()
   const [sourceInput, setSourceInput] = useState(highlightData.sourceValue)
-  const [description, setDescription] = useState(highlightData.description || '')
+  const [context, setContext] = useState(highlightData.context || '')
   const [error, setError] = useState<string>('')
 
   // Validate and parse the source input
@@ -43,7 +43,7 @@ export default function HighlightEditor({
       setHighlightData({
         sourceType: 'url',
         sourceValue: sourceInput,
-        description
+        context
       })
       return
     }
@@ -60,7 +60,7 @@ export default function HighlightEditor({
           sourceType: 'nostr',
           sourceValue: sourceInput,
           sourceHexId: hexId,
-          description
+          context
         })
         return
       }
@@ -75,7 +75,7 @@ export default function HighlightEditor({
           sourceType: 'nostr',
           sourceValue: sourceInput, // Keep original for reference
           sourceHexId: hexId, // Store the hex ID
-          description
+          context
         })
       } else if (decoded.type === 'nevent') {
         hexId = decoded.data.id
@@ -84,7 +84,7 @@ export default function HighlightEditor({
           sourceType: 'nostr',
           sourceValue: sourceInput, // Keep the nevent for relay info
           sourceHexId: hexId, // Store the hex ID
-          description
+          context
         })
       } else if (decoded.type === 'naddr') {
         // For naddr, we need to keep the full naddr string to extract kind:pubkey:identifier
@@ -93,7 +93,7 @@ export default function HighlightEditor({
           sourceType: 'nostr',
           sourceValue: sourceInput, // Keep the naddr for a-tag building
           sourceHexId: undefined, // No hex ID for addressable events
-          description
+          context
         })
       } else {
         setError(t('Invalid source. Please enter a note ID, nevent, naddr, hex ID, or URL.'))
@@ -102,7 +102,7 @@ export default function HighlightEditor({
     } catch (err) {
       setError(t('Invalid source. Please enter a note ID, nevent, naddr, hex ID, or URL.'))
     }
-  }, [sourceInput, description, setHighlightData, t])
+  }, [sourceInput, context, setHighlightData, t])
 
   return (
     <div className="rounded-lg border bg-muted/40 p-4 space-y-4">
@@ -139,26 +139,28 @@ export default function HighlightEditor({
 
       <div className="space-y-2">
         <Label htmlFor="highlight-context">
-          {t('Context')} <span className="text-muted-foreground text-xs">({t('optional')})</span>
+          {t('Full Quote/Context')} <span className="text-muted-foreground text-xs">({t('optional')})</span>
         </Label>
         <Textarea
           id="highlight-context"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder={t('Add your comment or surrounding context for this highlight...')}
-          rows={3}
+          value={context}
+          onChange={(e) => setContext(e.target.value)}
+          placeholder={t('Enter the full text that you are highlighting from...')}
+          rows={2}
           maxLength={500}
         />
         <p className="text-xs text-muted-foreground">
-          {description.length}/500 {t('characters')}
+          {context.length}/500 {t('characters')}
         </p>
       </div>
 
       <div className="text-xs text-muted-foreground bg-background/50 rounded p-2">
-        <p className="font-medium mb-1">{t('About Highlights (NIP-84)')}</p>
-        <p>
-          {t('The highlighted text goes in the main content. The source and optional context will be added as tags.')}
-        </p>
+        <p className="font-medium mb-1">{t('How to Create a Highlight (NIP-84)')}</p>
+        <ol className="list-decimal list-inside space-y-1 mt-2">
+          <li>{t('Enter the specific text you want to highlight in the main content area above')}</li>
+          <li>{t('Add the source (where this text is from)')}</li>
+          <li>{t('Optionally, add the full quote/context to show your highlight within it')}</li>
+        </ol>
       </div>
     </div>
   )

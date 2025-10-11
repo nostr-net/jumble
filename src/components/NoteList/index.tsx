@@ -153,10 +153,11 @@ const NoteList = forwardRef(
 
     useImperativeHandle(ref, () => ({ scrollToTop, refresh }), [])
 
-    useEffect(() => {
-      if (!subRequests.length) return
+  useEffect(() => {
+    if (!subRequests.length) return
 
-      async function init() {
+    async function init() {
+        
         setLoading(true)
         setEvents([])
         setNewEvents([])

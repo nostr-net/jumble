@@ -62,8 +62,7 @@ export default function PostContent({
   const [isHighlight, setIsHighlight] = useState(false)
   const [highlightData, setHighlightData] = useState<HighlightData>({
     sourceType: 'nostr',
-    sourceValue: '',
-    description: ''
+    sourceValue: ''
   })
   const [pollCreateData, setPollCreateData] = useState<TPollCreateData>({
     isMultipleChoice: false,
@@ -201,16 +200,17 @@ export default function PostContent({
         if (isHighlight) {
           // For highlights, pass the original sourceValue which contains the full identifier
           // The createHighlightDraftEvent function will parse it correctly
-          draftEvent = await createHighlightDraftEvent(
-            text,
-            highlightData.sourceType,
-            highlightData.sourceValue,
-            highlightData.description,
-            {
-              addClientTag,
-              isNsfw
-            }
-          )
+        draftEvent = await createHighlightDraftEvent(
+          text,
+          highlightData.sourceType,
+          highlightData.sourceValue,
+          highlightData.context,
+          undefined, // description parameter (not used)
+          {
+            addClientTag,
+            isNsfw
+          }
+        )
         } else if (isPublicMessage) {
           draftEvent = await createPublicMessageDraftEvent(text, publicMessageRecipients, {
             addClientTag,
