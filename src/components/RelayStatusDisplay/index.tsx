@@ -1,4 +1,4 @@
-import { Check, X, AlertCircle } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import { simplifyUrl } from '@/lib/url'
 
 interface RelayStatus {
@@ -50,10 +50,10 @@ export default function RelayStatusDisplay({
                 <span className="font-mono text-xs truncate">
                   {simplifyUrl(status.url)}
                 </span>
-                {status.authAttempted && (
-                  <div title="Authentication attempted">
-                    <AlertCircle className="h-3 w-3 text-amber-500" />
-                  </div>
+                {status.authAttempted && !status.success && (
+                  <span className="text-xs text-red-600 dark:text-red-400">
+                    (auth failed)
+                  </span>
                 )}
               </div>
               

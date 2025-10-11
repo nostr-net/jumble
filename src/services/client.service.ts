@@ -142,9 +142,12 @@ class ClientService extends EventTarget {
 
       // Use current user's relay list
       const relayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
+      console.log('DEBUG: User relay list write URLs:', relayList?.write)
       const senderWriteRelays = relayList?.write.slice(0, 6) ?? []
+      console.log('DEBUG: Selected sender write relays:', senderWriteRelays)
       const recipientReadRelays = Array.from(new Set(_additionalRelayUrls))
       relays = senderWriteRelays.concat(recipientReadRelays)
+      console.log('DEBUG: Final relay URLs before optimization:', relays)
     }
 
     if (!relays.length) {
@@ -238,6 +241,7 @@ class ClientService extends EventTarget {
     totalCount: number
   }> {
     const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
+    console.log('DEBUG: uniqueRelayUrls after optimization:', uniqueRelayUrls)
     
     const relayStatuses: Array<{
       url: string
@@ -260,13 +264,17 @@ class ClientService extends EventTarget {
       const checkCompletion = () => {
         if (resolved) return
         
-        // If one third of the relays have accepted the event, consider it a success
-        const isSuccess = successCount >= Math.max(1, Math.ceil(uniqueRelayUrls.length / 3))
-        if (isSuccess && !resolved) {
-          this.emitNewEvent(event)
+        // Wait for all relays to complete before resolving (don't complete early)
+        // This ensures we show the full relay status information
+        if (finishedCount >= uniqueRelayUrls.length && !resolved) {
+          const isSuccess = successCount > 0
+          if (isSuccess) {
+            this.emitNewEvent(event)
+          }
           resolved = true
+          console.log('DEBUG: Publishing completed. relayStatuses:', relayStatuses)
           resolve({
-            success: true,
+            success: isSuccess,
             relayStatuses,
             successCount,
             totalCount: uniqueRelayUrls.length
@@ -274,35 +282,26 @@ class ClientService extends EventTarget {
           return
         }
         
-        if (finishedCount >= uniqueRelayUrls.length && !resolved) {
-          if (successCount > 0) {
-            this.emitNewEvent(event)
-            resolved = true
-            resolve({
-              success: true,
-              relayStatuses,
-              successCount,
-              totalCount: uniqueRelayUrls.length
-            })
-          } else {
-            resolved = true
-            const aggregateError = new AggregateError(
-              errors.map(
-                ({ url, error }) => {
-                  let errorMsg = 'Unknown error'
-                  if (error instanceof Error) {
-                    errorMsg = error.message || 'Empty error message'
-                  } else if (error !== null && error !== undefined) {
-                    errorMsg = String(error)
-                  }
-                  return new Error(`Failed to publish to ${url}: ${errorMsg}`)
+        // Handle case where no relays succeed
+        if (finishedCount >= uniqueRelayUrls.length && !resolved && successCount === 0) {
+          resolved = true
+          console.log('DEBUG: All relays failed. relayStatuses:', relayStatuses)
+          const aggregateError = new AggregateError(
+            errors.map(
+              ({ url, error }) => {
+                let errorMsg = 'Unknown error'
+                if (error instanceof Error) {
+                  errorMsg = error.message || 'Empty error message'
+                } else if (error !== null && error !== undefined) {
+                  errorMsg = String(error)
                 }
-              )
+                return new Error(`Failed to publish to ${url}: ${errorMsg}`)
+              }
             )
-            // Attach relay statuses to the error so they can be displayed
-            ;(aggregateError as any).relayStatuses = relayStatuses
-            reject(aggregateError)
-          }
+          )
+          // Attach relay statuses to the error so they can be displayed
+          ;(aggregateError as any).relayStatuses = relayStatuses
+          reject(aggregateError)
         }
       }
       
@@ -329,6 +328,7 @@ class ClientService extends EventTarget {
           // eslint-disable-next-line @typescript-eslint/no-this-alias
           const that = this
           
+          console.log('DEBUG: Attempting to publish to relay:', url)
           try {
             // Throttle requests to prevent "too many concurrent REQs" errors
             await this.throttleRequest(url)
@@ -336,7 +336,9 @@ class ClientService extends EventTarget {
             const relay = await this.pool.ensureRelay(url)
             relay.publishTimeout = 8_000 // 8s
             
+            console.log('DEBUG: Publishing to relay:', url)
             await relay.publish(event)
+            console.log('DEBUG: Successfully published to relay:', url)
             this.trackEventSeenOn(event.id, relay)
             this.recordSuccess(url)
             successCount++
@@ -349,6 +351,7 @@ class ClientService extends EventTarget {
             
             checkCompletion()
           } catch (error) {
+            console.log('DEBUG: Failed to publish to relay:', url, 'Error:', error)
             let errorMessage = 'Unknown error'
             if (error instanceof Error) {
               errorMessage = error.message || 'Empty error message'
@@ -384,17 +387,31 @@ class ClientService extends EventTarget {
               error.message.startsWith('auth-required') &&
               !!that.signer
             ) {
+              console.log('DEBUG: Attempting authentication for relay:', url)
               try {
                 // Throttle auth requests too
                 await this.throttleRequest(url)
                 
                 const relay = await this.pool.ensureRelay(url)
-                await relay.auth((authEvt: EventTemplate) => {
+                
+                // Attempt auth with proper timeout handling
+                console.log('DEBUG: Starting auth for relay:', url)
+                
+                const authPromise = relay.auth((authEvt: EventTemplate) => {
                   // Ensure the auth event has the correct pubkey
                   const authEventWithPubkey = { ...authEvt, pubkey: that.pubkey }
                   return that.signer!.signEvent(authEventWithPubkey)
                 })
+                
+                const authTimeoutPromise = new Promise((_, reject) => {
+                  setTimeout(() => reject(new Error('Auth timeout')), 8000) // 8s timeout
+                })
+                
+                await Promise.race([authPromise, authTimeoutPromise])
+                console.log('DEBUG: Auth successful for relay:', url)
+                
                 await relay.publish(event)
+                console.log('DEBUG: Publish successful for relay:', url)
                 this.trackEventSeenOn(event.id, relay)
                 this.recordSuccess(url)
                 successCount++
@@ -408,6 +425,7 @@ class ClientService extends EventTarget {
                 
                 checkCompletion()
               } catch (authError) {
+                console.log('DEBUG: Auth failed for relay:', url, 'Error:', authError)
                 let authErrorMessage = 'Unknown auth error'
                 if (authError instanceof Error) {
                   authErrorMessage = authError.message || 'Empty auth error message'
@@ -1479,7 +1497,7 @@ class ClientService extends EventTarget {
         return getRelayListFromEvent(event)
       }
       return {
-        write: BIG_RELAY_URLS,
+        write: Array.from(new Set([...FAST_WRITE_RELAY_URLS, ...BIG_RELAY_URLS])).slice(0, 8), // Combine fast write + big relays for better redundancy (deduplicated)
         read: BIG_RELAY_URLS,
         originalRelays: []
       }
@@ -1729,11 +1747,6 @@ class ClientService extends EventTarget {
       try {
         // Skip empty or invalid URLs
         if (!url || typeof url !== 'string') return false
-        
-        // Skip localhost URLs that might be misconfigured
-        if (url.includes('localhost:7777') || url.includes('localhost:5173')) {
-          return false
-        }
         
         // Skip relays with open circuit breaker
         if (this.isCircuitBreakerOpen(url)) {
