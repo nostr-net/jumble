@@ -29,28 +29,29 @@ export default function Zap({ event, className }: { event: Event; className?: st
 
   return (
     <div className={cn('relative border rounded-lg p-4 bg-gradient-to-br from-yellow-50/50 to-amber-50/50 dark:from-yellow-950/20 dark:to-amber-950/20', className)}>
-      {/* Zapped note/profile link in top-right corner */}
-      {(targetEvent || recipientPubkey) && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            if (targetEvent) {
-              push(toNote(targetEvent.id))
-            } else if (recipientPubkey) {
-              push(toProfile(recipientPubkey))
-            }
-          }}
-          className="absolute top-2 right-2 px-2 py-1 bg-white/80 dark:bg-black/40 border border-gray-200 dark:border-gray-700 rounded-md text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-black hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200 shadow-sm hover:shadow-md"
-        >
-          {targetEvent ? (
-            <span className="font-mono text-[10px]">{zapInfo.eventId?.substring(0, 12)}...</span>
-          ) : (
-            t('Zapped profile')
-          )}
-        </button>
-      )}
+      {/* Zapped note/profile link in bottom-right corner */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          if (targetEvent) {
+            push(toNote(targetEvent.id))
+          } else if (zapInfo.eventId) {
+            // Event ID exists but targetEvent not loaded yet, try to navigate anyway
+            push(toNote(zapInfo.eventId))
+          } else if (recipientPubkey) {
+            push(toProfile(recipientPubkey))
+          }
+        }}
+        className="absolute bottom-2 right-2 px-2 py-1 bg-white/80 dark:bg-black/40 border border-gray-200 dark:border-gray-700 rounded-md text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-black hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200 shadow-sm hover:shadow-md"
+      >
+        {targetEvent || zapInfo.eventId ? (
+          <span className="font-mono text-[10px]">{(targetEvent?.id || zapInfo.eventId)?.substring(0, 12)}...</span>
+        ) : (
+          t('Zapped profile')
+        )}
+      </button>
       
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3 pb-8">
         <ZapIcon size={28} className="text-yellow-500 shrink-0 mt-1" fill="currentColor" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-2">
