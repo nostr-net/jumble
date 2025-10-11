@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
-import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book, Network, Car } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book, Network, Car, Eye, Edit3 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
@@ -17,6 +18,7 @@ import { prefixNostrAddresses } from '@/lib/nostr-address'
 import { showPublishingError } from '@/lib/publishing-feedback'
 import dayjs from 'dayjs'
 import { extractHashtagsFromContent, normalizeTopic } from '@/lib/discussion-topics'
+import DiscussionContent from '@/components/Note/DiscussionContent'
 
 // Utility functions for thread creation
 function extractImagesFromContent(content: string): string[] {
@@ -299,24 +301,102 @@ export default function CreateThreadDialog({
               </p>
             </div>
 
-            {/* Content Input */}
+            {/* Content Input with Preview */}
             <div className="space-y-2">
               <Label htmlFor="content">{t('Thread Content')}</Label>
-              <Textarea
-                id="content"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder={t('Share your thoughts, ask questions, or start a discussion...')}
-                rows={8}
-                maxLength={5000}
-                className={errors.content ? 'border-destructive' : ''}
-              />
-              {errors.content && (
-                <p className="text-sm text-destructive">{errors.content}</p>
-              )}
-              <p className="text-sm text-muted-foreground">
-                {content.length}/5000 {t('characters')}
-              </p>
+              <Tabs defaultValue="edit" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="edit" className="flex items-center gap-2">
+                    <Edit3 className="w-4 h-4" />
+                    {t('Edit')}
+                  </TabsTrigger>
+                  <TabsTrigger value="preview" className="flex items-center gap-2">
+                    <Eye className="w-4 h-4" />
+                    {t('Preview')}
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="edit" className="space-y-2">
+                  <Textarea
+                    id="content"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder={t('Share your thoughts, ask questions, or start a discussion...')}
+                    rows={8}
+                    maxLength={5000}
+                    className={errors.content ? 'border-destructive' : ''}
+                  />
+                  {errors.content && (
+                    <p className="text-sm text-destructive">{errors.content}</p>
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    {content.length}/5000 {t('characters')}
+                  </p>
+                </TabsContent>
+                <TabsContent value="preview" className="space-y-2">
+                  <div className="border rounded-lg p-4 bg-muted/30 min-h-[200px]">
+                    {content.trim() ? (
+                      <div className="space-y-4">
+                        {/* Preview of the thread */}
+                        <div className="border-b pb-2">
+                          <h3 className="text-lg font-semibold">{title || t('Untitled')}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <selectedTopicInfo.icon className="w-4 h-4" />
+                            <Badge variant="secondary" className="text-xs">
+                              {selectedTopicInfo.label}
+                            </Badge>
+                            {isReadingGroup && (
+                              <>
+                                <Badge variant="outline" className="text-xs">
+                                  <Hash className="w-3 h-3 mr-1" />
+                                  Readings
+                                </Badge>
+                                {author && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {t('Author')}: {author}
+                                  </span>
+                                )}
+                                {subject && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {t('Book')}: {subject}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {/* Preview of the content */}
+                        <div className="prose prose-sm max-w-none dark:prose-invert">
+                          <DiscussionContent 
+                            event={{
+                              id: 'preview',
+                              pubkey: pubkey || '',
+                              created_at: Math.floor(Date.now() / 1000),
+                              kind: 11,
+                              tags: [
+                                ['title', title],
+                                ['t', selectedTopic],
+                                ...(isReadingGroup ? [['t', 'readings']] : []),
+                                ...(author ? [['author', author]] : []),
+                                ...(subject ? [['subject', subject]] : [])
+                              ],
+                              content: content,
+                              sig: ''
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center text-muted-foreground py-8">
+                        <Edit3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p>{t('Start typing to see a preview...')}</p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {content.length}/5000 {t('characters')}
+                  </p>
+                </TabsContent>
+              </Tabs>
             </div>
 
             {/* Readings Options - Only show for literature topic */}
