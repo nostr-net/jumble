@@ -3,14 +3,47 @@ import { NostrEvent } from 'nostr-tools'
 
 /**
  * Normalize a topic string to lowercase with hyphens, no spaces
+ * Also converts plurals to singular form
  */
 export function normalizeTopic(topic: string): string {
-  return topic
+  let normalized = topic
     .toLowerCase()
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
+  
+  // Convert plural to singular (simple English plurals)
+  // Handle common cases: -ies -> -y, -es -> (sometimes), -s -> remove
+  if (normalized.endsWith('ies') && normalized.length > 4) {
+    // cities -> city, berries -> berry
+    normalized = normalized.slice(0, -3) + 'y'
+  } else if (normalized.endsWith('ves') && normalized.length > 4) {
+    // wives -> wife, knives -> knife
+    normalized = normalized.slice(0, -3) + 'fe'
+  } else if (normalized.endsWith('ses') && normalized.length > 4) {
+    // classes -> class, bosses -> boss
+    normalized = normalized.slice(0, -2)
+  } else if (normalized.endsWith('xes') && normalized.length > 4) {
+    // boxes -> box
+    normalized = normalized.slice(0, -2)
+  } else if (normalized.endsWith('shes') && normalized.length > 5) {
+    // dishes -> dish
+    normalized = normalized.slice(0, -2)
+  } else if (normalized.endsWith('ches') && normalized.length > 5) {
+    // churches -> church
+    normalized = normalized.slice(0, -2)
+  } else if (normalized.endsWith('s') && normalized.length > 2) {
+    // Simple plural: cats -> cat, bitcoins -> bitcoin
+    // But avoid removing 's' from words that naturally end in 's'
+    // Check if second-to-last character is not 's' to avoid "ss" words
+    const secondLast = normalized[normalized.length - 2]
+    if (secondLast !== 's') {
+      normalized = normalized.slice(0, -1)
+    }
+  }
+  
+  return normalized
 }
 
 /**
@@ -91,9 +124,10 @@ export function analyzeThreadTopics(
     const analysis = topicMap.get(primaryTopic)!
     analysis.threads.push(thread)
     
-    // Track subtopics (all topics except the primary one and 'general'/'all')
+    // Track subtopics (all topics except the primary one and 'all'/'all-topics')
+    // For 'general' topic, include all other topics as subtopics
     const subtopics = allTopics.filter(
-      t => t !== primaryTopic && t !== 'general' && t !== 'all' && t !== 'all-topics'
+      t => t !== primaryTopic && t !== 'all' && t !== 'all-topics'
     )
     
     for (const subtopic of subtopics) {
