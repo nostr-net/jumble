@@ -19,6 +19,7 @@ import UserAvatar from '../UserAvatar'
 import Username from '../Username'
 import { MessageSquare } from 'lucide-react'
 import CommunityDefinition from './CommunityDefinition'
+import DiscussionContent from './DiscussionContent'
 import GroupMetadata from './GroupMetadata'
 import Highlight from './Highlight'
 import IValue from './IValue'
@@ -97,7 +98,7 @@ export default function Note({
     content = (
       <>
         <h3 className="mt-2 text-lg font-semibold leading-tight break-words">{title}</h3>
-        <Content className="mt-2" event={event} />
+        <DiscussionContent className="mt-2" event={event} />
       </>
     )
   } else if (event.kind === ExtendedKind.POLL) {

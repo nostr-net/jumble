@@ -18,6 +18,7 @@ import TopicSubscribeButton from '@/components/TopicSubscribeButton'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
+import storage from '@/services/local-storage.service'
 import { useSecondaryPage } from '@/PageManager'
 import { toNote } from '@/lib/link'
 import { kinds } from 'nostr-tools'
@@ -60,20 +61,56 @@ const DiscussionsPage = forwardRef((_, ref) => {
     [pubkey, favoriteRelays]
   )
 
-  // Memoize relay URLs with deduplication
-  const relayUrls = useMemo(() => {
-    if (selectedRelay) {
-      // Check if it's a relay set
-      const relaySet = relaySets.find(set => set.id === selectedRelay)
-      if (relaySet) {
-        return relaySet.relayUrls
+  // State for relay URLs
+  const [relayUrls, setRelayUrls] = useState<string[]>([])
+
+  // Update relay URLs when dependencies change
+  useEffect(() => {
+    const updateRelayUrls = async () => {
+      if (selectedRelay) {
+        // Check if it's a relay set
+        const relaySet = relaySets.find(set => set.id === selectedRelay)
+        if (relaySet) {
+          setRelayUrls(relaySet.relayUrls)
+          return
+        }
+        // It's an individual relay
+        setRelayUrls([selectedRelay])
+        return
       }
-      // It's an individual relay
-      return [selectedRelay]
+      
+      // For "All Relays", include user's write relays and stored relay sets too
+      let userWriteRelays: string[] = []
+      let storedRelaySetRelays: string[] = []
+      
+      if (pubkey) {
+        try {
+          // Get user's write relays
+          const relayList = await client.fetchRelayList(pubkey)
+          userWriteRelays = relayList?.write || []
+          
+          // Get relays from stored relay sets (additional safety check)
+          // Note: favoriteRelays should already include these, but let's be thorough
+          const storedRelaySets = storage.getRelaySets()
+          storedRelaySetRelays = storedRelaySets.flatMap(set => set.relayUrls)
+        } catch (error) {
+          console.warn('Failed to fetch user relay list:', error)
+        }
+      }
+      
+      // Deduplicate and combine all relays: favorite relays, user write relays, stored relay sets, and fast read relays
+      const allRelays = Array.from(new Set([
+        ...availableRelays, 
+        ...userWriteRelays, 
+        ...storedRelaySetRelays, 
+        ...FAST_READ_RELAY_URLS
+      ]))
+      
+      setRelayUrls(allRelays)
     }
-    // Deduplicate and combine relays
-    return Array.from(new Set([...availableRelays, ...FAST_READ_RELAY_URLS]))
-  }, [selectedRelay, availableRelays, relaySets])
+    
+    updateRelayUrls()
+  }, [selectedRelay, availableRelays, relaySets, pubkey, favoriteRelays])
 
   // Available topic IDs for matching
   const availableTopicIds = useMemo(() => 
@@ -451,9 +488,29 @@ const DiscussionsPage = forwardRef((_, ref) => {
     setShowCreateThread(true)
   }
 
-  const handleThreadCreated = () => {
+  const handleThreadCreated = (publishedEvent?: NostrEvent) => {
     setShowCreateThread(false)
-    fetchAllThreads() // Refresh all threads
+    
+    if (publishedEvent) {
+      // Optimistically add the new thread to the local state
+      setAllThreads(prev => {
+        // Check if the thread is already in the list (avoid duplicates)
+        if (prev.some(thread => thread.id === publishedEvent.id)) {
+          return prev
+        }
+        
+        // Add relay source info
+        const eventHints = client.getEventHints(publishedEvent.id)
+        const relaySource = eventHints.length > 0 ? eventHints[0] : 'unknown'
+        const newThread = { ...publishedEvent, _relaySource: relaySource }
+        
+        // Add the new thread at the beginning (newest first)
+        return [newThread, ...prev]
+      })
+    } else {
+      // Fallback: refresh all threads if no published event provided
+      fetchAllThreads()
+    }
   }
 
   return (

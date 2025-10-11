@@ -1768,8 +1768,9 @@ class ClientService extends EventTarget {
       }
     })
 
-    // Limit to 3 relays to prevent "too many concurrent REQs" errors
-    return validRelays.slice(0, 3)
+    // Limit to 8 relays to prevent "too many concurrent REQs" errors
+    // Increased from 3 to 8 for discussions to include more relay sources
+    return validRelays.slice(0, 8)
   }
 
   // ================= Utils =================

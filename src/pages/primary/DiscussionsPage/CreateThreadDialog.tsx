@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
 import { TDraftEvent } from '@/types'
+import { NostrEvent } from 'nostr-tools'
 import { prefixNostrAddresses } from '@/lib/nostr-address'
 import { showPublishingError } from '@/lib/publishing-feedback'
 import dayjs from 'dayjs'
@@ -41,7 +42,7 @@ interface CreateThreadDialogProps {
   availableRelays: string[]
   selectedRelay?: string | null
   onClose: () => void
-  onThreadCreated: () => void
+  onThreadCreated: (publishedEvent?: NostrEvent) => void
 }
 
 export const DISCUSSION_TOPICS = [
@@ -206,7 +207,7 @@ export default function CreateThreadDialog({
       
       
       if (publishedEvent) {
-        onThreadCreated()
+        onThreadCreated(publishedEvent)
         onClose()
       } else {
         throw new Error(t('Failed to publish thread'))
