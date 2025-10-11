@@ -121,6 +121,10 @@ const SettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
           </div>
         </SettingItem>
       </AboutInfoDialog>
+      <div className="text-center py-6 text-muted-foreground">
+        <div className="text-lg font-semibold">Jumble</div>
+        <div className="text-green-600 dark:text-green-500 font-semibold">Im Wald</div>
+      </div>
     </SecondaryPageLayout>
   )
 })

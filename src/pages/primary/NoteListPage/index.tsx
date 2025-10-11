@@ -121,11 +121,18 @@ function NoteListPageTitlebar({
   const { isSmallScreen } = useScreenSize()
 
   return (
-    <div className="flex gap-1 items-center h-full justify-between">
+    <div className="relative flex gap-1 items-center h-full justify-between">
       <div className="flex gap-1 items-center">
         <ExploreButton />
         <FeedButton className="flex-1 max-w-fit w-0" />
       </div>
+      {isSmallScreen && (
+        <div className="absolute left-1/2 transform -translate-x-1/2">
+          <div className="text-green-600 dark:text-green-500 font-semibold text-sm">
+            Im Wald
+          </div>
+        </div>
+      )}
       <div className="shrink-0 flex gap-1 items-center">
         {setShowRelayDetails && (
           <Button

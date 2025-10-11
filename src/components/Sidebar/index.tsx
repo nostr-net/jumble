@@ -20,7 +20,12 @@ export default function PrimaryPageSidebar() {
       <div className="space-y-2">
         <div className="px-3 xl:px-4 mb-6 w-full">
           <Icon className="xl:hidden" />
-          <Logo className="max-xl:hidden" />
+          <div className="max-xl:hidden">
+            <Logo />
+            <div className="text-green-600 dark:text-green-500 font-semibold text-sm mt-1 text-center">
+              Im Wald
+            </div>
+          </div>
         </div>
         <HomeButton />
         <RelaysButton />
