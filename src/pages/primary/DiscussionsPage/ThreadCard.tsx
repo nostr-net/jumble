@@ -10,6 +10,7 @@ import Username from '@/components/Username'
 import UserAvatar from '@/components/UserAvatar'
 import VoteButtons from '@/components/NoteStats/VoteButtons'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
+import { extractAllTopics } from '@/lib/discussion-topics'
 
 interface ThreadWithRelaySource extends NostrEvent {
   _relaySource?: string
@@ -19,9 +20,10 @@ interface ThreadCardProps {
   thread: ThreadWithRelaySource
   onThreadClick: () => void
   className?: string
+  subtopics?: string[] // Available subtopics for this thread
 }
 
-export default function ThreadCard({ thread, onThreadClick, className }: ThreadCardProps) {
+export default function ThreadCard({ thread, onThreadClick, className, subtopics = [] }: ThreadCardProps) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
 
@@ -59,6 +61,34 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
 
   const topicInfo = getTopicInfo(topic)
 
+  // Get all topics from this thread
+  const allTopics = extractAllTopics(thread)
+  
+  // Find which subtopics this thread matches
+  // Handle both normalized and original forms (e.g., 'readings' -> 'reading')
+  const matchingSubtopics = subtopics.filter(subtopic => {
+    // Direct match
+    if (allTopics.includes(subtopic)) return true
+    
+    // Check if any topic in allTopics matches when we normalize the subtopic
+    // This handles cases like 'readings' in subtopics matching 'reading' in allTopics
+    const normalizedSubtopic = subtopic.replace(/s$/, '') // Remove trailing 's'
+    if (allTopics.includes(normalizedSubtopic)) return true
+    
+    return false
+  })
+  
+  // Debug logging
+  if (thread.content.includes('readings')) {
+    console.log('DEBUG ThreadCard:', {
+      threadId: thread.id,
+      content: thread.content.substring(0, 50),
+      allTopics,
+      subtopics,
+      matchingSubtopics
+    })
+  }
+
   // Format relay name for display
   const formatRelayName = (relaySource: string) => {
     if (relaySource === 'multiple') {
@@ -92,6 +122,12 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
                     <topicInfo.icon className="w-4 h-4" />
                     <span className="text-xs">{topicInfo.id}</span>
                   </div>
+                  {matchingSubtopics.map(subtopic => (
+                    <Badge key={subtopic} variant="outline" className="text-xs">
+                      <Hash className="w-3 h-3 mr-1" />
+                      {subtopic.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </Badge>
+                  ))}
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -147,6 +183,12 @@ export default function ThreadCard({ thread, onThreadClick, className }: ThreadC
                     <topicInfo.icon className="w-3 h-3 mr-1" />
                     {topicInfo.label}
                   </Badge>
+                  {matchingSubtopics.map(subtopic => (
+                    <Badge key={subtopic} variant="outline" className="text-xs">
+                      <Hash className="w-3 h-3 mr-1" />
+                      {subtopic.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    </Badge>
+                  ))}
                   <div className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {timeAgo}

@@ -126,9 +126,18 @@ export function analyzeThreadTopics(
     
     // Track subtopics (all topics except the primary one and 'all'/'all-topics')
     // For 'general' topic, include all other topics as subtopics
-    const subtopics = allTopics.filter(
+    // Special case: Always include 'readings' as a subtopic for literature threads
+    let subtopics = allTopics.filter(
       t => t !== primaryTopic && t !== 'all' && t !== 'all-topics'
     )
+    
+    // Special handling for literature threads with 'readings' hashtag
+    if (primaryTopic === 'literature' && allTopics.includes('readings')) {
+      // Ensure 'readings' is included as a subtopic
+      if (!subtopics.includes('readings')) {
+        subtopics.push('readings')
+      }
+    }
     
     for (const subtopic of subtopics) {
       if (!analysis.subtopics.has(subtopic)) {
