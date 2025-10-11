@@ -1,5 +1,4 @@
 import AboutInfoDialog from '@/components/AboutInfoDialog'
-import Donation from '@/components/Donation'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import {
   toGeneralSettings,
@@ -122,9 +121,6 @@ const SettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
           </div>
         </SettingItem>
       </AboutInfoDialog>
-      <div className="px-4 mt-4">
-        <Donation />
-      </div>
     </SecondaryPageLayout>
   )
 })

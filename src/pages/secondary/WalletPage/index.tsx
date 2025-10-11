@@ -1,4 +1,3 @@
-import { useSecondaryPage } from '@/PageManager'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,7 +11,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
-import { toRizful } from '@/lib/link'
 import { useZap } from '@/providers/ZapProvider'
 import { disconnect, launchModal } from '@getalby/bitcoin-connect-react'
 import { forwardRef } from 'react'
@@ -25,7 +23,6 @@ import ZapReplyThresholdInput from './ZapReplyThresholdInput'
 
 const WalletPage = forwardRef(({ index }: { index?: number }, ref) => {
   const { t } = useTranslation()
-  const { push } = useSecondaryPage()
   const { isWalletConnected, walletInfo } = useZap()
 
   return (
@@ -65,18 +62,14 @@ const WalletPage = forwardRef(({ index }: { index?: number }, ref) => {
             <LightningAddressInput />
           </>
         ) : (
-          <div className="flex items-center gap-2">
-            <Button className="bg-foreground hover:bg-foreground/90" onClick={() => push(toRizful())}>
-              {t('Start with a Rizful Vault')}
-            </Button>
+          <div>
             <Button
-              variant="link"
-              className="text-muted-foreground hover:text-foreground px-0"
+              className="bg-foreground hover:bg-foreground/90"
               onClick={() => {
                 launchModal()
               }}
             >
-              {t('or other wallets')}
+              {t('Connect Wallet')}
             </Button>
           </div>
         )}

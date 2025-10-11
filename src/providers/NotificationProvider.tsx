@@ -255,30 +255,37 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const favicons = document.querySelectorAll<HTMLLinkElement>("link[rel*='icon']")
     if (!favicons.length) return
 
+    const treeFavicon = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌲</text></svg>"
+
     if (newNotificationCount === 0) {
       favicons.forEach((favicon) => {
-        favicon.href = '/favicon.ico'
+        favicon.href = treeFavicon
       })
     } else {
-      const img = document.createElement('img')
-      img.src = '/favicon.ico'
-      img.onload = () => {
-        const size = Math.max(img.width, img.height, 32)
-        const canvas = document.createElement('canvas')
-        canvas.width = size
-        canvas.height = size
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-        ctx.drawImage(img, 0, 0, size, size)
-        const r = size * 0.16
-        ctx.beginPath()
-        ctx.arc(size - r - 6, r + 6, r, 0, 2 * Math.PI)
-        ctx.fillStyle = '#FF0000'
-        ctx.fill()
-        favicons.forEach((favicon) => {
-          favicon.href = canvas.toDataURL('image/png')
-        })
-      }
+      // Create a canvas with the tree emoji and a notification badge
+      const canvas = document.createElement('canvas')
+      const size = 64
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      
+      // Draw tree emoji as text
+      ctx.font = `${size * 0.9}px Arial`
+      ctx.textBaseline = 'middle'
+      ctx.textAlign = 'center'
+      ctx.fillText('🌲', size / 2, size / 2)
+      
+      // Draw red notification badge
+      const r = size * 0.16
+      ctx.beginPath()
+      ctx.arc(size - r - 6, r + 6, r, 0, 2 * Math.PI)
+      ctx.fillStyle = '#FF0000'
+      ctx.fill()
+      
+      favicons.forEach((favicon) => {
+        favicon.href = canvas.toDataURL('image/png')
+      })
     }
   }, [filteredNewNotifications])
 
