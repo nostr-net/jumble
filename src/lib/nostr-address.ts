@@ -14,19 +14,19 @@ const NOSTR_ADDRESS_REGEX = /\b(npub|nprofile|note|nevent|naddr|nrelay)1[a-z0-9]
  * @returns The content with nostr addresses properly prefixed
  */
 export function prefixNostrAddresses(content: string): string {
-  return content.replace(NOSTR_ADDRESS_REGEX, (match) => {
+  return content.replace(NOSTR_ADDRESS_REGEX, (match, _p1, offset) => {
     // Check if it already has a prefix (nostr: or other protocol)
-    const beforeMatch = content.substring(0, content.indexOf(match))
-    const lastSpace = beforeMatch.lastIndexOf(' ')
-    const lastNewline = beforeMatch.lastIndexOf('\n')
-    const lastDelimiter = Math.max(lastSpace, lastNewline)
+    // Look at the characters immediately before this specific match
+    const beforeMatch = content.substring(0, offset)
     
-    if (lastDelimiter >= 0) {
-      const prefix = content.substring(lastDelimiter + 1, content.indexOf(match))
-      // If it already has nostr: prefix, don't add another
-      if (prefix.includes('nostr:')) {
-        return match
-      }
+    // Check if the match is already prefixed with "nostr:"
+    if (beforeMatch.endsWith('nostr:')) {
+      return match
+    }
+    
+    // Check if the match is prefixed with @ (for @mention style)
+    if (beforeMatch.endsWith('@')) {
+      return match
     }
     
     // Add nostr: prefix
