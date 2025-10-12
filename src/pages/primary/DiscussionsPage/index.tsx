@@ -31,6 +31,11 @@ function normalizeSubtopic(tag: string): string {
     return normalized
   }
   
+  // Don't normalize compound hashtags (with hyphens or underscores)
+  if (normalized.includes('-') || normalized.includes('_')) {
+    return normalized
+  }
+  
   // Handle common suffixes to find root forms
   
   // Remove trailing 's' for plurals (but not if word ends in 'ss')
@@ -168,18 +173,7 @@ function analyzeDynamicTopicsAndSubtopics(eventMap: Map<string, EventMapEntry>):
   return { dynamicTopics, dynamicSubtopics }
 }
 
-// Function to get dynamic subtopics from event topics
-function getSubtopicsFromTopics(topics: string[], limit: number = 3): string[] {
-  // Get the main topic IDs from DISCUSSION_TOPICS
-  const mainTopicIds = DISCUSSION_TOPICS.map(topic => topic.id)
-  
-  // Filter out main topic IDs and get unique subtopics
-  const subtopics = topics.filter(topic => !mainTopicIds.includes(topic))
-  const uniqueSubtopics = [...new Set(subtopics)]
-  
-  // Return the most common subtopics, limited by the limit
-  return uniqueSubtopics.slice(0, limit)
-}
+// Removed getSubtopicsFromTopics - now using only dynamicSubtopics that meet npub thresholds
 
 // Simple event map type
 type EventMapEntry = {
@@ -533,25 +527,25 @@ const DiscussionsPage = forwardRef((_, ref) => {
   // Update available subtopics when topic analysis or selected topic changes
   useEffect(() => {
     if (selectedTopic && selectedTopic !== 'all') {
-      // Get all topics from events in this topic
-      const topicEvents = Array.from(eventMap.values()).filter(entry => entry.categorizedTopic === selectedTopic)
-      const allTopics = topicEvents.flatMap(entry => entry.allTopics)
-      const subtopics = getSubtopicsFromTopics(allTopics, 10) // Increased limit to show more subtopics
+      // Only show dynamic subtopics that meet the 3-npub threshold
+      // Don't use getSubtopicsFromTopics as it doesn't respect npub thresholds
+      const relevantDynamicSubtopics = dynamicSubtopics.filter(subtopic => {
+        // Check if this subtopic appears in events for this topic
+        const topicEvents = Array.from(eventMap.values()).filter(entry => entry.categorizedTopic === selectedTopic)
+        const appearsInTopic = topicEvents.some(entry => entry.allTopics.includes(subtopic))
+        return appearsInTopic
+      })
       
-      // Add relevant dynamic subtopics for this topic
-      const relevantDynamicSubtopics = dynamicSubtopics.filter(subtopic => 
-        allTopics.includes(subtopic)
-      )
-      
-      // Combine and deduplicate
-      const combinedSubtopics = [...new Set([...subtopics, ...relevantDynamicSubtopics])]
-      
-      // Special case: Always include 'readings' as a subtopic for 'literature'
-      if (selectedTopic === 'literature' && !combinedSubtopics.includes('readings')) {
-        combinedSubtopics.unshift('readings')
+      // Special case: Always include 'readings' as a subtopic for 'literature' if it appears
+      if (selectedTopic === 'literature') {
+        const topicEvents = Array.from(eventMap.values()).filter(entry => entry.categorizedTopic === selectedTopic)
+        const hasReadings = topicEvents.some(entry => entry.allTopics.includes('readings'))
+        if (hasReadings && !relevantDynamicSubtopics.includes('readings')) {
+          relevantDynamicSubtopics.unshift('readings')
+        }
       }
       
-      setAvailableSubtopics(combinedSubtopics)
+      setAvailableSubtopics(relevantDynamicSubtopics)
     } else if (selectedTopic === 'general') {
       // For General topic, show dynamic subtopics that don't belong to other topics
       const generalSubtopics = dynamicSubtopics.filter(subtopic => {
@@ -908,7 +902,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                       const entry = eventMap.get(event.id)
                       const threadSubtopics = entry?.categorizedTopic === 'literature' 
                         ? ['readings']
-                        : getSubtopicsFromTopics(entry?.allTopics || [], 3)
+                        : entry?.allTopics || []
                       
                       return (
                         <ThreadCard
@@ -932,7 +926,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
               const entry = eventMap.get(event.id)
               const threadSubtopics = entry?.categorizedTopic === 'literature' 
                 ? ['readings']
-                : getSubtopicsFromTopics(entry?.allTopics || [], 3)
+                : entry?.allTopics || []
               
               return (
                 <ThreadCard

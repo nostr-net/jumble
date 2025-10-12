@@ -222,14 +222,18 @@ export default function CreateThreadDialog({
       // Build tags array
       const tags = [
         ['title', title.trim()],
-        ['t', normalizeTopic(selectedTopic)],
         ['-'] // Required tag for relay privacy
       ]
       
-      // Add hashtags as t-tags (deduplicate with selectedTopic)
-      const uniqueHashtags = hashtags.filter(
-        hashtag => hashtag !== normalizeTopic(selectedTopic)
-      )
+      // Only add topic tag if it's a specific topic (not 'all' or 'general')
+      if (selectedTopic !== 'all' && selectedTopic !== 'general') {
+        tags.push(['t', normalizeTopic(selectedTopic)])
+      }
+      
+      // Add hashtags as t-tags (deduplicate with selectedTopic if it's not 'all' or 'general')
+      const uniqueHashtags = (selectedTopic !== 'all' && selectedTopic !== 'general')
+        ? hashtags.filter(hashtag => hashtag !== normalizeTopic(selectedTopic))
+        : hashtags
       for (const hashtag of uniqueHashtags) {
         tags.push(['t', hashtag])
       }
