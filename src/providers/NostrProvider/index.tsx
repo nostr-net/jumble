@@ -13,6 +13,7 @@ import {
   minePow
 } from '@/lib/event'
 import { getProfileFromEvent, getRelayListFromEvent } from '@/lib/event-metadata'
+import { normalizeUrl } from '@/lib/url'
 import { formatPubkey, pubkeyToNpub } from '@/lib/pubkey'
 import { showPublishingFeedback, showSimplePublishSuccess } from '@/lib/publishing-feedback'
 import client from '@/services/client.service'
@@ -274,7 +275,11 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       }
       setRelayList(relayList)
 
-      const fetchRelays = relayList.write.concat(BIG_RELAY_URLS).slice(0, 4)
+      const normalizedRelays = [
+        ...relayList.write.map(url => normalizeUrl(url) || url),
+        ...BIG_RELAY_URLS.map(url => normalizeUrl(url) || url)
+      ]
+      const fetchRelays = Array.from(new Set(normalizedRelays)).slice(0, 4)
       const events = await client.fetchEvents(fetchRelays, [
         {
           kinds: [

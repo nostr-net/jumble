@@ -1,5 +1,6 @@
 import { FAST_READ_RELAY_URLS, ExtendedKind } from '@/constants'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
+import { normalizeUrl } from '@/lib/url'
 import { useNostr } from '@/providers/NostrProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
 import client from '@/services/client.service'
@@ -31,7 +32,10 @@ export default function QuoteList({ event, className }: { event: Event; classNam
 
       // Privacy: Only use user's own relays + defaults, never connect to other users' relays
       const userRelays = userRelayList?.read || []
-      const finalRelayUrls = Array.from(new Set(userRelays.concat(FAST_READ_RELAY_URLS)))
+      const finalRelayUrls = Array.from(new Set([
+        ...userRelays.map(url => normalizeUrl(url) || url),
+        ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
+      ]))
 
       const { closer, timelineKey } = await client.subscribeTimeline(
         [

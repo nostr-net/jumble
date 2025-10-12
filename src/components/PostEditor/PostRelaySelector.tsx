@@ -25,12 +25,14 @@ export default function PostRelaySelector({
   openFrom,
   setIsProtectedEvent,
   setAdditionalRelayUrls,
+  setUserWriteRelays,
   content: postContent = ''
 }: {
   parentEvent?: NostrEvent
   openFrom?: string[]
   setIsProtectedEvent: Dispatch<SetStateAction<boolean>>
   setAdditionalRelayUrls: Dispatch<SetStateAction<string[]>>
+  setUserWriteRelays?: Dispatch<SetStateAction<string[]>>
   content?: string
 }) {
   const { t } = useTranslation()
@@ -52,13 +54,15 @@ export default function PostRelaySelector({
   
   // Get all selectable relays (write relays + favorite relays + relays from relay sets + mention relays)
   const selectableRelays = useMemo(() => {
-    const allRelays = Array.from(new Set([
-      ...relayUrls,
-      ...favoriteRelays,
-      ...relaySets.flatMap(set => set.relayUrls),
-      ...mentionRelays
-    ]))
-    return allRelays
+    // Normalize all relay URLs before combining them
+    const normalizedRelays = [
+      ...relayUrls.map(url => normalizeUrl(url) || url),
+      ...favoriteRelays.map(url => normalizeUrl(url) || url),
+      ...relaySets.flatMap(set => set.relayUrls.map(url => normalizeUrl(url) || url)),
+      ...mentionRelays.map(url => normalizeUrl(url) || url)
+    ].filter(Boolean) // Remove any null/undefined values
+    
+    return Array.from(new Set(normalizedRelays))
   }, [relayUrls, favoriteRelays, relaySets, mentionRelays])
   
   const description = useMemo(() => {
@@ -171,7 +175,10 @@ export default function PostRelaySelector({
     // Default to write relays + mention relays for regular replies, or just write relays for other cases
     if (isRegularReply) {
       // For regular replies, include write relays and mention relays
-      const defaultRelays = Array.from(new Set([...relayUrls, ...mentionRelays]))
+      // Normalize URLs before combining to avoid duplicates with/without trailing slashes
+      const normalizedWriteRelays = relayUrls.map(url => normalizeUrl(url) || url)
+      const normalizedMentionRelays = mentionRelays.map(url => normalizeUrl(url) || url)
+      const defaultRelays = Array.from(new Set([...normalizedWriteRelays, ...normalizedMentionRelays]))
       console.log('PostRelaySelector: Setting default relays for regular reply:', {
         relayUrls,
         mentionRelays,
@@ -191,7 +198,9 @@ export default function PostRelaySelector({
     const isProtectedEvent = selectedRelayUrls.length > 0 && !selectedRelayUrls.some(url => relayUrls.includes(url))
     setIsProtectedEvent(isProtectedEvent)
     setAdditionalRelayUrls(selectedRelayUrls)
-  }, [selectedRelayUrls, relayUrls, setIsProtectedEvent, setAdditionalRelayUrls])
+    // Expose user's write relays to parent component
+    setUserWriteRelays?.(relayUrls)
+  }, [selectedRelayUrls, relayUrls, setIsProtectedEvent, setAdditionalRelayUrls, setUserWriteRelays])
 
   const handleRelayCheckedChange = useCallback((checked: boolean, url: string) => {
     if (checked) {

@@ -13,7 +13,9 @@ import {
 import { ExtendedKind } from '@/constants'
 import { isTouchDevice } from '@/lib/utils'
 import { useNostr } from '@/providers/NostrProvider'
+import { useFeed } from '@/providers/FeedProvider'
 import { useReply } from '@/providers/ReplyProvider'
+import { normalizeUrl } from '@/lib/url'
 import postEditorCache from '@/services/post-editor-cache.service'
 import { TPollCreateData } from '@/types'
 import { ImageUp, ListTodo, LoaderCircle, MessageCircle, Settings, Smile, X, Highlighter } from 'lucide-react'
@@ -43,6 +45,7 @@ export default function PostContent({
 }) {
   const { t } = useTranslation()
   const { pubkey, publish, checkLogin } = useNostr()
+  const { feedInfo } = useFeed()
   const { addReplies } = useReply()
   const [text, setText] = useState('')
   const textareaRef = useRef<TPostTextareaHandle>(null)
@@ -59,6 +62,7 @@ export default function PostContent({
   const [publicMessageRecipients, setPublicMessageRecipients] = useState<string[]>([])
   const [isProtectedEvent, setIsProtectedEvent] = useState(false)
   const [additionalRelayUrls, setAdditionalRelayUrls] = useState<string[]>([])
+  const [userWriteRelays, setUserWriteRelays] = useState<string[]>([])
   const [isHighlight, setIsHighlight] = useState(false)
   const [highlightData, setHighlightData] = useState<HighlightData>({
     sourceType: 'nostr',
@@ -243,11 +247,29 @@ export default function PostContent({
 
         // console.log('Publishing draft event:', draftEvent)
         const newEvent = await publish(draftEvent, {
-          specifiedRelayUrls: isProtectedEvent ? additionalRelayUrls : undefined,
+          specifiedRelayUrls: isProtectedEvent ? additionalRelayUrls.filter(url => !userWriteRelays.includes(url)) : undefined,
           additionalRelayUrls: isPoll ? pollCreateData.relays : additionalRelayUrls,
           minPow
         })
         // console.log('Published event:', newEvent)
+        
+        // Check if we need to refresh the current relay view
+        if (feedInfo.feedType === 'relay' && feedInfo.id) {
+          const currentRelayUrl = normalizeUrl(feedInfo.id)
+          const publishedRelays = isProtectedEvent 
+            ? additionalRelayUrls.filter(url => !userWriteRelays.includes(url))
+            : additionalRelayUrls
+          
+          // If we published to the current relay being viewed, trigger a refresh after a short delay
+          if (publishedRelays.some(url => normalizeUrl(url) === currentRelayUrl)) {
+            setTimeout(() => {
+              // Trigger a page refresh by dispatching a custom event that the relay view can listen to
+              window.dispatchEvent(new CustomEvent('relay-refresh-needed', { 
+                detail: { relayUrl: currentRelayUrl } 
+              }))
+            }, 1000) // 1 second delay to allow the event to propagate
+          }
+        }
         
         // Show publishing feedback
         if ((newEvent as any).relayStatuses) {
@@ -470,6 +492,7 @@ export default function PostContent({
         <PostRelaySelector
           setIsProtectedEvent={setIsProtectedEvent}
           setAdditionalRelayUrls={setAdditionalRelayUrls}
+          setUserWriteRelays={setUserWriteRelays}
           parentEvent={parentEvent}
           openFrom={openFrom}
           content={text}

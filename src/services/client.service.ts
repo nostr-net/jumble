@@ -144,9 +144,12 @@ class ClientService extends EventTarget {
       const relayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
       const senderWriteRelays = relayList?.write.slice(0, 6) ?? []
       const recipientReadRelays = Array.from(new Set(_additionalRelayUrls))
-      relays = senderWriteRelays.concat(recipientReadRelays)
+      // Normalize and deduplicate the combined relay list
+      const normalizedSenderRelays = senderWriteRelays.map(url => normalizeUrl(url) || url)
+      const normalizedRecipientRelays = recipientReadRelays.map(url => normalizeUrl(url) || url)
+      relays = Array.from(new Set(normalizedSenderRelays.concat(normalizedRecipientRelays)))
     }
-
+ 
     if (!relays.length) {
       relays.push(...FAST_WRITE_RELAY_URLS)
     }
@@ -1085,20 +1088,20 @@ class ClientService extends EventTarget {
     
     // Tier 1: User's read relays + fast read relays
     const tier1Relays = Array.from(new Set([
-      ...userRelayList.read,
-      ...FAST_READ_RELAY_URLS
+      ...userRelayList.read.map(url => normalizeUrl(url) || url),
+      ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
     ]))
     
     // Tier 2: User's write relays + fast write relays  
     const tier2Relays = Array.from(new Set([
-      ...userRelayList.write,
-      ...FAST_WRITE_RELAY_URLS
+      ...userRelayList.write.map(url => normalizeUrl(url) || url),
+      ...FAST_WRITE_RELAY_URLS.map(url => normalizeUrl(url) || url)
     ]))
     
     // Tier 3: Search relays + big relays
     const tier3Relays = Array.from(new Set([
-      ...SEARCHABLE_RELAY_URLS,
-      ...BIG_RELAY_URLS
+      ...SEARCHABLE_RELAY_URLS.map(url => normalizeUrl(url) || url),
+      ...BIG_RELAY_URLS.map(url => normalizeUrl(url) || url)
     ]))
     
     return Array.from(new Set([
@@ -1148,7 +1151,9 @@ class ClientService extends EventTarget {
     const seenOn = this.getSeenEventRelayUrls(id)
     externalRelays.push(...seenOn)
 
-    const uniqueExternalRelays = Array.from(new Set(externalRelays))
+    // Normalize and deduplicate the combined external relays
+    const normalizedExternalRelays = externalRelays.map(url => normalizeUrl(url) || url)
+    const uniqueExternalRelays = Array.from(new Set(normalizedExternalRelays))
     
     if (uniqueExternalRelays.length === 0) {
       return undefined
@@ -1209,24 +1214,24 @@ class ClientService extends EventTarget {
 
     // Tier 1: User's read relays + fast read relays (deduplicated)
     const tier1Relays = Array.from(new Set([
-      ...userRelayList.read,
-      ...FAST_READ_RELAY_URLS
+      ...userRelayList.read.map(url => normalizeUrl(url) || url),
+      ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
     ]))
     const tier1Event = await this.tryHarderToFetchEvent(tier1Relays, filter)
     if (tier1Event) { return tier1Event }
 
     // Tier 2: User's write relays + fast write relays (deduplicated)
     const tier2Relays = Array.from(new Set([
-      ...userRelayList.write,
-      ...FAST_WRITE_RELAY_URLS
+      ...userRelayList.write.map(url => normalizeUrl(url) || url),
+      ...FAST_WRITE_RELAY_URLS.map(url => normalizeUrl(url) || url)
     ]))
     const tier2Event = await this.tryHarderToFetchEvent(tier2Relays, filter)
     if (tier2Event) { return tier2Event }
 
     // Tier 3: Search relays + big relays (deduplicated)
     const tier3Relays = Array.from(new Set([
-      ...SEARCHABLE_RELAY_URLS,
-      ...BIG_RELAY_URLS
+      ...SEARCHABLE_RELAY_URLS.map(url => normalizeUrl(url) || url),
+      ...BIG_RELAY_URLS.map(url => normalizeUrl(url) || url)
     ]))
     const tier3Event = await this.tryHarderToFetchEvent(tier3Relays, filter)
     if (tier3Event) { return tier3Event }

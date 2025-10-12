@@ -2,7 +2,7 @@ import { ExtendedKind } from '@/constants'
 import { getNoteBech32Id, isProtectedEvent, getRootEventHexId } from '@/lib/event'
 import { toNjump } from '@/lib/link'
 import { pubkeyToNpub } from '@/lib/pubkey'
-import { simplifyUrl } from '@/lib/url'
+import { normalizeUrl, simplifyUrl } from '@/lib/url'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
@@ -53,7 +53,10 @@ export function useMenuActions({
   const { relayUrls: currentBrowsingRelayUrls } = useCurrentRelays()
   const { relaySets, favoriteRelays } = useFavoriteRelays()
   const relayUrls = useMemo(() => {
-    return Array.from(new Set(currentBrowsingRelayUrls.concat(favoriteRelays)))
+    return Array.from(new Set([
+      ...currentBrowsingRelayUrls.map(url => normalizeUrl(url) || url),
+      ...favoriteRelays.map(url => normalizeUrl(url) || url)
+    ]))
   }, [currentBrowsingRelayUrls, favoriteRelays])
   const { mutePubkeyPublicly, mutePubkeyPrivately, unmutePubkey, mutePubkeySet } = useMuteList()
   const isMuted = useMemo(() => mutePubkeySet.has(event.pubkey), [mutePubkeySet, event])

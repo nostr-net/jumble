@@ -1,5 +1,6 @@
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFetchEvent } from '@/hooks'
+import { normalizeUrl } from '@/lib/url'
 import { cn } from '@/lib/utils'
 import client from '@/services/client.service'
 import { useTranslation } from 'react-i18next'
@@ -95,7 +96,7 @@ function EmbeddedNoteNotFound({
   // Calculate which external relays would be tried
   useEffect(() => {
     const getExternalRelays = async () => {
-      const relays: string[] = []
+      let relays: string[] = []
       
       if (!/^[0-9a-f]{64}$/.test(noteId)) {
         try {
@@ -112,6 +113,9 @@ function EmbeddedNoteNotFound({
             const authorRelayList = await client.fetchRelayList(data.pubkey)
             relays.push(...authorRelayList.write.slice(0, 6))
           }
+          // Normalize and deduplicate relays
+          relays = relays.map(url => normalizeUrl(url) || url)
+          relays = Array.from(new Set(relays))
         } catch (err) {
           console.error('Failed to parse external relays:', err)
         }
@@ -120,7 +124,9 @@ function EmbeddedNoteNotFound({
       const seenOn = client.getSeenEventRelayUrls(noteId)
       relays.push(...seenOn)
       
-      setExternalRelays(Array.from(new Set(relays)))
+      // Normalize and deduplicate final relay list
+      const normalizedRelays = relays.map(url => normalizeUrl(url) || url)
+      setExternalRelays(Array.from(new Set(normalizedRelays)))
     }
 
     getExternalRelays()

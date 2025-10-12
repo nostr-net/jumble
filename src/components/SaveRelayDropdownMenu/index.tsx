@@ -134,7 +134,10 @@ function RelayItem({ urls }: { urls: string[] }) {
 
   if (isSmallScreen) {
     return (
-      <DrawerMenuItem onClick={handleClick} disabled={isLoading}>
+      <DrawerMenuItem 
+        onClick={isLoading ? undefined : handleClick} 
+        className={isLoading ? 'opacity-50 cursor-not-allowed' : ''}
+      >
         {isLoading ? '...' : (saved ? <Check /> : <Plus />)}
         {isLoading ? t('Loading...') : (saved ? t('Unfavorite') : t('Favorite'))}
       </DrawerMenuItem>
@@ -168,7 +171,10 @@ function RelaySetItem({ set, urls }: { set: TRelaySet; urls: string[] }) {
     } else {
       updateRelaySet({
         ...set,
-        relayUrls: Array.from(new Set([...set.relayUrls, ...urls]))
+        relayUrls: Array.from(new Set([
+          ...set.relayUrls.map(url => normalizeUrl(url) || url),
+          ...urls.map(url => normalizeUrl(url) || url)
+        ]))
       })
     }
   }

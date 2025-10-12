@@ -4,8 +4,9 @@ import SearchInput from '@/components/SearchInput'
 import { useFetchRelayInfo } from '@/hooks'
 import { normalizeUrl } from '@/lib/url'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { TNoteListRef } from '@/components/NoteList'
 import NotFound from '../NotFound'
 
 export default function Relay({ url, className }: { url?: string; className?: string }) {
@@ -15,6 +16,7 @@ export default function Relay({ url, className }: { url?: string; className?: st
   const { relayInfo } = useFetchRelayInfo(normalizedUrl)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedInput, setDebouncedInput] = useState(searchInput)
+  const noteListRef = useRef<TNoteListRef>(null)
 
   useEffect(() => {
     if (normalizedUrl) {
@@ -35,6 +37,25 @@ export default function Relay({ url, className }: { url?: string; className?: st
     }
   }, [searchInput])
 
+  // Listen for refresh events when user publishes to this relay
+  useEffect(() => {
+    if (!normalizedUrl) return
+
+    const handleRelayRefresh = (event: CustomEvent) => {
+      const { relayUrl } = event.detail
+      if (normalizeUrl(relayUrl) === normalizedUrl) {
+        // Trigger a refresh of the note list
+        noteListRef.current?.refresh()
+      }
+    }
+
+    window.addEventListener('relay-refresh-needed', handleRelayRefresh as EventListener)
+    
+    return () => {
+      window.removeEventListener('relay-refresh-needed', handleRelayRefresh as EventListener)
+    }
+  }, [normalizedUrl])
+
   if (!normalizedUrl) {
     return <NotFound />
   }
@@ -52,6 +73,7 @@ export default function Relay({ url, className }: { url?: string; className?: st
         </div>
       )}
       <NormalFeed
+        ref={noteListRef}
         subRequests={[
           { urls: [normalizedUrl], filter: debouncedInput ? { search: debouncedInput } : {} }
         ]}

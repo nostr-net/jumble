@@ -2,6 +2,7 @@ import { Favicon } from '@/components/Favicon'
 import NormalFeed from '@/components/NormalFeed'
 import { Button } from '@/components/ui/button'
 import { BIG_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
+import { normalizeUrl } from '@/lib/url'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { toProfileList } from '@/lib/link'
 import { fetchPubkeysFromDomain, getWellKnownNip05Url } from '@/lib/nip05'
@@ -71,7 +72,10 @@ const NoteListPage = forwardRef(({ index }: { index?: number }, ref) => {
         setSubRequests([
           {
             filter: { '#I': [externalContentId], ...(kinds.length > 0 ? { kinds } : {}) },
-            urls: BIG_RELAY_URLS.concat(relayList?.write || [])
+            urls: Array.from(new Set([
+              ...BIG_RELAY_URLS.map(url => normalizeUrl(url) || url),
+              ...(relayList?.write || []).map(url => normalizeUrl(url) || url)
+            ]))
           }
         ])
         return

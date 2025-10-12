@@ -5,39 +5,44 @@ import { useKindFilter } from '@/providers/KindFilterProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
 import storage from '@/services/local-storage.service'
 import { TFeedSubRequest, TNoteListMode } from '@/types'
-import { useMemo, useRef, useState } from 'react'
+import { forwardRef, useMemo, useRef, useState } from 'react'
 import KindFilter from '../KindFilter'
 import { RefreshButton } from '../RefreshButton'
 
-export default function NormalFeed({
-  subRequests,
-  areAlgoRelays = false,
-  isMainFeed = false,
-  showRelayCloseReason = false
-}: {
+const NormalFeed = forwardRef<TNoteListRef, {
   subRequests: TFeedSubRequest[]
   areAlgoRelays?: boolean
   isMainFeed?: boolean
   showRelayCloseReason?: boolean
-}) {
+}>(function NormalFeed({
+  subRequests,
+  areAlgoRelays = false,
+  isMainFeed = false,
+  showRelayCloseReason = false
+}, ref) {
   const { hideUntrustedNotes } = useUserTrust()
   const { showKinds } = useKindFilter()
   const [temporaryShowKinds, setTemporaryShowKinds] = useState(showKinds)
   const [listMode, setListMode] = useState<TNoteListMode>(() => storage.getNoteListMode())
   const supportTouch = useMemo(() => isTouchDevice(), [])
-  const noteListRef = useRef<TNoteListRef>(null)
+  const internalNoteListRef = useRef<TNoteListRef>(null)
+  const noteListRef = ref || internalNoteListRef
 
   const handleListModeChange = (mode: TNoteListMode) => {
     setListMode(mode)
     if (isMainFeed) {
       storage.setNoteListMode(mode)
     }
-    noteListRef.current?.scrollToTop('smooth')
+    if (noteListRef && typeof noteListRef !== 'function') {
+      noteListRef.current?.scrollToTop('smooth')
+    }
   }
 
   const handleShowKindsChange = (newShowKinds: number[]) => {
     setTemporaryShowKinds(newShowKinds)
-    noteListRef.current?.scrollToTop()
+    if (noteListRef && typeof noteListRef !== 'function') {
+      noteListRef.current?.scrollToTop()
+    }
   }
 
   return (
@@ -53,7 +58,11 @@ export default function NormalFeed({
         }}
         options={
           <>
-            {!supportTouch && <RefreshButton onClick={() => noteListRef.current?.refresh()} />}
+            {!supportTouch && <RefreshButton onClick={() => {
+              if (noteListRef && typeof noteListRef !== 'function') {
+                noteListRef.current?.refresh()
+              }
+            }} />}
             <KindFilter showKinds={temporaryShowKinds} onShowKindsChange={handleShowKindsChange} />
           </>
         }
@@ -69,4 +78,6 @@ export default function NormalFeed({
       />
     </>
   )
-}
+})
+
+export default NormalFeed

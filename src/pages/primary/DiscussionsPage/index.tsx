@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { DEFAULT_FAVORITE_RELAYS, FAST_READ_RELAY_URLS } from '@/constants'
+import { normalizeUrl } from '@/lib/url'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { forwardRef, useEffect, useState, useCallback, useMemo } from 'react'
@@ -166,12 +167,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
         }
       }
       
-      // Deduplicate and combine all relays: favorite relays, user write relays, stored relay sets, and fast read relays
+      // Normalize and deduplicate all relays: favorite relays, user write relays, stored relay sets, and fast read relays
       const allRelays = Array.from(new Set([
-        ...availableRelays, 
-        ...userWriteRelays, 
-        ...storedRelaySetRelays, 
-        ...FAST_READ_RELAY_URLS
+        ...availableRelays.map(url => normalizeUrl(url) || url), 
+        ...userWriteRelays.map(url => normalizeUrl(url) || url), 
+        ...storedRelaySetRelays.map(url => normalizeUrl(url) || url), 
+        ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
       ]))
       
       setRelayUrls(allRelays)

@@ -17,7 +17,7 @@ import { TDraftEvent, TRelaySet } from '@/types'
 import { NostrEvent } from 'nostr-tools'
 import { prefixNostrAddresses } from '@/lib/nostr-address'
 import { showPublishingError } from '@/lib/publishing-feedback'
-import { simplifyUrl } from '@/lib/url'
+import { normalizeUrl, simplifyUrl } from '@/lib/url'
 import dayjs from 'dayjs'
 import { extractHashtagsFromContent, normalizeTopic } from '@/lib/discussion-topics'
 import DiscussionContent from '@/components/Note/DiscussionContent'
@@ -105,7 +105,10 @@ export default function CreateThreadDialog({
     const relaySet = initialRelay ? relaySets.find(set => set.id === initialRelay) : null
     if (relaySet) {
       // Include relays from the selected set along with available relays
-      return Array.from(new Set([...availableRelays, ...relaySet.relayUrls]))
+      return Array.from(new Set([
+        ...availableRelays.map(url => normalizeUrl(url) || url),
+        ...relaySet.relayUrls.map(url => normalizeUrl(url) || url)
+      ]))
     }
     return availableRelays
   }, [availableRelays, relaySets, initialRelay])

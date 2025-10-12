@@ -99,8 +99,12 @@ export function FavoriteRelaysProvider({ children }: { children: React.ReactNode
       )
       setRelaySetEvents(storedRelaySetEvents.filter(Boolean) as Event[])
 
+      const normalizedRelays = [
+        ...(relayList?.write ?? []).map(url => normalizeUrl(url) || url),
+        ...BIG_RELAY_URLS.map(url => normalizeUrl(url) || url)
+      ]
       const newRelaySetEvents = await client.fetchEvents(
-        (relayList?.write ?? []).concat(BIG_RELAY_URLS).slice(0, 5),
+        Array.from(new Set(normalizedRelays)).slice(0, 5),
         {
           kinds: [kinds.Relaysets],
           authors: [pubkey],

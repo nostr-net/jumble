@@ -1,5 +1,6 @@
 import ClientSelect from '@/components/ClientSelect'
 import { Button } from '@/components/ui/button'
+import { normalizeUrl } from '@/lib/url'
 import client from '@/services/client.service'
 import { AlertCircle, Search } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
@@ -26,7 +27,7 @@ export default function NotFound({
       // Get all relays that would be tried in tiers 1-3 (already tried)
       const alreadyTriedRelays = await client.getAlreadyTriedRelays(bech32Id)
       
-      const externalRelays: string[] = []
+      let externalRelays: string[] = []
       
       // Parse relay hints and author from bech32 ID
       if (!/^[0-9a-f]{64}$/.test(bech32Id)) {
@@ -44,6 +45,9 @@ export default function NotFound({
             const authorRelayList = await client.fetchRelayList(data.pubkey)
             externalRelays.push(...authorRelayList.write.slice(0, 6))
           }
+          // Normalize and deduplicate external relays
+          externalRelays = externalRelays.map(url => normalizeUrl(url) || url)
+          externalRelays = Array.from(new Set(externalRelays))
         } catch (err) {
           console.error('Failed to parse external relays:', err)
         }
@@ -55,7 +59,9 @@ export default function NotFound({
       // Filter out relays that were already tried in tiers 1-3
       const newRelays = externalRelays.filter(relay => !alreadyTriedRelays.includes(relay))
       
-      setExternalRelays(Array.from(new Set(newRelays)))
+      // Normalize and deduplicate final relay list
+      const normalizedRelays = newRelays.map(url => normalizeUrl(url) || url)
+      setExternalRelays(Array.from(new Set(normalizedRelays)))
     }
 
     getExternalRelays()

@@ -11,6 +11,7 @@ import {
 } from '@/lib/event'
 import { toNote } from '@/lib/link'
 import { generateBech32IdFromETag, tagNameEquals } from '@/lib/tag'
+import { normalizeUrl } from '@/lib/url'
 import { useSecondaryPage } from '@/PageManager'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
@@ -225,8 +226,8 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
             // Privacy: Only use user's own relays + defaults, never connect to other users' relays
             const userRelays = userRelayList?.read || []
             const finalRelayUrls = Array.from(new Set([
-              ...FAST_READ_RELAY_URLS, // Fast, well-connected relays
-              ...userRelays // User's mailbox relays
+              ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
+              ...userRelays.map(url => normalizeUrl(url) || url) // User's mailbox relays
             ]))
 
         const filters: (Omit<Filter, 'since' | 'until'> & {
