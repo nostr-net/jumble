@@ -66,7 +66,8 @@ export const BIG_RELAY_URLS = [
   'wss://nostr.land',
   'wss://nostr.wine',
   'wss://nostr.sovbit.host',
-  'wss://nostr21.com'
+  'wss://nostr21.com',
+  'wss://thecitadel.nostr1.com'
 ]
 
 // Optimized relay list for read operations (includes aggregator)
@@ -74,6 +75,7 @@ export const FAST_READ_RELAY_URLS = [
   'wss://theforest.nostr1.com',
   'wss://orly-relay.imwald.eu',
   'wss://nostr.wine',
+  'wss://thecitadel.nostr1.com',
   'wss://aggr.nostr.land'
 ]
 

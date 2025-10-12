@@ -27,13 +27,15 @@ export default function PostRelaySelector({
 }) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
-  const { relayUrls } = useCurrentRelays()
+  useCurrentRelays() // Keep this hook call for any side effects
   const { relaySets, favoriteRelays, blockedRelays } = useFavoriteRelays()
   const { pubkey, relayList } = useNostr()
   const [selectedRelayUrls, setSelectedRelayUrls] = useState<string[]>([])
   const [selectableRelays, setSelectableRelays] = useState<string[]>([])
   const [description, setDescription] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const [hasManualSelection, setHasManualSelection] = useState(false)
+  const [previousSelectableCount, setPreviousSelectableCount] = useState(0)
 
   // Use centralized relay selection service
   useEffect(() => {
@@ -41,7 +43,7 @@ export default function PostRelaySelector({
       setIsLoading(true)
       try {
         const result = await relaySelectionService.selectRelays({
-          userWriteRelays: relayList?.write || relayUrls,
+          userWriteRelays: relayList?.write || [],
           userReadRelays: relayList?.read || [],
           favoriteRelays,
           blockedRelays,
@@ -53,32 +55,59 @@ export default function PostRelaySelector({
           openFrom
         })
 
+        const newSelectableCount = result.selectableRelays.length
+        const selectableRelaysChanged = newSelectableCount !== previousSelectableCount
+        
         setSelectableRelays(result.selectableRelays)
-        setSelectedRelayUrls(result.selectedRelays)
-        setDescription(result.description)
+        setPreviousSelectableCount(newSelectableCount)
+        
+        // Only update selected relays if:
+        // 1. User hasn't manually modified them, OR
+        // 2. New mention relays were added (selectable count changed)
+        if (!hasManualSelection || selectableRelaysChanged) {
+          setSelectedRelayUrls(result.selectedRelays)
+          setDescription(result.description)
+          // Reset manual selection flag if mentions changed
+          if (selectableRelaysChanged && hasManualSelection) {
+            setHasManualSelection(false)
+          }
+        }
         
         console.log('PostRelaySelector: Updated relay selection:', result)
       } catch (error) {
         console.error('Failed to update relay selection:', error)
         setSelectableRelays([])
-        setSelectedRelayUrls([])
-        setDescription('No relays selected')
+        if (!hasManualSelection) {
+          setSelectedRelayUrls([])
+          setDescription('No relays selected')
+        }
       } finally {
         setIsLoading(false)
       }
     }
 
     updateRelaySelection()
-  }, [openFrom, _parentEvent, relayUrls, favoriteRelays, blockedRelays, relaySets, isPublicMessage, postContent, pubkey, relayList])
+  }, [openFrom, _parentEvent, favoriteRelays, blockedRelays, relaySets, isPublicMessage, postContent, pubkey, relayList, hasManualSelection, previousSelectableCount])
+
+  // Update description when selected relays change due to manual selection
+  useEffect(() => {
+    if (hasManualSelection && !isLoading) {
+      const count = selectedRelayUrls.length
+      setDescription(count === 0 ? 'No relays selected' : count === 1 ? simplifyUrl(selectedRelayUrls[0]) : `${count} relays`)
+    }
+  }, [selectedRelayUrls, hasManualSelection, isLoading])
 
   // Update parent component with selected relays
   useEffect(() => {
-    const isProtectedEvent = selectedRelayUrls.length > 0 && !selectedRelayUrls.some(url => relayUrls.includes(url))
+    // An event is "protected" if we have selected relays that aren't the default user write relays
+    const userWriteRelays = relayList?.write || []
+    const isProtectedEvent = selectedRelayUrls.length > 0 && !selectedRelayUrls.every(url => userWriteRelays.includes(url))
     setIsProtectedEvent(isProtectedEvent)
     setAdditionalRelayUrls(selectedRelayUrls)
-  }, [selectedRelayUrls, relayUrls, setIsProtectedEvent, setAdditionalRelayUrls])
+  }, [selectedRelayUrls, relayList, setIsProtectedEvent, setAdditionalRelayUrls])
 
   const handleRelayCheckedChange = useCallback((checked: boolean, url: string) => {
+    setHasManualSelection(true)
     if (checked) {
       setSelectedRelayUrls(prev => [...prev, url])
     } else {
@@ -87,10 +116,12 @@ export default function PostRelaySelector({
   }, [])
 
   const handleSelectAll = useCallback(() => {
+    setHasManualSelection(true)
     setSelectedRelayUrls([...selectableRelays])
   }, [selectableRelays])
 
   const handleClearAll = useCallback(() => {
+    setHasManualSelection(true)
     setSelectedRelayUrls([])
   }, [])
 

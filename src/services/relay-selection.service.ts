@@ -99,6 +99,7 @@ class RelaySelectionService {
     const { parentEvent, isPublicMessage, content, userPubkey } = context
     const contextualRelays = new Set<string>()
 
+
     try {
       // For replies (any kind) and public messages
       if (parentEvent || isPublicMessage) {
@@ -116,17 +117,32 @@ class RelaySelectionService {
           eventHints.forEach(url => contextualRelays.add(url))
         }
 
-        // For public messages, also get mentioned users' read relays
-        if (isPublicMessage && content && userPubkey) {
-          const mentions = await this.extractMentions(content, parentEvent)
+        // For replies and public messages, get mentioned users' relays
+        if (userPubkey) {
+          let mentions: string[] = []
+          
+          // Always include parent event author for replies
+          if (parentEvent) {
+            mentions.push(parentEvent.pubkey)
+          }
+          
+          // Extract additional mentions from content if available
+          if (content) {
+            const contentMentions = await this.extractMentions(content, parentEvent)
+            mentions = [...new Set([...mentions, ...contentMentions])] // deduplicate
+          }
+          
           const mentionedPubkeys = mentions.filter(p => p !== userPubkey)
+          
           
           if (mentionedPubkeys.length > 0) {
             const mentionRelayLists = await Promise.all(
               mentionedPubkeys.map(async (pubkey) => {
                 try {
                   const relayList = await client.fetchRelayList(pubkey)
-                  return relayList?.read || []
+                  // Use write relays for replies, read relays for public messages
+                  const relayType = isPublicMessage ? 'read' : 'write'
+                  return relayList?.[relayType] || []
                 } catch (error) {
                   console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
                   return []
@@ -155,7 +171,9 @@ class RelaySelectionService {
       userWriteRelays,
       parentEvent,
       isPublicMessage,
-      openFrom
+      openFrom,
+      content,
+      userPubkey
     } = context
 
     let selectedRelays: string[] = []
@@ -177,7 +195,43 @@ class RelaySelectionService {
     }
     // For regular replies, use user's write relays + mention relays
     else if (parentEvent && this.isRegularReply(parentEvent)) {
-      selectedRelays = await this.getRegularReplyRelays(context)
+      // Get user's write relays
+      const userRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
+      selectedRelays = userRelays.map(url => normalizeUrl(url) || url).filter(Boolean)
+      
+      // Add mention relays
+      if (userPubkey) {
+        let mentions: string[] = []
+        
+        // Always include parent event author for replies
+        if (parentEvent) {
+          mentions.push(parentEvent.pubkey)
+        }
+        
+        // Extract additional mentions from content if available
+        if (content) {
+          const contentMentions = await this.extractMentions(content, parentEvent)
+          mentions = [...new Set([...mentions, ...contentMentions])] // deduplicate
+        }
+        
+        const mentionedPubkeys = mentions.filter(p => p !== userPubkey)
+        
+        if (mentionedPubkeys.length > 0) {
+          const mentionRelayLists = await Promise.all(
+            mentionedPubkeys.map(async (pubkey) => {
+              try {
+                const relayList = await client.fetchRelayList(pubkey)
+                return relayList?.write || []
+              } catch (error) {
+                console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
+                return []
+              }
+            })
+          )
+          const mentionRelays = mentionRelayLists.flat().map(url => normalizeUrl(url) || url).filter(Boolean)
+          selectedRelays = [...selectedRelays, ...mentionRelays]
+        }
+      }
     }
     // Default: user's write relays (or fallback to fast write relays if no user relays)
     else {
@@ -239,44 +293,6 @@ class RelaySelectionService {
     return Array.from(relays)
   }
 
-  /**
-   * Get relays for regular replies: user's write relays + mention relays
-   */
-  private async getRegularReplyRelays(context: RelaySelectionContext): Promise<string[]> {
-    const { userWriteRelays, parentEvent, content, userPubkey } = context
-    const relays = new Set<string>()
-
-    try {
-      // Add user's write relays - fallback to fast write relays if no user relays
-      const userRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
-      userRelays.forEach(url => relays.add(normalizeUrl(url) || url))
-
-      // Add mentioned users' write relays
-      if (content && userPubkey) {
-        const mentions = await this.extractMentions(content, parentEvent)
-        const mentionedPubkeys = mentions.filter(p => p !== userPubkey)
-        
-        if (mentionedPubkeys.length > 0) {
-          const mentionRelayLists = await Promise.all(
-            mentionedPubkeys.map(async (pubkey) => {
-              try {
-                const relayList = await client.fetchRelayList(pubkey)
-                return relayList?.write || []
-              } catch (error) {
-                console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
-                return []
-              }
-            })
-          )
-          mentionRelayLists.flat().forEach(url => relays.add(normalizeUrl(url) || url))
-        }
-      }
-    } catch (error) {
-      console.error('Failed to get regular reply relays:', error)
-    }
-
-    return Array.from(relays)
-  }
 
   /**
    * Check if this is a regular reply (Kind 1 or Kind 1111, not to Kind 11)
@@ -328,6 +344,7 @@ class RelaySelectionService {
     const matches = content.match(
       /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+)/g
     )
+
 
     if (matches) {
       for (const match of matches) {

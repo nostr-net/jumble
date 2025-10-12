@@ -36,7 +36,8 @@ export default function Mentions({
       if (_parentEventPubkey) {
         potentialMentions.push(_parentEventPubkey)
       }
-      setPotentialMentions(potentialMentions)
+      // Deduplicate the potential mentions array
+      setPotentialMentions(Array.from(new Set(potentialMentions)))
       setRemovedPubkeys((pubkeys) => {
         return Array.from(
           new Set(
