@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, PROFILE_FETCH_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
+import { BIG_RELAY_URLS, DEFAULT_FAVORITE_RELAYS, ExtendedKind, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, PROFILE_FETCH_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
 import {
   compareEvents,
   getReplaceableCoordinate,
@@ -10,6 +10,7 @@ import { formatPubkey, isValidPubkey, pubkeyToNpub, userIdToPubkey } from '@/lib
 import { getPubkeysFromPTags, getServersFromServerTags } from '@/lib/tag'
 import { isWebsocketUrl, normalizeUrl } from '@/lib/url'
 import { isSafari } from '@/lib/utils'
+import storage from '@/services/local-storage.service'
 import { ISigner, TProfile, TPublishOptions, TRelayList, TSubRequestFilter } from '@/types'
 import { sha256 } from '@noble/hashes/sha256'
 import DataLoader from 'dataloader'
@@ -1086,10 +1087,24 @@ class ClientService extends EventTarget {
   async getAlreadyTriedRelays(_id: string): Promise<string[]> {
     const userRelayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { read: [], write: [] }
     
-    // Tier 1: User's read relays + fast read relays
+    // Get favorite relays from storage (includes user's configured relay sets)
+    const storedRelaySets = storage.getRelaySets()
+    const favoriteRelays: string[] = this.pubkey ? DEFAULT_FAVORITE_RELAYS : BIG_RELAY_URLS.slice()
+    
+    // Add relays from stored relay sets
+    storedRelaySets.forEach(({ relayUrls }) => {
+      relayUrls.forEach((url) => {
+        if (!favoriteRelays.includes(url)) {
+          favoriteRelays.push(url)
+        }
+      })
+    })
+    
+    // Tier 1: User's read relays + fast read relays + favorite relays
     const tier1Relays = Array.from(new Set([
       ...userRelayList.read.map(url => normalizeUrl(url) || url),
-      ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
+      ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url),
+      ...favoriteRelays.map(url => normalizeUrl(url) || url)
     ]))
     
     // Tier 2: User's write relays + fast write relays  

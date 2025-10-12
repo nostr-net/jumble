@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+// Removed dropdown menu import - no longer using relay selection
 import { FAST_READ_RELAY_URLS } from '@/constants'
 import { normalizeUrl } from '@/lib/url'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
@@ -193,14 +193,14 @@ type EventMapEntry = {
 
 const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
-  const { relaySets, favoriteRelays } = useFavoriteRelays()
+  const { favoriteRelays } = useFavoriteRelays()
   const { pubkey } = useNostr()
   const { push } = useSecondaryPage()
   
   // State management
   const [selectedTopic, setSelectedTopic] = useState('all')
   const [selectedSubtopic, setSelectedSubtopic] = useState<string | null>(null)
-  const [selectedRelay, setSelectedRelay] = useState<string | null>(null)
+  // Removed relay filtering - using all relays
   const [selectedSort, setSelectedSort] = useState<SortOption>('newest')
   const [eventMap, setEventMap] = useState<Map<string, EventMapEntry>>(new Map())
   const [filteredEvents, setFilteredEvents] = useState<NostrEvent[]>([])
@@ -218,26 +218,25 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const isFetchingRef = useRef(false)
   const lastFetchTimeRef = useRef(0)
 
-  // Get all available relays (use favorite relays from provider + additional relays)
+  // Get all available relays (use favorite relays from provider + user's read relays or fast read relays)
   useEffect(() => {
     const updateRelays = async () => {
-      let userWriteRelays: string[] = []
+      let userReadRelays: string[] = []
       
       if (pubkey) {
         try {
-          // Get user's write relays
+          // Get user's read relays
           const relayList = await client.fetchRelayList(pubkey)
-          userWriteRelays = relayList?.write || []
+          userReadRelays = relayList?.read || []
         } catch (error) {
           console.warn('Failed to fetch user relay list:', error)
         }
       }
       
-      // Use favorite relays from provider (includes stored relay sets) + additional relays
+      // Use favorite relays from provider (includes stored relay sets) + user's read relays or fast read relays
       const allRawRelays = [
         ...favoriteRelays,
-        ...userWriteRelays,
-        ...FAST_READ_RELAY_URLS
+        ...(userReadRelays.length > 0 ? userReadRelays : FAST_READ_RELAY_URLS)
       ]
       
       // Normalize and deduplicate all relays
@@ -266,6 +265,13 @@ const DiscussionsPage = forwardRef((_, ref) => {
   // State for dynamic topics and subtopics
   const [dynamicTopics, setDynamicTopics] = useState<string[]>([])
   const [dynamicSubtopics, setDynamicSubtopics] = useState<string[]>([])
+  
+  // Manual reset function for debugging
+  const resetFetchState = useCallback(() => {
+    console.log('Manually resetting fetch state')
+    isFetchingRef.current = false
+    setLoading(false)
+  }, [])
 
   // Fetch all kind 11 events from all relays
   const fetchAllEvents = useCallback(async () => {
@@ -282,10 +288,18 @@ const DiscussionsPage = forwardRef((_, ref) => {
       return
     }
     
+    console.log('Starting fetchAllEvents...')
     
     isFetchingRef.current = true
     lastFetchTimeRef.current = now
     setLoading(true)
+    
+    // Safety timeout to reset fetch state if it gets stuck
+    const safetyTimeout = setTimeout(() => {
+      console.warn('Fetch timeout - resetting fetch state')
+      isFetchingRef.current = false
+      setLoading(false)
+    }, 30000) // 30 second timeout
     try {
       // Fetch recent kind 11 events (last 30 days)
       const thirtyDaysAgo = Math.floor((Date.now() - (30 * 24 * 60 * 60 * 1000)) / 1000)
@@ -396,6 +410,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       setDynamicTopics([])
       setDynamicSubtopics([])
     } finally {
+      clearTimeout(safetyTimeout)
       setLoading(false)
       isFetchingRef.current = false
     }
@@ -412,30 +427,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
     }
   }, [allRelays])
 
-  // Filter events based on selected relay
+  // Simplified filtering - no relay filtering, just return all events
   const getFilteredEvents = useCallback(() => {
-    const events = Array.from(eventMap.values())
-    
-    // Filter by selected relay if specified
-    let filtered = events
-    if (selectedRelay) {
-      // Check if it's a relay set
-      const relaySet = relaySets.find(set => set.id === selectedRelay)
-      if (relaySet) {
-        filtered = events.filter(entry => 
-          entry.relaySources.some(source => relaySet.relayUrls.includes(source))
-        )
-      } else {
-        // It's an individual relay - normalize both for comparison
-        const normalizedSelectedRelay = normalizeUrl(selectedRelay)
-        filtered = events.filter(entry => 
-          entry.relaySources.some(source => normalizeUrl(source) === normalizedSelectedRelay)
-        )
-      }
-    }
-    
-    return filtered.map(entry => entry.event)
-  }, [eventMap, selectedRelay, relaySets])
+    return Array.from(eventMap.values()).map(entry => entry.event)
+  }, [eventMap])
 
   // Filter threads by topic and search
   const filterAndSortEvents = useCallback(() => {
@@ -610,33 +605,25 @@ const DiscussionsPage = forwardRef((_, ref) => {
         }
       }
       
-      // If still no sources, use the selected relay or all relays
+      // If still no sources, use first few relays
       if (relaySources.length === 0) {
-        relaySources = selectedRelay ? [selectedRelay] : allRelays.slice(0, 3)
+        relaySources = allRelays.slice(0, 3)
       }
       
       console.log('Using relay sources:', relaySources)
       
-      // Ensure the event hints are properly set for navigation
-      // This is important for the toNote() function to include relay hints in the URL
-      if (relaySources.length > 0) {
-        console.log('Tracking event on relays for navigation:', relaySources)
-        // Create a temporary relay object to track the event
-        relaySources.forEach(relayUrl => {
-          try {
-            // Import the Relay class from nostr-tools
-            const { Relay } = require('nostr-tools')
-            const tempRelay = new Relay(relayUrl)
-            client.trackEventSeenOn(publishedEvent.id, tempRelay)
-            console.log(`Tracked event ${publishedEvent.id} on relay ${relayUrl}`)
-          } catch (error) {
-            console.warn('Failed to create relay object for tracking:', relayUrl, error)
-          }
-        })
-        
-        // Verify the hints are set
-        const hints = client.getEventHints(publishedEvent.id)
-        console.log('Event hints after tracking:', hints)
+      // Note: Event tracking will happen automatically when the event is fetched
+      // from the relays during the next fetchAllEvents call. The relaySources
+      // are stored in the eventMap so the event can be found and displayed.
+      console.log('Event will be tracked automatically on next fetch from relays:', relaySources)
+      
+      // Debug: Check if the event hints are already set
+      const currentHints = client.getEventHints(publishedEvent.id)
+      console.log('Current event hints:', currentHints)
+      
+      // If no hints are set, the event wasn't properly tracked during publishing
+      if (currentHints.length === 0) {
+        console.warn('Event has no relay hints - navigation may not work properly')
       }
       
       // Add to event map
@@ -667,7 +654,11 @@ const DiscussionsPage = forwardRef((_, ref) => {
     }
     
     // Also refetch in the background to ensure we have the latest
-    setTimeout(() => fetchAllEvents(), 2000) // Wait 2 seconds for the event to propagate
+    // This will help ensure the event is properly tracked on relays
+    setTimeout(() => {
+      console.log('Background fetch after thread creation')
+      fetchAllEvents()
+    }, 3000) // Wait 3 seconds for the event to propagate
   }
 
   return (
@@ -695,42 +686,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
               threads={viewMode === 'grouped' && selectedTopic === 'all' ? filteredEvents : filteredEvents}
               replies={[]}
             />
-            {(allRelays.length > 1 || relaySets.length > 0) && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="h-10 text-sm">
-                    {selectedRelay ? (
-                      relaySets.find(set => set.id === selectedRelay)?.name || 
-                      selectedRelay.replace('wss://', '').replace('ws://', '')
-                    ) : (
-                      'All Relays'
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => setSelectedRelay(null)}>
-                    All Relays
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {relaySets.map(relaySet => (
-                    <DropdownMenuItem 
-                      key={relaySet.id} 
-                      onClick={() => setSelectedRelay(relaySet.id)}
-                    >
-                      {relaySet.name}
-                    </DropdownMenuItem>
-                  ))}
-                  {allRelays.map(relay => (
-                    <DropdownMenuItem 
-                      key={relay} 
-                      onClick={() => setSelectedRelay(relay)}
-                    >
-                      {relay.replace('wss://', '').replace('ws://', '')}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            {/* Removed relay selection dropdown */}
           </div>
           <div className="flex gap-1 items-center">
             <Button
@@ -910,6 +866,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
                 <Button variant="outline" onClick={fetchAllEvents}>
                   {t('Refresh')}
                 </Button>
+                <Button variant="outline" onClick={resetFetchState}>
+                  Reset Fetch
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -994,8 +953,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
         <CreateThreadDialog
           topic={selectedTopic}
           availableRelays={allRelays}
-          relaySets={relaySets}
-          selectedRelay={selectedRelay}
+          relaySets={[]}
           onClose={() => setShowCreateThread(false)}
           onThreadCreated={handleThreadCreated}
         />
