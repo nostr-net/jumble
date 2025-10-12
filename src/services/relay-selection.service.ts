@@ -1,0 +1,412 @@
+import { Event, kinds } from 'nostr-tools'
+import { ExtendedKind } from '@/constants'
+import { FAST_WRITE_RELAY_URLS } from '@/constants'
+import client from '@/services/client.service'
+import { normalizeUrl } from '@/lib/url'
+import { TRelaySet } from '@/types'
+
+export interface RelaySelectionContext {
+  // User's own relays
+  userWriteRelays: string[]
+  userReadRelays: string[]
+  favoriteRelays: string[]
+  blockedRelays: string[]
+  relaySets: TRelaySet[]
+  
+  // Post context
+  parentEvent?: Event
+  isPublicMessage?: boolean
+  content?: string
+  userPubkey?: string
+  openFrom?: string[]
+}
+
+export interface RelaySelectionResult {
+  selectableRelays: string[]
+  selectedRelays: string[]
+  description: string
+}
+
+class RelaySelectionService {
+  /**
+   * Main entry point for relay selection logic
+   */
+  async selectRelays(context: RelaySelectionContext): Promise<RelaySelectionResult> {
+    // Step 1: Build the list of selectable relays
+    const selectableRelays = await this.buildSelectableRelays(context)
+    
+    // Step 2: Determine which relays should be selected (checked)
+    const selectedRelays = await this.determineSelectedRelays(context, selectableRelays)
+    
+    // Step 3: Generate description
+    const description = this.generateDescription(selectedRelays)
+
+    return {
+      selectableRelays,
+      selectedRelays,
+      description
+    }
+  }
+
+  /**
+   * Build the list of all relays that can be selected
+   * Always includes: user's write relays (or fast write fallback) + favorite relays + relay sets
+   * Plus contextual relays for replies and public messages
+   */
+  private async buildSelectableRelays(context: RelaySelectionContext): Promise<string[]> {
+    const {
+      userWriteRelays,
+      favoriteRelays,
+      relaySets,
+      parentEvent,
+      isPublicMessage,
+      openFrom
+    } = context
+
+    const selectableRelays = new Set<string>()
+
+    // Always include user's write relays (or fallback to fast write relays)
+    const userRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
+    userRelays.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+
+    // Always include favorite relays
+    favoriteRelays.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+
+    // Always include relays from relay sets
+    relaySets.forEach(set => {
+      set.relayUrls.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+    })
+
+    // Add contextual relays for replies and public messages
+    if (parentEvent || isPublicMessage) {
+      const contextualRelays = await this.getContextualRelays(context)
+      contextualRelays.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+    }
+
+    // If called with specific relay URLs (e.g., from openFrom), include those
+    if (openFrom && openFrom.length > 0) {
+      openFrom.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+    }
+
+    // Filter out blocked relays
+    return this.filterBlockedRelays(Array.from(selectableRelays).filter(Boolean), context.blockedRelays)
+  }
+
+  /**
+   * Get contextual relays based on the type of post
+   */
+  private async getContextualRelays(context: RelaySelectionContext): Promise<string[]> {
+    const { parentEvent, isPublicMessage, content, userPubkey } = context
+    const contextualRelays = new Set<string>()
+
+    try {
+      // For replies (any kind) and public messages
+      if (parentEvent || isPublicMessage) {
+        // Get the replied-to author's read relays
+        if (parentEvent) {
+          const authorRelayList = await client.fetchRelayList(parentEvent.pubkey)
+          if (authorRelayList?.read) {
+            authorRelayList.read.slice(0, 4).forEach(url => contextualRelays.add(url))
+          }
+        }
+
+        // Get relay hint from where the event was discovered
+        if (parentEvent) {
+          const eventHints = client.getEventHints(parentEvent.id)
+          eventHints.forEach(url => contextualRelays.add(url))
+        }
+
+        // For public messages, also get mentioned users' read relays
+        if (isPublicMessage && content && userPubkey) {
+          const mentions = await this.extractMentions(content, parentEvent)
+          const mentionedPubkeys = mentions.filter(p => p !== userPubkey)
+          
+          if (mentionedPubkeys.length > 0) {
+            const mentionRelayLists = await Promise.all(
+              mentionedPubkeys.map(async (pubkey) => {
+                try {
+                  const relayList = await client.fetchRelayList(pubkey)
+                  return relayList?.read || []
+                } catch (error) {
+                  console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
+                  return []
+                }
+              })
+            )
+            mentionRelayLists.flat().forEach(url => contextualRelays.add(url))
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get contextual relays:', error)
+    }
+
+    return Array.from(contextualRelays)
+  }
+
+  /**
+   * Determine which relays should be selected (checked) based on the context
+   */
+  private async determineSelectedRelays(
+    context: RelaySelectionContext,
+    _selectableRelays: string[]
+  ): Promise<string[]> {
+    const {
+      userWriteRelays,
+      parentEvent,
+      isPublicMessage,
+      openFrom
+    } = context
+
+    let selectedRelays: string[] = []
+
+    // If called with specific relay URLs, use those
+    if (openFrom && openFrom.length > 0) {
+      selectedRelays = openFrom.map(url => normalizeUrl(url) || url).filter(Boolean)
+    }
+    // For discussion replies, use relay hint from the kind 11 at the top of the thread
+    else if (parentEvent && (parentEvent.kind === ExtendedKind.DISCUSSION || parentEvent.kind === ExtendedKind.COMMENT)) {
+      const discussionRelay = this.getDiscussionRelayHint(parentEvent)
+      if (discussionRelay) {
+        selectedRelays = [discussionRelay]
+      }
+    }
+    // For public messages, use sender outboxes + receiver inboxes
+    else if (isPublicMessage || (parentEvent && parentEvent.kind === ExtendedKind.PUBLIC_MESSAGE)) {
+      selectedRelays = await this.getPublicMessageRelays(context)
+    }
+    // For regular replies, use user's write relays + mention relays
+    else if (parentEvent && this.isRegularReply(parentEvent)) {
+      selectedRelays = await this.getRegularReplyRelays(context)
+    }
+    // Default: user's write relays (or fallback to fast write relays if no user relays)
+    else {
+      const defaultRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
+      selectedRelays = defaultRelays.map(url => normalizeUrl(url) || url).filter(Boolean)
+    }
+
+    // Filter out blocked relays
+    return this.filterBlockedRelays(selectedRelays, context.blockedRelays)
+  }
+
+  /**
+   * Get relays for public messages: sender outboxes + receiver inboxes
+   */
+  private async getPublicMessageRelays(context: RelaySelectionContext): Promise<string[]> {
+    const { userWriteRelays, parentEvent, isPublicMessage, content, userPubkey } = context
+    const relays = new Set<string>()
+
+    try {
+      // Add sender's write relays (outboxes) - fallback to fast write relays if no user relays
+      const senderRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
+      senderRelays.forEach(url => relays.add(normalizeUrl(url) || url))
+
+      // Add receiver's read relays (inboxes)
+      if (isPublicMessage && content && userPubkey) {
+        // For new public messages, get mentioned users' read relays
+        const mentions = await this.extractMentions(content, parentEvent)
+        const mentionedPubkeys = mentions.filter(p => p !== userPubkey)
+        
+        if (mentionedPubkeys.length > 0) {
+          const receiverRelayLists = await Promise.all(
+            mentionedPubkeys.map(async (pubkey) => {
+              try {
+                const relayList = await client.fetchRelayList(pubkey)
+                return relayList?.read || []
+              } catch (error) {
+                console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
+                return []
+              }
+            })
+          )
+          receiverRelayLists.flat().forEach(url => relays.add(normalizeUrl(url) || url))
+        }
+      } else if (parentEvent && parentEvent.kind === ExtendedKind.PUBLIC_MESSAGE) {
+        // For public message replies, get original sender's read relays
+        try {
+          const senderRelayList = await client.fetchRelayList(parentEvent.pubkey)
+          if (senderRelayList?.read) {
+            senderRelayList.read.forEach(url => relays.add(normalizeUrl(url) || url))
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch relay list for ${parentEvent.pubkey}:`, error)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get public message relays:', error)
+    }
+
+    return Array.from(relays)
+  }
+
+  /**
+   * Get relays for regular replies: user's write relays + mention relays
+   */
+  private async getRegularReplyRelays(context: RelaySelectionContext): Promise<string[]> {
+    const { userWriteRelays, parentEvent, content, userPubkey } = context
+    const relays = new Set<string>()
+
+    try {
+      // Add user's write relays - fallback to fast write relays if no user relays
+      const userRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
+      userRelays.forEach(url => relays.add(normalizeUrl(url) || url))
+
+      // Add mentioned users' write relays
+      if (content && userPubkey) {
+        const mentions = await this.extractMentions(content, parentEvent)
+        const mentionedPubkeys = mentions.filter(p => p !== userPubkey)
+        
+        if (mentionedPubkeys.length > 0) {
+          const mentionRelayLists = await Promise.all(
+            mentionedPubkeys.map(async (pubkey) => {
+              try {
+                const relayList = await client.fetchRelayList(pubkey)
+                return relayList?.write || []
+              } catch (error) {
+                console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
+                return []
+              }
+            })
+          )
+          mentionRelayLists.flat().forEach(url => relays.add(normalizeUrl(url) || url))
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get regular reply relays:', error)
+    }
+
+    return Array.from(relays)
+  }
+
+  /**
+   * Check if this is a regular reply (Kind 1 or Kind 1111, not to Kind 11)
+   */
+  private isRegularReply(parentEvent: Event): boolean {
+    return (parentEvent.kind === kinds.ShortTextNote || parentEvent.kind === ExtendedKind.COMMENT) &&
+           parentEvent.kind !== ExtendedKind.DISCUSSION
+  }
+
+  /**
+   * Get relay hint from discussion events
+   */
+  private getDiscussionRelayHint(parentEvent: Event): string | null {
+    // For kind 1111 (COMMENT): look for 'E' tag which points to the root event
+    if (parentEvent.kind === ExtendedKind.COMMENT) {
+      const ETag = parentEvent.tags.find(tag => tag[0] === 'E')
+      if (ETag && ETag[2]) {
+        return normalizeUrl(ETag[2]) || ETag[2]
+      }
+      
+      // If no 'E' tag, check lowercase 'e' tag for parent event
+      const eTag = parentEvent.tags.find(tag => tag[0] === 'e')
+      if (eTag && eTag[2]) {
+        return normalizeUrl(eTag[2]) || eTag[2]
+      }
+    } else if (parentEvent.kind === ExtendedKind.DISCUSSION) {
+      // For kind 11 (DISCUSSION): get relay hint from where it was found
+      const eventHints = client.getEventHints(parentEvent.id)
+      if (eventHints.length > 0) {
+        return normalizeUrl(eventHints[0]) || eventHints[0]
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Extract mentions from content (simplified version of the existing extractMentions)
+   */
+  private async extractMentions(content: string, parentEvent?: Event): Promise<string[]> {
+    const pubkeys: string[] = []
+    
+    // Always include parent event author if there's a parent event
+    if (parentEvent) {
+      pubkeys.push(parentEvent.pubkey)
+    }
+    
+    // Extract nostr addresses from content
+    const matches = content.match(
+      /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+)/g
+    )
+
+    if (matches) {
+      for (const match of matches) {
+        try {
+          const { nip19 } = await import('nostr-tools')
+          const id = match.split(':')[1]
+          const { type, data } = nip19.decode(id)
+          if (type === 'nprofile') {
+            if (!pubkeys.includes(data.pubkey)) {
+              pubkeys.push(data.pubkey)
+            }
+          } else if (type === 'npub') {
+            if (!pubkeys.includes(data)) {
+              pubkeys.push(data)
+            }
+          } else if (['nevent', 'note'].includes(type)) {
+            const event = await client.fetchEvent(id)
+            if (event && !pubkeys.includes(event.pubkey)) {
+              pubkeys.push(event.pubkey)
+            }
+          }
+        } catch (error) {
+          console.error('Failed to decode nostr address:', error)
+        }
+      }
+    }
+
+    // Add related pubkeys from parent event tags
+    if (parentEvent) {
+      parentEvent.tags.forEach(([tagName, tagValue]) => {
+        if (['p', 'P'].includes(tagName) && tagValue && !pubkeys.includes(tagValue)) {
+          pubkeys.push(tagValue)
+        }
+      })
+    }
+
+    return pubkeys
+  }
+
+  /**
+   * Generate description for the selected relays
+   */
+  private generateDescription(selectedRelays: string[]): string {
+    if (selectedRelays.length === 0) {
+      return 'No relays selected'
+    }
+    if (selectedRelays.length === 1) {
+      return this.simplifyUrl(selectedRelays[0])
+    }
+    return `${selectedRelays.length} relays`
+  }
+
+  /**
+   * Simplify URL for display
+   */
+  private simplifyUrl(url: string): string {
+    try {
+      const urlObj = new URL(url)
+      return urlObj.hostname
+    } catch {
+      return url
+    }
+  }
+
+  /**
+   * Filter out blocked relays from a list
+   */
+  private filterBlockedRelays(relays: string[], blockedRelays: string[]): string[] {
+    if (!blockedRelays || blockedRelays.length === 0) {
+      return relays
+    }
+
+    const normalizedBlocked = blockedRelays.map(url => normalizeUrl(url) || url)
+    return relays.filter(relay => {
+      const normalizedRelay = normalizeUrl(relay) || relay
+      return !normalizedBlocked.includes(normalizedRelay)
+    })
+  }
+}
+
+const relaySelectionService = new RelaySelectionService()
+export default relaySelectionService

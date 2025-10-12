@@ -62,7 +62,6 @@ export default function PostContent({
   const [publicMessageRecipients, setPublicMessageRecipients] = useState<string[]>([])
   const [isProtectedEvent, setIsProtectedEvent] = useState(false)
   const [additionalRelayUrls, setAdditionalRelayUrls] = useState<string[]>([])
-  const [userWriteRelays, setUserWriteRelays] = useState<string[]>([])
   const [isHighlight, setIsHighlight] = useState(false)
   const [highlightData, setHighlightData] = useState<HighlightData>({
     sourceType: 'nostr',
@@ -247,7 +246,7 @@ export default function PostContent({
 
         // console.log('Publishing draft event:', draftEvent)
         const newEvent = await publish(draftEvent, {
-          specifiedRelayUrls: isProtectedEvent ? additionalRelayUrls.filter(url => !userWriteRelays.includes(url)) : undefined,
+          specifiedRelayUrls: additionalRelayUrls.length > 0 ? additionalRelayUrls : undefined,
           additionalRelayUrls: isPoll ? pollCreateData.relays : additionalRelayUrls,
           minPow
         })
@@ -256,9 +255,7 @@ export default function PostContent({
         // Check if we need to refresh the current relay view
         if (feedInfo.feedType === 'relay' && feedInfo.id) {
           const currentRelayUrl = normalizeUrl(feedInfo.id)
-          const publishedRelays = isProtectedEvent 
-            ? additionalRelayUrls.filter(url => !userWriteRelays.includes(url))
-            : additionalRelayUrls
+          const publishedRelays = additionalRelayUrls
           
           // If we published to the current relay being viewed, trigger a refresh after a short delay
           if (publishedRelays.some(url => normalizeUrl(url) === currentRelayUrl)) {
@@ -492,10 +489,10 @@ export default function PostContent({
         <PostRelaySelector
           setIsProtectedEvent={setIsProtectedEvent}
           setAdditionalRelayUrls={setAdditionalRelayUrls}
-          setUserWriteRelays={setUserWriteRelays}
           parentEvent={parentEvent}
           openFrom={openFrom}
           content={text}
+          isPublicMessage={isPublicMessage}
         />
       )}
       <div className="flex items-center justify-between">

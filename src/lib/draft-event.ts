@@ -438,6 +438,19 @@ export function createFavoriteRelaysDraftEvent(
   }
 }
 
+export function createBlockedRelaysDraftEvent(blockedRelays: string[]): TDraftEvent {
+  const tags: string[][] = []
+  blockedRelays.forEach((url) => {
+    tags.push(buildRelayTag(url))
+  })
+  return {
+    kind: ExtendedKind.BLOCKED_RELAYS,
+    content: '',
+    tags,
+    created_at: dayjs().unix()
+  }
+}
+
 export function createSeenNotificationsAtDraftEvent(): TDraftEvent {
   return {
     kind: kinds.Application,

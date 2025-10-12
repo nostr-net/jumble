@@ -83,6 +83,7 @@ export type TNip07 = {
     encrypt?: (pubkey: string, plainText: string) => Promise<string>
     decrypt?: (pubkey: string, cipherText: string) => Promise<string>
   }
+  getRelays?: () => Promise<{ [url: string]: { read: boolean; write: boolean } }>
 }
 
 export interface ISigner {

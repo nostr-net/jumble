@@ -5,6 +5,7 @@ type TVerifyNip05Result = {
   isVerified: boolean
   nip05Name: string
   nip05Domain: string
+  relays?: string[]
 }
 
 const verifyNip05ResultCache = new LRUCache<string, TVerifyNip05Result>({
@@ -17,14 +18,16 @@ const verifyNip05ResultCache = new LRUCache<string, TVerifyNip05Result>({
 
 async function _verifyNip05(nip05: string, pubkey: string): Promise<TVerifyNip05Result> {
   const [nip05Name, nip05Domain] = nip05?.split('@') || [undefined, undefined]
-  const result = { isVerified: false, nip05Name, nip05Domain }
+  const result: TVerifyNip05Result = { isVerified: false, nip05Name, nip05Domain }
   if (!nip05Name || !nip05Domain || !pubkey) return result
 
   try {
     const res = await fetch(getWellKnownNip05Url(nip05Domain, nip05Name))
     const json = await res.json()
     if (json.names?.[nip05Name] === pubkey) {
-      return { ...result, isVerified: true }
+      // Also extract relays if available (NIP-05 spec allows a relays object)
+      const relays = json.relays?.[pubkey]
+      return { ...result, isVerified: true, relays: Array.isArray(relays) ? relays : undefined }
     }
   } catch {
     // ignore
@@ -68,4 +71,21 @@ export async function fetchPubkeysFromDomain(domain: string): Promise<string[]> 
     console.error('Error fetching pubkeys from domain:', error)
     return []
   }
+}
+
+/**
+ * Attempt to get relays from NIP-07 extension
+ * Some extensions support a getRelays() method
+ */
+export async function getRelaysFromNip07Extension(): Promise<string[]> {
+  try {
+    if (window.nostr && typeof window.nostr.getRelays === 'function') {
+      const relaysObj = await window.nostr.getRelays()
+      // getRelays() returns an object like { "wss://relay.url": {read: true, write: true} }
+      return Object.keys(relaysObj || {})
+    }
+  } catch (error) {
+    console.log('NIP-07 extension does not support getRelays():', error)
+  }
+  return []
 }

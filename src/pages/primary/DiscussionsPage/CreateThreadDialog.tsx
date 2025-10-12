@@ -10,14 +10,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book, Network, Car, Eye, Edit3 } from 'lucide-react'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
+import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { TDraftEvent, TRelaySet } from '@/types'
 import { NostrEvent } from 'nostr-tools'
 import { prefixNostrAddresses } from '@/lib/nostr-address'
 import { showPublishingError } from '@/lib/publishing-feedback'
-import { normalizeUrl, simplifyUrl } from '@/lib/url'
+import { simplifyUrl } from '@/lib/url'
+import relaySelectionService from '@/services/relay-selection.service'
 import dayjs from 'dayjs'
 import { extractHashtagsFromContent, normalizeTopic } from '@/lib/discussion-topics'
 import DiscussionContent from '@/components/Note/DiscussionContent'
@@ -82,17 +84,20 @@ export default function CreateThreadDialog({
   onThreadCreated 
 }: CreateThreadDialogProps) {
   const { t } = useTranslation()
-  const { pubkey, publish } = useNostr()
+  const { pubkey, publish, relayList } = useNostr()
+  const { favoriteRelays, blockedRelays } = useFavoriteRelays()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [selectedTopic] = useState(initialTopic)
   const [selectedRelayUrls, setSelectedRelayUrls] = useState<string[]>([])
+  const [selectableRelays, setSelectableRelays] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<{ title?: string; content?: string; relay?: string; author?: string; subject?: string }>({})
   const [isNsfw, setIsNsfw] = useState(false)
   const [addClientTag, setAddClientTag] = useState(true)
   const [minPow, setMinPow] = useState(0)
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
+  const [isLoadingRelays, setIsLoadingRelays] = useState(true)
   
   // Readings options state
   const [isReadingGroup, setIsReadingGroup] = useState(false)
@@ -100,36 +105,62 @@ export default function CreateThreadDialog({
   const [subject, setSubject] = useState('')
   const [showReadingsPanel, setShowReadingsPanel] = useState(false)
 
-  // Get all selectable relays (includes relays from selected relay set if applicable)
-  const selectableRelays = useMemo(() => {
-    const relaySet = initialRelay ? relaySets.find(set => set.id === initialRelay) : null
-    if (relaySet) {
-      // Include relays from the selected set along with available relays
-      return Array.from(new Set([
-        ...availableRelays.map(url => normalizeUrl(url) || url),
-        ...relaySet.relayUrls.map(url => normalizeUrl(url) || url)
-      ]))
-    }
-    return availableRelays
-  }, [availableRelays, relaySets, initialRelay])
-
-  // Initialize selected relays based on the originating view state
+  // Initialize selected relays using the centralized relay selection service
   useEffect(() => {
-    if (initialRelay === null || initialRelay === undefined) {
-      // "All relays" selected - check all available relays
-      setSelectedRelayUrls(availableRelays)
-    } else {
-      // Check if it's a relay set ID
-      const relaySet = relaySets.find(set => set.id === initialRelay)
-      if (relaySet) {
-        // It's a relay set - check all relays in that set
-        setSelectedRelayUrls(relaySet.relayUrls)
-      } else {
-        // It's a specific relay - check just that relay
-        setSelectedRelayUrls([initialRelay])
+    const initializeRelays = async () => {
+      setIsLoadingRelays(true)
+      try {
+        // Determine openFrom based on initialRelay
+        let openFrom: string[] | undefined = undefined
+        if (initialRelay) {
+          const relaySet = relaySets.find(set => set.id === initialRelay)
+          if (relaySet) {
+            openFrom = relaySet.relayUrls
+          } else {
+            openFrom = [initialRelay]
+          }
+        }
+
+        const result = await relaySelectionService.selectRelays({
+          userWriteRelays: relayList?.write || [],
+          userReadRelays: relayList?.read || [],
+          favoriteRelays,
+          blockedRelays,
+          relaySets,
+          openFrom,
+          userPubkey: pubkey || undefined
+        })
+
+        setSelectableRelays(result.selectableRelays)
+        setSelectedRelayUrls(result.selectedRelays)
+      } catch (error) {
+        console.error('Failed to initialize relays:', error)
+        // Fallback to availableRelays
+        setSelectableRelays(availableRelays)
+        setSelectedRelayUrls(availableRelays)
+      } finally {
+        setIsLoadingRelays(false)
       }
     }
-  }, [initialRelay, availableRelays, relaySets])
+
+    initializeRelays()
+  }, [initialRelay, availableRelays, relaySets, favoriteRelays, blockedRelays, relayList, pubkey])
+
+  const handleRelayCheckedChange = (checked: boolean, url: string) => {
+    if (checked) {
+      setSelectedRelayUrls(prev => [...prev, url])
+    } else {
+      setSelectedRelayUrls(prev => prev.filter(u => u !== url))
+    }
+  }
+
+  const handleSelectAll = () => {
+    setSelectedRelayUrls([...selectableRelays])
+  }
+
+  const handleClearAll = () => {
+    setSelectedRelayUrls([])
+  }
 
   const validateForm = () => {
     const newErrors: { title?: string; content?: string; relay?: string; author?: string; subject?: string } = {}
@@ -512,7 +543,11 @@ export default function CreateThreadDialog({
             <div className="space-y-2">
               <Label>{t('Publish to Relays')}</Label>
               <ScrollArea className={`max-h-64 rounded-md border p-4 ${errors.relay ? 'border-destructive' : ''}`}>
-                {selectableRelays.length === 0 ? (
+                {isLoadingRelays ? (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    {t('Loading relays...')}
+                  </div>
+                ) : selectableRelays.length === 0 ? (
                   <div className="text-sm text-muted-foreground text-center py-4">
                     {t('No relays available. Please configure relays in settings.')}
                   </div>
@@ -525,13 +560,8 @@ export default function CreateThreadDialog({
                           <Checkbox
                             id={`relay-${relay}`}
                             checked={isChecked}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedRelayUrls(prev => [...prev, relay])
-                              } else {
-                                setSelectedRelayUrls(prev => prev.filter(url => url !== relay))
-                              }
-                            }}
+                            onCheckedChange={(checked) => handleRelayCheckedChange(!!checked, relay)}
+                            disabled={isLoadingRelays}
                           />
                           <label
                             htmlFor={`relay-${relay}`}
@@ -560,7 +590,8 @@ export default function CreateThreadDialog({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setSelectedRelayUrls(selectableRelays)}
+                    onClick={handleSelectAll}
+                    disabled={isLoadingRelays}
                   >
                     {t('Select All')}
                   </Button>
@@ -568,7 +599,8 @@ export default function CreateThreadDialog({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setSelectedRelayUrls([])}
+                    onClick={handleClearAll}
+                    disabled={isLoadingRelays}
                   >
                     {t('Clear All')}
                   </Button>

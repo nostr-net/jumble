@@ -1,5 +1,5 @@
 import { BIG_RELAY_URLS, DEFAULT_FAVORITE_RELAYS } from '@/constants'
-import { createFavoriteRelaysDraftEvent, createRelaySetDraftEvent } from '@/lib/draft-event'
+import { createFavoriteRelaysDraftEvent, createBlockedRelaysDraftEvent, createRelaySetDraftEvent } from '@/lib/draft-event'
 import { getReplaceableEventIdentifier } from '@/lib/event'
 import { getRelaySetFromEvent } from '@/lib/event-metadata'
 import { randomString } from '@/lib/random'
@@ -17,6 +17,9 @@ type TFavoriteRelaysContext = {
   addFavoriteRelays: (relayUrls: string[]) => Promise<void>
   deleteFavoriteRelays: (relayUrls: string[]) => Promise<void>
   reorderFavoriteRelays: (reorderedRelays: string[]) => Promise<void>
+  blockedRelays: string[]
+  addBlockedRelays: (relayUrls: string[]) => Promise<void>
+  deleteBlockedRelays: (relayUrls: string[]) => Promise<void>
   relaySets: TRelaySet[]
   createRelaySet: (relaySetName: string, relayUrls?: string[]) => Promise<void>
   addRelaySets: (newRelaySetEvents: Event[]) => Promise<void>
@@ -36,8 +39,9 @@ export const useFavoriteRelays = () => {
 }
 
 export function FavoriteRelaysProvider({ children }: { children: React.ReactNode }) {
-  const { favoriteRelaysEvent, updateFavoriteRelaysEvent, pubkey, relayList, publish } = useNostr()
+  const { favoriteRelaysEvent, blockedRelaysEvent, updateFavoriteRelaysEvent, updateBlockedRelaysEvent, pubkey, relayList, publish } = useNostr()
   const [favoriteRelays, setFavoriteRelays] = useState<string[]>([])
+  const [blockedRelays, setBlockedRelays] = useState<string[]>([])
   const [relaySetEvents, setRelaySetEvents] = useState<Event[]>([])
   const [relaySets, setRelaySets] = useState<TRelaySet[]>([])
 
@@ -141,6 +145,24 @@ export function FavoriteRelaysProvider({ children }: { children: React.ReactNode
   }, [favoriteRelaysEvent])
 
   useEffect(() => {
+    if (!blockedRelaysEvent) {
+      setBlockedRelays([])
+      return
+    }
+
+    const relays: string[] = []
+    blockedRelaysEvent.tags.forEach(([tagName, tagValue]) => {
+      if (tagName === 'relay' && tagValue) {
+        const normalizedUrl = normalizeUrl(tagValue)
+        if (normalizedUrl && !relays.includes(normalizedUrl)) {
+          relays.push(normalizedUrl)
+        }
+      }
+    })
+    setBlockedRelays(relays)
+  }, [blockedRelaysEvent])
+
+  useEffect(() => {
     setRelaySets(
       relaySetEvents.map((evt) => getRelaySetFromEvent(evt)).filter(Boolean) as TRelaySet[]
     )
@@ -237,6 +259,27 @@ export function FavoriteRelaysProvider({ children }: { children: React.ReactNode
     updateFavoriteRelaysEvent(newFavoriteRelaysEvent)
   }
 
+  const addBlockedRelays = async (relayUrls: string[]) => {
+    const normalizedUrls = relayUrls
+      .map((relayUrl) => normalizeUrl(relayUrl))
+      .filter((url) => !!url && !blockedRelays.includes(url))
+    if (!normalizedUrls.length) return
+    const newBlockedRelays = [...blockedRelays, ...normalizedUrls]
+    setBlockedRelays(newBlockedRelays)
+    const draftEvent = createBlockedRelaysDraftEvent(newBlockedRelays)
+    const newBlockedRelaysEvent = await publish(draftEvent)
+    updateBlockedRelaysEvent(newBlockedRelaysEvent)
+  }
+
+  const deleteBlockedRelays = async (relayUrls: string[]) => {
+    const normalizedUrls = relayUrls.map((relayUrl) => normalizeUrl(relayUrl)).filter(Boolean)
+    const newBlockedRelays = blockedRelays.filter((relay) => !normalizedUrls.includes(relay))
+    setBlockedRelays(newBlockedRelays)
+    const draftEvent = createBlockedRelaysDraftEvent(newBlockedRelays)
+    const newBlockedRelaysEvent = await publish(draftEvent)
+    updateBlockedRelaysEvent(newBlockedRelaysEvent)
+  }
+
   const reorderRelaySets = async (reorderedSets: TRelaySet[]) => {
     setRelaySets(reorderedSets)
     const draftEvent = createFavoriteRelaysDraftEvent(
@@ -254,6 +297,9 @@ export function FavoriteRelaysProvider({ children }: { children: React.ReactNode
         addFavoriteRelays,
         deleteFavoriteRelays,
         reorderFavoriteRelays,
+        blockedRelays,
+        addBlockedRelays,
+        deleteBlockedRelays,
         relaySets,
         createRelaySet,
         addRelaySets,

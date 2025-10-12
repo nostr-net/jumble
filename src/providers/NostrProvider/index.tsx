@@ -56,6 +56,7 @@ type TNostrContext = {
   bookmarkListEvent: Event | null
   interestListEvent: Event | null
   favoriteRelaysEvent: Event | null
+  blockedRelaysEvent: Event | null
   userEmojiListEvent: Event | null
   notificationsSeenAt: number
   account: TAccountPointer | null
@@ -88,6 +89,7 @@ type TNostrContext = {
   updateBookmarkListEvent: (bookmarkListEvent: Event) => Promise<void>
   updateInterestListEvent: (interestListEvent: Event) => Promise<void>
   updateFavoriteRelaysEvent: (favoriteRelaysEvent: Event) => Promise<void>
+  updateBlockedRelaysEvent: (blockedRelaysEvent: Event) => Promise<void>
   updateNotificationsSeenAt: (skipPublish?: boolean) => Promise<void>
 }
 
@@ -159,6 +161,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   const [bookmarkListEvent, setBookmarkListEvent] = useState<Event | null>(null)
   const [interestListEvent, setInterestListEvent] = useState<Event | null>(null)
   const [favoriteRelaysEvent, setFavoriteRelaysEvent] = useState<Event | null>(null)
+  const [blockedRelaysEvent, setBlockedRelaysEvent] = useState<Event | null>(null)
   const [userEmojiListEvent, setUserEmojiListEvent] = useState<Event | null>(null)
   const [notificationsSeenAt, setNotificationsSeenAt] = useState(-1)
   const [isInitialized, setIsInitialized] = useState(false)
@@ -307,6 +310,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       const bookmarkListEvent = sortedEvents.find((e) => e.kind === kinds.BookmarkList)
       const interestListEvent = sortedEvents.find((e) => e.kind === 10015)
       const favoriteRelaysEvent = sortedEvents.find((e) => e.kind === ExtendedKind.FAVORITE_RELAYS)
+      const blockedRelaysEvent = sortedEvents.find((e) => e.kind === ExtendedKind.BLOCKED_RELAYS)
       const blossomServerListEvent = sortedEvents.find(
         (e) => e.kind === ExtendedKind.BLOSSOM_SERVER_LIST
       )
@@ -357,6 +361,12 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         const updatedFavoriteRelaysEvent = await indexedDb.putReplaceableEvent(favoriteRelaysEvent)
         if (updatedFavoriteRelaysEvent.id === favoriteRelaysEvent.id) {
           setFavoriteRelaysEvent(updatedFavoriteRelaysEvent)
+        }
+      }
+      if (blockedRelaysEvent) {
+        const updatedBlockedRelaysEvent = await indexedDb.putReplaceableEvent(blockedRelaysEvent)
+        if (updatedBlockedRelaysEvent.id === blockedRelaysEvent.id) {
+          setBlockedRelaysEvent(updatedBlockedRelaysEvent)
         }
       }
       if (blossomServerListEvent) {
@@ -847,6 +857,13 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     setFavoriteRelaysEvent(newFavoriteRelaysEvent)
   }
 
+  const updateBlockedRelaysEvent = async (blockedRelaysEvent: Event) => {
+    const newBlockedRelaysEvent = await indexedDb.putReplaceableEvent(blockedRelaysEvent)
+    if (newBlockedRelaysEvent.id !== blockedRelaysEvent.id) return
+
+    setBlockedRelaysEvent(newBlockedRelaysEvent)
+  }
+
   const updateNotificationsSeenAt = async (skipPublish = false) => {
     if (!account) return
 
@@ -882,6 +899,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         bookmarkListEvent,
         interestListEvent,
         favoriteRelaysEvent,
+        blockedRelaysEvent,
         userEmojiListEvent,
         notificationsSeenAt,
         account,
@@ -911,6 +929,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         updateBookmarkListEvent,
         updateInterestListEvent,
         updateFavoriteRelaysEvent,
+        updateBlockedRelaysEvent,
         updateNotificationsSeenAt
       }}
     >

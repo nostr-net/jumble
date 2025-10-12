@@ -20,7 +20,7 @@ import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { TRelaySet } from '@/types'
-import { Check, FolderPlus, Plus, Star } from 'lucide-react'
+import { Ban, Check, FolderPlus, Loader2, Plus, Star } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DrawerMenuItem from '../DrawerMenuItem'
@@ -78,6 +78,8 @@ export default function SaveRelayDropdownMenu({
                 ))}
                 <Separator />
                 <SaveToNewSet urls={normalizedUrls} />
+                <Separator />
+                <BlockRelayItem urls={normalizedUrls} />
               </div>
             </DrawerContent>
           </Drawer>
@@ -100,6 +102,8 @@ export default function SaveRelayDropdownMenu({
         ))}
         <DropdownMenuSeparator />
         <SaveToNewSet urls={normalizedUrls} />
+        <DropdownMenuSeparator />
+        <BlockRelayItem urls={normalizedUrls} />
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -226,6 +230,53 @@ function SaveToNewSet({ urls }: { urls: string[] }) {
     <DropdownMenuItem onClick={handleSave}>
       <FolderPlus />
       {t('Save to a new relay set')}
+    </DropdownMenuItem>
+  )
+}
+
+function BlockRelayItem({ urls }: { urls: string[] }) {
+  const { t } = useTranslation()
+  const { isSmallScreen } = useScreenSize()
+  const { blockedRelays, addBlockedRelays, deleteBlockedRelays } = useFavoriteRelays()
+  const [isLoading, setIsLoading] = useState(false)
+  const blocked = useMemo(
+    () => urls.every((url) => blockedRelays.includes(url)),
+    [blockedRelays, urls]
+  )
+
+  const handleClick = async () => {
+    if (isLoading) return
+    
+    setIsLoading(true)
+    try {
+      if (blocked) {
+        await deleteBlockedRelays(urls)
+      } else {
+        await addBlockedRelays(urls)
+      }
+    } catch (error) {
+      console.error('Failed to toggle blocked relay:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (isSmallScreen) {
+    return (
+      <DrawerMenuItem 
+        onClick={isLoading ? undefined : handleClick} 
+        className={isLoading ? 'opacity-50 cursor-not-allowed' : ''}
+      >
+        {isLoading ? <Loader2 className="animate-spin" /> : <Ban />}
+        {isLoading ? t('Processing...') : blocked ? t('Unblock') : t('Block')}
+      </DrawerMenuItem>
+    )
+  }
+
+  return (
+    <DropdownMenuItem onClick={handleClick} disabled={isLoading}>
+      {isLoading ? <Loader2 className="animate-spin" /> : <Ban />}
+      {isLoading ? t('Processing...') : blocked ? t('Unblock') : t('Block')}
     </DropdownMenuItem>
   )
 }
