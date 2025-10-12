@@ -10,9 +10,10 @@ export default function AddNewRelay() {
   const { favoriteRelays, addFavoriteRelays } = useFavoriteRelays()
   const [input, setInput] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
   const saveRelay = async () => {
-    if (!input) return
+    if (!input || isLoading) return
     const normalizedUrl = normalizeUrl(input)
     if (!normalizedUrl) {
       setErrorMsg(t('Invalid URL'))
@@ -22,8 +23,19 @@ export default function AddNewRelay() {
       setErrorMsg(t('Already saved'))
       return
     }
-    await addFavoriteRelays([normalizedUrl])
-    setInput('')
+    
+    setIsLoading(true)
+    setErrorMsg('')
+    
+    try {
+      await addFavoriteRelays([normalizedUrl])
+      setInput('')
+    } catch (error) {
+      console.error('Failed to add favorite relay:', error)
+      setErrorMsg(t('Failed to add relay. Please try again.'))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleNewRelayInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,7 +60,9 @@ export default function AddNewRelay() {
           onKeyDown={handleNewRelayInputKeyDown}
           className={errorMsg ? 'border-destructive' : ''}
         />
-        <Button onClick={saveRelay}>{t('Add')}</Button>
+        <Button onClick={saveRelay} disabled={isLoading || !input.trim()}>
+          {isLoading ? t('Adding...') : t('Add')}
+        </Button>
       </div>
       {errorMsg && <div className="text-destructive text-sm pl-8">{errorMsg}</div>}
     </div>

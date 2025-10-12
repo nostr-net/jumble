@@ -4,7 +4,7 @@ import { SecondaryPageLink } from '@/PageManager'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useFeed } from '@/providers/FeedProvider'
 import { useNostr } from '@/providers/NostrProvider'
-import { BookmarkIcon, UsersRound } from 'lucide-react'
+import { BookmarkIcon, UsersRound, Server } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import RelayIcon from '../RelayIcon'
 import RelaySetCard from '../RelaySetCard'
@@ -49,6 +49,24 @@ export default function FeedSwitcher({ close }: { close?: () => void }) {
               <BookmarkIcon className="size-4" />
             </div>
             <div>{t('Bookmarks')}</div>
+          </div>
+        </FeedSwitcherItem>
+      )}
+
+      {favoriteRelays.length > 0 && (
+        <FeedSwitcherItem
+          isActive={feedInfo.feedType === 'all-favorites'}
+          onClick={() => {
+            console.log('FeedSwitcher: Switching to all-favorites')
+            switchFeed('all-favorites')
+            close?.()
+          }}
+        >
+          <div className="flex gap-2 items-center">
+            <div className="flex justify-center items-center w-6 h-6 shrink-0">
+              <Server className="size-4" />
+            </div>
+            <div>{t('All favorite relays')}</div>
           </div>
         </FeedSwitcherItem>
       )}

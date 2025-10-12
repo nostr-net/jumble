@@ -65,6 +65,9 @@ const FeedSwitcherTrigger = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEle
       if (feedInfo.feedType === 'bookmarks') {
         return t('Bookmarks')
       }
+      if (feedInfo.feedType === 'all-favorites') {
+        return t('All favorite relays')
+      }
       if (relayUrls.length === 0) {
         return t('Choose a relay')
       }
@@ -86,6 +89,8 @@ const FeedSwitcherTrigger = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEle
           <UsersRound />
         ) : feedInfo.feedType === 'bookmarks' ? (
           <BookmarkIcon />
+        ) : feedInfo.feedType === 'all-favorites' ? (
+          <Server />
         ) : (
           <Server />
         )}

@@ -136,12 +136,17 @@ export async function extractMentions(content: string, parentEvent?: Event) {
   const parentEventPubkey = parentEvent ? parentEvent.pubkey : undefined
   const pubkeys: string[] = []
   const relatedPubkeys: string[] = []
+  
+  // Always include parent event author in pubkeys if there's a parent event
+  if (parentEventPubkey) {
+    pubkeys.push(parentEventPubkey)
+  }
+  
   const matches = content.match(
     /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+)/g
   )
 
   const addToSet = (arr: string[], pubkey: string) => {
-    if (pubkey === parentEventPubkey) return
     if (!arr.includes(pubkey)) arr.push(pubkey)
   }
 

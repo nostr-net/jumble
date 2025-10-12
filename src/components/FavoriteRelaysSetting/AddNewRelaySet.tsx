@@ -8,15 +8,29 @@ export default function AddNewRelaySet() {
   const { t } = useTranslation()
   const { createRelaySet } = useFavoriteRelays()
   const [newRelaySetName, setNewRelaySetName] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
 
-  const saveRelaySet = () => {
-    if (!newRelaySetName) return
-    createRelaySet(newRelaySetName)
-    setNewRelaySetName('')
+  const saveRelaySet = async () => {
+    if (!newRelaySetName || isLoading) return
+    
+    setIsLoading(true)
+    setErrorMsg('')
+    
+    try {
+      await createRelaySet(newRelaySetName)
+      setNewRelaySetName('')
+    } catch (error) {
+      console.error('Failed to create relay set:', error)
+      setErrorMsg(t('Failed to create relay set. Please try again.'))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleNewRelaySetNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewRelaySetName(e.target.value)
+    setErrorMsg('')
   }
 
   const handleNewRelaySetNameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -34,9 +48,13 @@ export default function AddNewRelaySet() {
           value={newRelaySetName}
           onChange={handleNewRelaySetNameChange}
           onKeyDown={handleNewRelaySetNameKeyDown}
+          className={errorMsg ? 'border-destructive' : ''}
         />
-        <Button onClick={saveRelaySet}>{t('Add')}</Button>
+        <Button onClick={saveRelaySet} disabled={isLoading || !newRelaySetName.trim()}>
+          {isLoading ? t('Adding...') : t('Add')}
+        </Button>
       </div>
+      {errorMsg && <div className="text-destructive text-sm pl-8">{errorMsg}</div>}
     </div>
   )
 }

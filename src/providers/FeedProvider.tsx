@@ -73,10 +73,23 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       if (feedInfo.feedType === 'bookmarks' && pubkey) {
         return await switchFeed('bookmarks', { pubkey })
       }
+
+      if (feedInfo.feedType === 'all-favorites') {
+        console.log('Initializing all-favorites feed')
+        return await switchFeed('all-favorites')
+      }
     }
 
     init()
   }, [pubkey, isInitialized])
+
+  // Update relay URLs when favoriteRelays change and we're in all-favorites mode
+  useEffect(() => {
+    if (feedInfo.feedType === 'all-favorites') {
+      console.log('Updating relay URLs for all-favorites:', favoriteRelays)
+      setRelayUrls(favoriteRelays)
+    }
+  }, [favoriteRelays, feedInfo.feedType])
 
   const switchFeed = async (
     feedType: TFeedType,
@@ -144,6 +157,16 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       storage.setFeedInfo(newFeedInfo, pubkey)
 
       setRelayUrls([])
+      setIsReady(true)
+      return
+    }
+    if (feedType === 'all-favorites') {
+      console.log('Switching to all-favorites, favoriteRelays:', favoriteRelays)
+      const newFeedInfo = { feedType }
+      setFeedInfo(newFeedInfo)
+      feedInfoRef.current = newFeedInfo
+      setRelayUrls(favoriteRelays)
+      storage.setFeedInfo(newFeedInfo, pubkey)
       setIsReady(true)
       return
     }

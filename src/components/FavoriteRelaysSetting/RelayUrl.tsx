@@ -14,6 +14,7 @@ export default function RelayUrls({ relaySetId }: { relaySetId: string }) {
   const { relaySets, updateRelaySet } = useFavoriteRelays()
   const [newRelayUrl, setNewRelayUrl] = useState('')
   const [newRelayUrlError, setNewRelayUrlError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const relaySet = useMemo(
     () => relaySets.find((r) => r.id === relaySetId),
     [relaySets, relaySetId]
@@ -21,15 +22,19 @@ export default function RelayUrls({ relaySetId }: { relaySetId: string }) {
 
   if (!relaySet) return null
 
-  const removeRelayUrl = (url: string) => {
-    updateRelaySet({
-      ...relaySet,
-      relayUrls: relaySet.relayUrls.filter((u) => u !== url)
-    })
+  const removeRelayUrl = async (url: string) => {
+    try {
+      await updateRelaySet({
+        ...relaySet,
+        relayUrls: relaySet.relayUrls.filter((u) => u !== url)
+      })
+    } catch (error) {
+      console.error('Failed to remove relay from set:', error)
+    }
   }
 
-  const saveNewRelayUrl = () => {
-    if (newRelayUrl === '') return
+  const saveNewRelayUrl = async () => {
+    if (newRelayUrl === '' || isLoading) return
     const normalizedUrl = normalizeUrl(newRelayUrl)
     if (!normalizedUrl) {
       return setNewRelayUrlError(t('Invalid relay URL'))
@@ -40,9 +45,20 @@ export default function RelayUrls({ relaySetId }: { relaySetId: string }) {
     if (!isWebsocketUrl(normalizedUrl)) {
       return setNewRelayUrlError(t('invalid relay URL'))
     }
-    const newRelayUrls = [...relaySet.relayUrls, normalizedUrl]
-    updateRelaySet({ ...relaySet, relayUrls: newRelayUrls })
-    setNewRelayUrl('')
+    
+    setIsLoading(true)
+    setNewRelayUrlError(null)
+    
+    try {
+      const newRelayUrls = [...relaySet.relayUrls, normalizedUrl]
+      await updateRelaySet({ ...relaySet, relayUrls: newRelayUrls })
+      setNewRelayUrl('')
+    } catch (error) {
+      console.error('Failed to update relay set:', error)
+      setNewRelayUrlError(t('Failed to add relay. Please try again.'))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleRelayUrlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,7 +89,9 @@ export default function RelayUrls({ relaySetId }: { relaySetId: string }) {
           onChange={handleRelayUrlInputChange}
           onBlur={saveNewRelayUrl}
         />
-        <Button onClick={saveNewRelayUrl}>{t('Add')}</Button>
+        <Button onClick={saveNewRelayUrl} disabled={isLoading || !newRelayUrl.trim()}>
+          {isLoading ? t('Adding...') : t('Add')}
+        </Button>
       </div>
       {newRelayUrlError && <div className="text-xs text-destructive mt-1">{newRelayUrlError}</div>}
     </>

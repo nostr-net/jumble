@@ -109,32 +109,42 @@ function RelayItem({ urls }: { urls: string[] }) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
   const { favoriteRelays, addFavoriteRelays, deleteFavoriteRelays } = useFavoriteRelays()
+  const [isLoading, setIsLoading] = useState(false)
   const saved = useMemo(
     () => urls.every((url) => favoriteRelays.includes(url)),
     [favoriteRelays, urls]
   )
 
   const handleClick = async () => {
-    if (saved) {
-      await deleteFavoriteRelays(urls)
-    } else {
-      await addFavoriteRelays(urls)
+    if (isLoading) return
+    
+    setIsLoading(true)
+    try {
+      if (saved) {
+        await deleteFavoriteRelays(urls)
+      } else {
+        await addFavoriteRelays(urls)
+      }
+    } catch (error) {
+      console.error('Failed to toggle favorite relay:', error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
   if (isSmallScreen) {
     return (
-      <DrawerMenuItem onClick={handleClick}>
-        {saved ? <Check /> : <Plus />}
-        {saved ? t('Unfavorite') : t('Favorite')}
+      <DrawerMenuItem onClick={handleClick} disabled={isLoading}>
+        {isLoading ? '...' : (saved ? <Check /> : <Plus />)}
+        {isLoading ? t('Loading...') : (saved ? t('Unfavorite') : t('Favorite'))}
       </DrawerMenuItem>
     )
   }
 
   return (
-    <DropdownMenuItem className="flex gap-2" onClick={handleClick}>
-      {saved ? <Check /> : <Plus />}
-      {saved ? t('Unfavorite') : t('Favorite')}
+    <DropdownMenuItem className="flex gap-2" onClick={handleClick} disabled={isLoading}>
+      {isLoading ? '...' : (saved ? <Check /> : <Plus />)}
+      {isLoading ? t('Loading...') : (saved ? t('Unfavorite') : t('Favorite'))}
     </DropdownMenuItem>
   )
 }

@@ -472,6 +472,7 @@ export default function PostContent({
           setAdditionalRelayUrls={setAdditionalRelayUrls}
           parentEvent={parentEvent}
           openFrom={openFrom}
+          content={text}
         />
       )}
       <div className="flex items-center justify-between">

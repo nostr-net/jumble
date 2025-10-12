@@ -2,12 +2,9 @@ import { Button } from '@/components/ui/button'
 import { Drawer, DrawerContent, DrawerOverlay } from '@/components/ui/drawer'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { Separator } from '@/components/ui/separator'
 import { ExtendedKind } from '@/constants'
 import client from '@/services/client.service'
 import { isWebsocketUrl, normalizeUrl } from '@/lib/url'
@@ -15,84 +12,123 @@ import { simplifyUrl } from '@/lib/url'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
+import { useNostr } from '@/providers/NostrProvider'
 import { Check } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { Dispatch, SetStateAction, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import RelayIcon from '../RelayIcon'
-
-type TPostTargetItem =
-  | {
-      type: 'writeRelays'
-    }
-  | {
-      type: 'relay'
-      url: string
-    }
-  | {
-      type: 'relaySet'
-      id: string
-      urls: string[]
-    }
+import { extractMentions } from './Mentions'
 
 export default function PostRelaySelector({
   parentEvent: _parentEvent,
   openFrom,
   setIsProtectedEvent,
-  setAdditionalRelayUrls
+  setAdditionalRelayUrls,
+  content: postContent = ''
 }: {
   parentEvent?: NostrEvent
   openFrom?: string[]
   setIsProtectedEvent: Dispatch<SetStateAction<boolean>>
   setAdditionalRelayUrls: Dispatch<SetStateAction<string[]>>
+  content?: string
 }) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const { relayUrls } = useCurrentRelays()
   const { relaySets, favoriteRelays } = useFavoriteRelays()
-  const [postTargetItems, setPostTargetItems] = useState<TPostTargetItem[]>([])
-  // Privacy: Only show user's own relays + defaults, never other users' relays
+  const { pubkey } = useNostr()
+  const [selectedRelayUrls, setSelectedRelayUrls] = useState<string[]>([])
+  const [mentionRelays, setMentionRelays] = useState<string[]>([])
+  
+  // Fetch mention relays for regular replies (not discussion replies)
+  const isRegularReply = useMemo(() => {
+    if (!_parentEvent) return false
+    // Kind 1 or Kind 1111 that is not a reply to Kind 11 (discussion)
+    return (_parentEvent.kind === 1 || _parentEvent.kind === ExtendedKind.COMMENT) && 
+           _parentEvent.kind !== ExtendedKind.DISCUSSION
+  }, [_parentEvent])
+  
+  // Get all selectable relays (write relays + favorite relays + relays from relay sets + mention relays)
   const selectableRelays = useMemo(() => {
-    return Array.from(new Set(relayUrls.concat(favoriteRelays)))
-  }, [relayUrls, favoriteRelays])
+    const allRelays = Array.from(new Set([
+      ...relayUrls,
+      ...favoriteRelays,
+      ...relaySets.flatMap(set => set.relayUrls),
+      ...mentionRelays
+    ]))
+    return allRelays
+  }, [relayUrls, favoriteRelays, relaySets, mentionRelays])
+  
   const description = useMemo(() => {
-    if (postTargetItems.length === 0) {
+    if (selectedRelayUrls.length === 0) {
       return t('No relays selected')
     }
-    if (postTargetItems.length === 1) {
-      const item = postTargetItems[0]
-      if (item.type === 'writeRelays') {
-        return t('Write relays')
-      }
-      if (item.type === 'relay') {
-        return simplifyUrl(item.url)
-      }
-      if (item.type === 'relaySet') {
-        return item.urls.length > 1
-          ? t('{{count}} relays', { count: item.urls.length })
-          : simplifyUrl(item.urls[0])
-      }
+    if (selectedRelayUrls.length === 1) {
+      return simplifyUrl(selectedRelayUrls[0])
     }
-    const hasWriteRelays = postTargetItems.some((item) => item.type === 'writeRelays')
-    const relayCount = postTargetItems.reduce((count, item) => {
-      if (item.type === 'relay') {
-        return count + 1
-      }
-      if (item.type === 'relaySet') {
-        return count + item.urls.length
-      }
-      return count
-    }, 0)
-    if (hasWriteRelays) {
-      return t('Write relays and {{count}} other relays', { count: relayCount })
-    }
-    return t('{{count}} relays', { count: relayCount })
-  }, [postTargetItems])
+    return t('{{count}} relays', { count: selectedRelayUrls.length })
+  }, [selectedRelayUrls])
 
+  // Fetch mention relays when content changes for regular replies
+  useEffect(() => {
+    if (!isRegularReply) {
+      setMentionRelays([])
+      return
+    }
+
+    const fetchMentionRelays = async () => {
+      try {
+        console.log('PostRelaySelector: extractMentions called with:', { postContent, parentEvent: _parentEvent?.id })
+        const { pubkeys, relatedPubkeys } = await extractMentions(postContent, _parentEvent)
+        console.log('PostRelaySelector: extractMentions returned:', { pubkeys, relatedPubkeys })
+        
+        // Combine all mentioned pubkeys and filter out current user's pubkey
+        const allMentionPubkeys = [...pubkeys, ...relatedPubkeys]
+        const filteredMentionPubkeys = allMentionPubkeys.filter(p => p !== pubkey)
+        console.log('PostRelaySelector: filtered mention pubkeys:', filteredMentionPubkeys)
+        
+        if (filteredMentionPubkeys.length === 0) {
+          setMentionRelays([])
+          return
+        }
+
+        // Fetch relay lists for all mentioned users (including parent event author)
+        console.log('PostRelaySelector: Fetching relays for pubkeys:', filteredMentionPubkeys)
+        const relayListPromises = filteredMentionPubkeys.map(async (pubkey) => {
+          try {
+            const relayList = await client.fetchRelayList(pubkey)
+            console.log(`PostRelaySelector: Fetched relays for ${pubkey}:`, relayList?.write || [])
+            return relayList?.write || []
+          } catch (error) {
+            console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
+            return []
+          }
+        })
+
+        const relayLists = await Promise.all(relayListPromises)
+        const allMentionRelays = relayLists.flat()
+        const uniqueMentionRelays = Array.from(new Set(allMentionRelays))
+        
+        console.log('PostRelaySelector: Setting mention relays:', uniqueMentionRelays)
+        setMentionRelays(uniqueMentionRelays)
+      } catch (error) {
+        console.error('Error fetching mention relays:', error)
+        setMentionRelays([])
+      }
+    }
+
+    // Debounce the fetch
+    const timeoutId = setTimeout(fetchMentionRelays, 300)
+    return () => clearTimeout(timeoutId)
+  }, [postContent, isRegularReply, _parentEvent])
+
+  // Initialize selected relays based on context
   useEffect(() => {
     if (openFrom && openFrom.length) {
-      setPostTargetItems(Array.from(new Set(openFrom)).map((url) => ({ type: 'relay', url })))
+      // If called with specific relay URLs (e.g., from a discussion thread)
+      setSelectedRelayUrls(Array.from(new Set(openFrom)))
       return
     }
     
@@ -126,112 +162,71 @@ export default function PostRelaySelector({
       if (relayHint && isWebsocketUrl(relayHint)) {
         const normalizedRelayHint = normalizeUrl(relayHint)
         if (normalizedRelayHint) {
-          setPostTargetItems([{ type: 'relay', url: normalizedRelayHint }])
+          setSelectedRelayUrls([normalizedRelayHint])
           return
         }
       }
     }
     
-    // Default to write relays for all other cases
-    setPostTargetItems([{ type: 'writeRelays' }])
-  }, [openFrom, _parentEvent])
-
-  useEffect(() => {
-    const isProtectedEvent = postTargetItems.every((item) => item.type !== 'writeRelays')
-    const relayUrls = postTargetItems.flatMap((item) => {
-      if (item.type === 'relay') {
-        return [item.url]
-      }
-      if (item.type === 'relaySet') {
-        return item.urls
-      }
-      return []
-    })
-
-    setIsProtectedEvent(isProtectedEvent)
-    setAdditionalRelayUrls(relayUrls)
-  }, [postTargetItems])
-
-  const handleWriteRelaysCheckedChange = useCallback((checked: boolean) => {
-    if (checked) {
-      setPostTargetItems((prev) => [...prev, { type: 'writeRelays' }])
+    // Default to write relays + mention relays for regular replies, or just write relays for other cases
+    if (isRegularReply) {
+      // For regular replies, include write relays and mention relays
+      const defaultRelays = Array.from(new Set([...relayUrls, ...mentionRelays]))
+      console.log('PostRelaySelector: Setting default relays for regular reply:', {
+        relayUrls,
+        mentionRelays,
+        defaultRelays,
+        isRegularReply
+      })
+      setSelectedRelayUrls(defaultRelays)
     } else {
-      setPostTargetItems((prev) => prev.filter((item) => item.type !== 'writeRelays'))
+      // For other cases, just use write relays
+      console.log('PostRelaySelector: Setting default relays for non-regular reply:', relayUrls)
+      setSelectedRelayUrls(relayUrls)
     }
-  }, [])
+  }, [openFrom, _parentEvent, relayUrls, isRegularReply, mentionRelays])
+
+  // Update parent component with selected relays
+  useEffect(() => {
+    const isProtectedEvent = selectedRelayUrls.length > 0 && !selectedRelayUrls.some(url => relayUrls.includes(url))
+    setIsProtectedEvent(isProtectedEvent)
+    setAdditionalRelayUrls(selectedRelayUrls)
+  }, [selectedRelayUrls, relayUrls, setIsProtectedEvent, setAdditionalRelayUrls])
 
   const handleRelayCheckedChange = useCallback((checked: boolean, url: string) => {
     if (checked) {
-      setPostTargetItems((prev) => [...prev, { type: 'relay', url }])
+      setSelectedRelayUrls(prev => [...prev, url])
     } else {
-      setPostTargetItems((prev) =>
-        prev.filter((item) => !(item.type === 'relay' && item.url === url))
-      )
+      setSelectedRelayUrls(prev => prev.filter(selectedUrl => selectedUrl !== url))
     }
   }, [])
 
-  const handleRelaySetCheckedChange = useCallback(
-    (checked: boolean, id: string, urls: string[]) => {
-      if (checked) {
-        setPostTargetItems((prev) => [...prev, { type: 'relaySet', id, urls }])
-      } else {
-        setPostTargetItems((prev) =>
-          prev.filter((item) => !(item.type === 'relaySet' && item.id === id))
-        )
-      }
-    },
-    []
-  )
-
   const content = useMemo(() => {
+    if (selectableRelays.length === 0) {
+      return (
+        <div className="px-4 py-3 text-sm text-muted-foreground text-center">
+          {t('No relays available')}
+        </div>
+      )
+    }
+
     return (
-      <>
-        <MenuItem
-          checked={postTargetItems.some((item) => item.type === 'writeRelays')}
-          onCheckedChange={handleWriteRelaysCheckedChange}
-        >
-          {t('Write relays')}
-        </MenuItem>
-        {relaySets.length > 0 && (
-          <>
-            <MenuSeparator />
-            {relaySets
-              .filter(({ relayUrls }) => relayUrls.length)
-              .map(({ id, name, relayUrls }) => (
-                <MenuItem
-                  key={id}
-                  checked={postTargetItems.some(
-                    (item) => item.type === 'relaySet' && item.id === id
-                  )}
-                  onCheckedChange={(checked) => handleRelaySetCheckedChange(checked, id, relayUrls)}
-                >
-                  <div className="truncate">
-                    {name} ({relayUrls.length})
-                  </div>
-                </MenuItem>
-              ))}
-          </>
-        )}
-        {selectableRelays.length > 0 && (
-          <>
-            <MenuSeparator />
-            {selectableRelays.map((url) => (
-              <MenuItem
-                key={url}
-                checked={postTargetItems.some((item) => item.type === 'relay' && item.url === url)}
-                onCheckedChange={(checked) => handleRelayCheckedChange(checked, url)}
-              >
-                <div className="flex items-center gap-2">
-                  <RelayIcon url={url} />
-                  <div className="truncate">{simplifyUrl(url)}</div>
-                </div>
-              </MenuItem>
-            ))}
-          </>
-        )}
-      </>
+      <div className="space-y-1 max-h-64 overflow-y-auto">
+        {selectableRelays.map((url) => (
+          <MenuItem
+            key={url}
+            checked={selectedRelayUrls.includes(url)}
+            onCheckedChange={(checked) => handleRelayCheckedChange(checked, url)}
+          >
+            <div className="flex items-center gap-2">
+              <RelayIcon url={url} />
+              <div className="truncate">{simplifyUrl(url)}</div>
+            </div>
+          </MenuItem>
+        ))}
+      </div>
     )
-  }, [postTargetItems, relaySets, selectableRelays])
+  }, [selectedRelayUrls, selectableRelays])
 
   if (isSmallScreen) {
     return (
@@ -278,13 +273,6 @@ export default function PostRelaySelector({
   )
 }
 
-function MenuSeparator() {
-  const { isSmallScreen } = useScreenSize()
-  if (isSmallScreen) {
-    return <Separator />
-  }
-  return <DropdownMenuSeparator />
-}
 
 function MenuItem({
   children,
@@ -312,13 +300,14 @@ function MenuItem({
   }
 
   return (
-    <DropdownMenuCheckboxItem
-      checked={checked}
-      onSelect={(e) => e.preventDefault()}
-      onCheckedChange={onCheckedChange}
-      className="flex items-center gap-2"
+    <div
+      onClick={() => onCheckedChange(!checked)}
+      className="flex items-center gap-2 px-2 py-2 hover:bg-muted cursor-pointer rounded-sm"
     >
+      <div className="flex items-center justify-center size-4 shrink-0">
+        {checked && <Check className="size-4" />}
+      </div>
       {children}
-    </DropdownMenuCheckboxItem>
+    </div>
   )
 }
