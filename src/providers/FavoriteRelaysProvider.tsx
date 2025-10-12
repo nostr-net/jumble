@@ -142,7 +142,7 @@ export function FavoriteRelaysProvider({ children }: { children: React.ReactNode
       )
     }
     init()
-  }, [favoriteRelaysEvent])
+  }, [favoriteRelaysEvent, pubkey])
 
   useEffect(() => {
     if (!blockedRelaysEvent) {

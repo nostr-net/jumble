@@ -679,6 +679,16 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       throw new Error('sign event failed')
     }
     
+    // Debug: Log the signed event
+    console.log('Signed event:', {
+      id: event.id,
+      pubkey: event.pubkey,
+      sig: event.sig,
+      content: event.content.substring(0, 100) + '...',
+      tags: event.tags,
+      created_at: event.created_at
+    })
+    
     // Validate the event before publishing
     const isValid = validateEvent(event)
     if (!isValid) {

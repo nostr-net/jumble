@@ -267,6 +267,16 @@ export default function CreateThreadDialog({
         created_at: dayjs().unix()
       }
       
+      // Debug: Log the event before publishing
+      console.log('About to publish thread event:', {
+        kind: threadEvent.kind,
+        content: threadEvent.content,
+        tags: threadEvent.tags,
+        created_at: threadEvent.created_at,
+        contentLength: threadEvent.content.length,
+        tagsCount: threadEvent.tags.length
+      })
+      
       
       // Publish to all selected relays
       const publishedEvent = await publish(threadEvent, {

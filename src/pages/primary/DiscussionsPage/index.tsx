@@ -1,11 +1,11 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { DEFAULT_FAVORITE_RELAYS, FAST_READ_RELAY_URLS } from '@/constants'
+import { FAST_READ_RELAY_URLS } from '@/constants'
 import { normalizeUrl } from '@/lib/url'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
-import { forwardRef, useEffect, useState, useCallback, useMemo } from 'react'
+import { forwardRef, useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
 import { MessageSquarePlus, Book, BookOpen, Hash, Search, X } from 'lucide-react'
@@ -18,7 +18,6 @@ import SubtopicFilter from '@/pages/primary/DiscussionsPage/SubtopicFilter'
 import TopicSubscribeButton from '@/components/TopicSubscribeButton'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
-import storage from '@/services/local-storage.service'
 import { useSecondaryPage } from '@/PageManager'
 import { toNote } from '@/lib/link'
 import { kinds } from 'nostr-tools'
@@ -120,6 +119,55 @@ function getTopicFromTags(allTopics: string[], availableTopicIds: string[]): str
   return 'general'
 }
 
+// Analyze hashtag usage across events to determine dynamic topics/subtopics
+function analyzeDynamicTopicsAndSubtopics(eventMap: Map<string, EventMapEntry>): {
+  dynamicTopics: string[]
+  dynamicSubtopics: string[]
+} {
+  // Track hashtag usage: hashtag -> { eventIds: Set, npubs: Set }
+  const hashtagUsage = new Map<string, { eventIds: Set<string>, npubs: Set<string> }>()
+  
+  // Analyze all events
+  eventMap.forEach((entry) => {
+    entry.allTopics.forEach(topic => {
+      if (!hashtagUsage.has(topic)) {
+        hashtagUsage.set(topic, { eventIds: new Set(), npubs: new Set() })
+      }
+      const usage = hashtagUsage.get(topic)!
+      usage.eventIds.add(entry.event.id)
+      usage.npubs.add(entry.event.pubkey)
+    })
+  })
+  
+  // Get predefined topic IDs
+  const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
+  
+  const dynamicTopics: string[] = []
+  const dynamicSubtopics: string[] = []
+  
+  // Analyze each hashtag
+  hashtagUsage.forEach((usage, hashtag) => {
+    // Skip if it's already a predefined topic
+    if (predefinedTopicIds.includes(hashtag)) {
+      return
+    }
+    
+    const eventCount = usage.eventIds.size
+    const npubCount = usage.npubs.size
+    
+    // If 10+ events from 10+ different npubs, make it a topic
+    if (eventCount >= 10 && npubCount >= 10) {
+      dynamicTopics.push(hashtag)
+    }
+    // If 3+ events from 3+ different npubs, make it a subtopic
+    else if (eventCount >= 3 && npubCount >= 3) {
+      dynamicSubtopics.push(hashtag)
+    }
+  })
+  
+  return { dynamicTopics, dynamicSubtopics }
+}
+
 // Function to get dynamic subtopics from event topics
 function getSubtopicsFromTopics(topics: string[], limit: number = 3): string[] {
   // Get the main topic IDs from DISCUSSION_TOPICS
@@ -145,7 +193,7 @@ type EventMapEntry = {
 
 const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
-  const { relaySets } = useFavoriteRelays()
+  const { relaySets, favoriteRelays } = useFavoriteRelays()
   const { pubkey } = useNostr()
   const { push } = useSecondaryPage()
   
@@ -167,49 +215,76 @@ const DiscussionsPage = forwardRef((_, ref) => {
 
   // State for all available relays
   const [allRelays, setAllRelays] = useState<string[]>([])
+  const isFetchingRef = useRef(false)
+  const lastFetchTimeRef = useRef(0)
 
-  // Get all available relays (always use all relays for building the map)
+  // Get all available relays (use favorite relays from provider + additional relays)
   useEffect(() => {
     const updateRelays = async () => {
       let userWriteRelays: string[] = []
-      let storedRelaySetRelays: string[] = []
       
       if (pubkey) {
         try {
           // Get user's write relays
           const relayList = await client.fetchRelayList(pubkey)
           userWriteRelays = relayList?.write || []
-          
-          // Get relays from stored relay sets
-          const storedRelaySets = storage.getRelaySets()
-          storedRelaySetRelays = storedRelaySets.flatMap(set => set.relayUrls)
         } catch (error) {
           console.warn('Failed to fetch user relay list:', error)
         }
       }
       
-      // Normalize and deduplicate all relays
-      const relays = Array.from(new Set([
-        ...DEFAULT_FAVORITE_RELAYS.map(url => normalizeUrl(url) || url), 
-        ...userWriteRelays.map(url => normalizeUrl(url) || url), 
-        ...storedRelaySetRelays.map(url => normalizeUrl(url) || url), 
-        ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
-      ]))
+      // Use favorite relays from provider (includes stored relay sets) + additional relays
+      const allRawRelays = [
+        ...favoriteRelays,
+        ...userWriteRelays,
+        ...FAST_READ_RELAY_URLS
+      ]
       
-      setAllRelays(relays)
+      // Normalize and deduplicate all relays
+      const relays = Array.from(new Set(
+        allRawRelays
+          .map(url => normalizeUrl(url))
+          .filter(url => url && url.length > 0) // Remove any empty/invalid URLs
+      ))
+      
+      // Only update if relays actually changed
+      setAllRelays(prevRelays => {
+        const prevRelaysStr = prevRelays.sort().join(',')
+        const newRelaysStr = relays.sort().join(',')
+        if (prevRelaysStr === newRelaysStr) {
+          return prevRelays // No change, don't trigger re-render
+        }
+        return relays
+      })
     }
     
-    updateRelays()
-  }, [pubkey])
+    // Debounce relay updates to prevent rapid changes
+    const timeoutId = setTimeout(updateRelays, 500)
+    return () => clearTimeout(timeoutId)
+  }, [pubkey, favoriteRelays])
 
-  // Available topic IDs for matching
-  const availableTopicIds = useMemo(() => 
-    DISCUSSION_TOPICS.map(topic => topic.id),
-    []
-  )
+  // State for dynamic topics and subtopics
+  const [dynamicTopics, setDynamicTopics] = useState<string[]>([])
+  const [dynamicSubtopics, setDynamicSubtopics] = useState<string[]>([])
 
   // Fetch all kind 11 events from all relays
   const fetchAllEvents = useCallback(async () => {
+    // Prevent multiple simultaneous fetches using ref to avoid dependency
+    if (isFetchingRef.current) {
+      console.log('Already fetching, skipping...')
+      return
+    }
+    
+    // Prevent too frequent fetches (minimum 10 seconds between fetches)
+    const now = Date.now()
+    if (now - lastFetchTimeRef.current < 10000) {
+      console.log('Fetch too soon, skipping...')
+      return
+    }
+    
+    
+    isFetchingRef.current = true
+    lastFetchTimeRef.current = now
     setLoading(true)
     try {
       // Fetch recent kind 11 events (last 30 days)
@@ -285,8 +360,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
         const hashtagsRaw = (event.content.match(/#[\w-]+/g) || []).map(tag => tag.slice(1).toLowerCase())
         const allTopicsRaw = [...new Set([...tTagsRaw, ...hashtagsRaw])]
         
-        // Determine the main topic from raw tags
-        const categorizedTopic = getTopicFromTags(allTopicsRaw, availableTopicIds)
+        // Determine the main topic from raw tags (use only predefined topics during fetch)
+        const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
+        const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds)
         
         // Normalize subtopics for grouping (but not main topic IDs)
         const tTags = tTagsRaw.map(tag => normalizeSubtopic(tag))
@@ -304,13 +380,26 @@ const DiscussionsPage = forwardRef((_, ref) => {
       })
       
       setEventMap(finalEventMap)
+      
+      // Analyze and set dynamic topics/subtopics from the fetched events
+      if (finalEventMap.size > 0) {
+        const { dynamicTopics: newTopics, dynamicSubtopics: newSubtopics } = analyzeDynamicTopicsAndSubtopics(finalEventMap)
+        setDynamicTopics(newTopics)
+        setDynamicSubtopics(newSubtopics)
+      } else {
+        setDynamicTopics([])
+        setDynamicSubtopics([])
+      }
     } catch (error) {
       console.error('Error fetching events:', error)
       setEventMap(new Map())
+      setDynamicTopics([])
+      setDynamicSubtopics([])
     } finally {
       setLoading(false)
+      isFetchingRef.current = false
     }
-  }, [allRelays, availableTopicIds])
+  }, [allRelays])
 
   // Fetch events on component mount and periodically
   useEffect(() => {
@@ -321,7 +410,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       const interval = setInterval(fetchAllEvents, 5 * 60 * 1000)
       return () => clearInterval(interval)
     }
-  }, [fetchAllEvents])
+  }, [allRelays])
 
   // Filter events based on selected relay
   const getFilteredEvents = useCallback(() => {
@@ -337,9 +426,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
           entry.relaySources.some(source => relaySet.relayUrls.includes(source))
         )
       } else {
-        // It's an individual relay
+        // It's an individual relay - normalize both for comparison
+        const normalizedSelectedRelay = normalizeUrl(selectedRelay)
         filtered = events.filter(entry => 
-          entry.relaySources.includes(selectedRelay)
+          entry.relaySources.some(source => normalizeUrl(source) === normalizedSelectedRelay)
         )
       }
     }
@@ -359,13 +449,13 @@ const DiscussionsPage = forwardRef((_, ref) => {
         if (!entry) return false
         
         if (entry.categorizedTopic !== selectedTopic) return false
-        
-        if (selectedSubtopic) {
+            
+            if (selectedSubtopic) {
           return entry.allTopics.includes(selectedSubtopic)
-        }
-        
-        return true
-      })
+            }
+            
+            return true
+          })
     }
     
     // Apply search filter
@@ -422,7 +512,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
         groups[topic].push(event)
         return groups
       }, {} as Record<string, NostrEvent[]>)
-      
+
       // Sort groups by newest event
       const sortedGrouped = Object.fromEntries(
         Object.entries(grouped)
@@ -432,12 +522,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
             return newestB - newestA
           })
       )
-      
+
       setGroupedEvents(sortedGrouped)
     } else {
       setGroupedEvents({})
     }
-  }, [getFilteredEvents, selectedTopic, selectedSubtopic, selectedSort, searchQuery, viewMode, eventMap])
+  }, [getFilteredEvents, selectedTopic, selectedSubtopic, selectedSort, searchQuery, viewMode])
 
   // Update filtered events when dependencies change
   useEffect(() => {
@@ -451,27 +541,133 @@ const DiscussionsPage = forwardRef((_, ref) => {
       // Get all topics from events in this topic
       const topicEvents = Array.from(eventMap.values()).filter(entry => entry.categorizedTopic === selectedTopic)
       const allTopics = topicEvents.flatMap(entry => entry.allTopics)
-      const subtopics = getSubtopicsFromTopics(allTopics, 3)
+      const subtopics = getSubtopicsFromTopics(allTopics, 10) // Increased limit to show more subtopics
+      
+      // Add relevant dynamic subtopics for this topic
+      const relevantDynamicSubtopics = dynamicSubtopics.filter(subtopic => 
+        allTopics.includes(subtopic)
+      )
+      
+      // Combine and deduplicate
+      const combinedSubtopics = [...new Set([...subtopics, ...relevantDynamicSubtopics])]
       
       // Special case: Always include 'readings' as a subtopic for 'literature'
-      if (selectedTopic === 'literature' && !subtopics.includes('readings')) {
-        subtopics.unshift('readings')
+      if (selectedTopic === 'literature' && !combinedSubtopics.includes('readings')) {
+        combinedSubtopics.unshift('readings')
       }
       
-      setAvailableSubtopics(subtopics)
+      setAvailableSubtopics(combinedSubtopics)
+    } else if (selectedTopic === 'general') {
+      // For General topic, show dynamic subtopics that don't belong to other topics
+      const generalSubtopics = dynamicSubtopics.filter(subtopic => {
+        // Check if this subtopic appears in general-categorized events
+        const appearsInGeneral = Array.from(eventMap.values()).some(entry => 
+          entry.categorizedTopic === 'general' && entry.allTopics.includes(subtopic)
+        )
+        return appearsInGeneral
+      })
+      setAvailableSubtopics(generalSubtopics)
     } else {
       setAvailableSubtopics([])
     }
-  }, [eventMap, selectedTopic])
+  }, [eventMap, selectedTopic, dynamicSubtopics])
 
   const handleCreateThread = () => {
     setShowCreateThread(true)
   }
 
-  const handleThreadCreated = () => {
+  const handleThreadCreated = (publishedEvent?: NostrEvent) => {
     setShowCreateThread(false)
-    // Refetch events to include the new thread
-    fetchAllEvents()
+    
+    // If we have the published event, add it to the map immediately
+    if (publishedEvent) {
+      console.log('Adding newly published event to display:', publishedEvent.id)
+      
+      // Extract topics from the published event
+      const tTagsRaw = publishedEvent.tags.filter(tag => tag[0] === 't' && tag[1]).map(tag => tag[1].toLowerCase())
+      const hashtagsRaw = (publishedEvent.content.match(/#[\w-]+/g) || []).map(tag => tag.slice(1).toLowerCase())
+      const allTopicsRaw = [...new Set([...tTagsRaw, ...hashtagsRaw])]
+      
+      // Determine the main topic from raw tags
+      const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
+      const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds)
+      
+      // Normalize subtopics for grouping
+      const tTags = tTagsRaw.map(tag => normalizeSubtopic(tag))
+      const hashtags = hashtagsRaw.map(tag => normalizeSubtopic(tag))
+        const allTopics = [...new Set([...tTags, ...hashtags])]
+      
+      // Get relay sources from event hints (tracked during publishing)
+      let relaySources = client.getEventHints(publishedEvent.id)
+      
+      // If no hints yet (timing issue), use the relay statuses from the published event
+      if (relaySources.length === 0 && (publishedEvent as any).relayStatuses) {
+        const successfulRelays = (publishedEvent as any).relayStatuses
+          .filter((status: any) => status.success)
+          .map((status: any) => status.url)
+        if (successfulRelays.length > 0) {
+          relaySources = successfulRelays
+        }
+      }
+      
+      // If still no sources, use the selected relay or all relays
+      if (relaySources.length === 0) {
+        relaySources = selectedRelay ? [selectedRelay] : allRelays.slice(0, 3)
+      }
+      
+      console.log('Using relay sources:', relaySources)
+      
+      // Ensure the event hints are properly set for navigation
+      // This is important for the toNote() function to include relay hints in the URL
+      if (relaySources.length > 0) {
+        console.log('Tracking event on relays for navigation:', relaySources)
+        // Create a temporary relay object to track the event
+        relaySources.forEach(relayUrl => {
+          try {
+            // Import the Relay class from nostr-tools
+            const { Relay } = require('nostr-tools')
+            const tempRelay = new Relay(relayUrl)
+            client.trackEventSeenOn(publishedEvent.id, tempRelay)
+            console.log(`Tracked event ${publishedEvent.id} on relay ${relayUrl}`)
+          } catch (error) {
+            console.warn('Failed to create relay object for tracking:', relayUrl, error)
+          }
+        })
+        
+        // Verify the hints are set
+        const hints = client.getEventHints(publishedEvent.id)
+        console.log('Event hints after tracking:', hints)
+      }
+      
+      // Add to event map
+      setEventMap(prev => {
+        const newMap = new Map(prev)
+        newMap.set(publishedEvent.id, {
+          event: publishedEvent,
+          relaySources,
+          tTags,
+          hashtags,
+          allTopics,
+          categorizedTopic
+        })
+        return newMap
+      })
+      
+      // Also update dynamic topics/subtopics if needed
+      setDynamicTopics(prev => {
+        const newTopics = [...prev]
+        allTopics.forEach(topic => {
+          if (!predefinedTopicIds.includes(topic) && !newTopics.includes(topic)) {
+            // This is a simplified check - full implementation would check counts
+            newTopics.push(topic)
+          }
+        })
+        return newTopics
+      })
+    }
+    
+    // Also refetch in the background to ensure we have the latest
+    setTimeout(() => fetchAllEvents(), 2000) // Wait 2 seconds for the event to propagate
   }
 
   return (
@@ -482,7 +678,15 @@ const DiscussionsPage = forwardRef((_, ref) => {
         <div className="flex gap-1 items-center h-full justify-between">
           <div className="flex gap-1 items-center">
             <TopicFilter
-              topics={DISCUSSION_TOPICS}
+              topics={[
+                ...DISCUSSION_TOPICS,
+                // Add dynamic topics with Hash icon
+                ...dynamicTopics.map(topic => ({
+                  id: topic,
+                  label: topic.charAt(0).toUpperCase() + topic.slice(1),
+                  icon: Hash
+                }))
+              ]}
               selectedTopic={selectedTopic}
               onTopicChange={(topic) => {
                 setSelectedTopic(topic)
@@ -712,12 +916,23 @@ const DiscussionsPage = forwardRef((_, ref) => {
         ) : viewMode === 'grouped' && selectedTopic === 'all' ? (
           <div className="space-y-6">
             {Object.entries(groupedEvents).map(([topicId, topicEvents]) => {
-              const topicInfo = DISCUSSION_TOPICS.find(t => t.id === topicId)
-              // Skip if no events, but don't skip if topicInfo is missing (shouldn't happen with proper data)
+              // Skip if no events
               if (topicEvents.length === 0) return null
+              
+              // Try to find topic info in predefined topics, otherwise create dynamic one
+              let topicInfo = DISCUSSION_TOPICS.find(t => t.id === topicId)
               if (!topicInfo) {
-                console.warn(`Topic info not found for: ${topicId}`)
-                return null
+                // Check if it's a dynamic topic
+                if (dynamicTopics.includes(topicId)) {
+                  topicInfo = {
+                    id: topicId,
+                    label: topicId.charAt(0).toUpperCase() + topicId.slice(1),
+                    icon: Hash
+                  }
+                } else {
+                  console.warn(`Topic info not found for: ${topicId}`)
+                  return null
+                }
               }
               
               return (

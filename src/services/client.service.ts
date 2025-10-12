@@ -8,7 +8,7 @@ import {
 import { getProfileFromEvent, getRelayListFromEvent } from '@/lib/event-metadata'
 import { formatPubkey, isValidPubkey, pubkeyToNpub, userIdToPubkey } from '@/lib/pubkey'
 import { getPubkeysFromPTags, getServersFromServerTags } from '@/lib/tag'
-import { isLocalNetworkUrl, isWebsocketUrl, normalizeUrl } from '@/lib/url'
+import { isWebsocketUrl, normalizeUrl } from '@/lib/url'
 import { isSafari } from '@/lib/utils'
 import { ISigner, TProfile, TPublishOptions, TRelayList, TSubRequestFilter } from '@/types'
 import { sha256 } from '@noble/hashes/sha256'
@@ -927,11 +927,11 @@ class ClientService extends EventTarget {
   }
 
   getEventHints(eventId: string) {
-    return this.getSeenEventRelayUrls(eventId).filter((url) => !isLocalNetworkUrl(url))
+    return this.getSeenEventRelayUrls(eventId)
   }
 
   getEventHint(eventId: string) {
-    return this.getSeenEventRelayUrls(eventId).find((url) => !isLocalNetworkUrl(url)) ?? ''
+    return this.getSeenEventRelayUrls(eventId)[0] ?? ''
   }
 
   trackEventSeenOn(eventId: string, relay: AbstractRelay) {
