@@ -1,9 +1,10 @@
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
-import { NostrEvent, kinds } from 'nostr-tools'
+import { NostrEvent } from 'nostr-tools'
 import { createContext, useCallback, useContext, useState } from 'react'
 
 type TDeletedEventContext = {
   addDeletedEvent: (event: NostrEvent) => void
+  addDeletedEventId: (eventId: string) => void
   isEventDeleted: (event: NostrEvent) => boolean
 }
 
@@ -31,8 +32,12 @@ export function DeletedEventProvider({ children }: { children: React.ReactNode }
     setDeletedEventKeys((prev) => new Set(prev).add(getKey(event)))
   }
 
+  const addDeletedEventId = (eventId: string) => {
+    setDeletedEventKeys((prev) => new Set(prev).add(eventId))
+  }
+
   return (
-    <DeletedEventContext.Provider value={{ addDeletedEvent, isEventDeleted }}>
+    <DeletedEventContext.Provider value={{ addDeletedEvent, addDeletedEventId, isEventDeleted }}>
       {children}
     </DeletedEventContext.Provider>
   )

@@ -5,7 +5,6 @@ import { DEFAULT_FAVORITE_RELAYS, FAST_READ_RELAY_URLS } from '@/constants'
 import { normalizeUrl } from '@/lib/url'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
-import { useDeletedEvent } from '@/providers/DeletedEventProvider'
 import { forwardRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
@@ -19,7 +18,6 @@ import SubtopicFilter from '@/pages/primary/DiscussionsPage/SubtopicFilter'
 import TopicSubscribeButton from '@/components/TopicSubscribeButton'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
-import noteStatsService from '@/services/note-stats.service'
 import storage from '@/services/local-storage.service'
 import { useSecondaryPage } from '@/PageManager'
 import { toNote } from '@/lib/link'
@@ -27,130 +25,48 @@ import { kinds } from 'nostr-tools'
 import { 
   analyzeThreadTopics, 
   getCategorizedTopic, 
-  getDynamicSubtopics,
-  extractAllTopics
+  getDynamicSubtopics
 } from '@/lib/discussion-topics'
-import { userIdToPubkey, pubkeyToNpub } from '@/lib/pubkey'
 
-/**
- * Check if a thread matches the search query
- * Searches: title, content, t-tags, hashtags, author, subject, and pubkey (supports npub)
- */
-function threadMatchesSearch(thread: NostrEvent, query: string): boolean {
-  if (!query.trim()) return true
-  
-  const lowerQuery = query.toLowerCase().trim()
-  
-  // Check if query is an npub and convert to pubkey
-  let searchPubkey: string | null = null
-  if (lowerQuery.startsWith('npub1')) {
-    searchPubkey = userIdToPubkey(query.trim())
-  }
-  
-  // Search by pubkey (exact match or if query is npub)
-  if (searchPubkey && thread.pubkey === searchPubkey) {
-    return true
-  }
-  
-  // Also check if the thread's pubkey matches when encoded as npub
-  const threadNpub = pubkeyToNpub(thread.pubkey)
-  if (threadNpub && threadNpub.toLowerCase().includes(lowerQuery)) {
-    return true
-  }
-  
-  // Search in title (from 'title' tag)
-  const titleTag = thread.tags.find(tag => tag[0] === 'title')
-  if (titleTag && titleTag[1]?.toLowerCase().includes(lowerQuery)) {
-    return true
-  }
-  
-  // Search in author (from 'author' tag - used in reading groups)
-  const authorTag = thread.tags.find(tag => tag[0] === 'author')
-  if (authorTag && authorTag[1]?.toLowerCase().includes(lowerQuery)) {
-    return true
-  }
-  
-  // Search in subject/book (from 'subject' tag - used in reading groups)
-  const subjectTag = thread.tags.find(tag => tag[0] === 'subject')
-  if (subjectTag && subjectTag[1]?.toLowerCase().includes(lowerQuery)) {
-    return true
-  }
-  
-  // Search in content
-  if (thread.content.toLowerCase().includes(lowerQuery)) {
-    return true
-  }
-  
-  // Search in t-tags
-  const tTags = thread.tags.filter(tag => tag[0] === 't')
-  for (const tag of tTags) {
-    if (tag[1]?.toLowerCase().includes(lowerQuery)) {
-      return true
-    }
-  }
-  
-  // Search in hashtags from content
-  const allTopics = extractAllTopics(thread)
-  for (const topic of allTopics) {
-    if (topic.toLowerCase().includes(lowerQuery)) {
-      return true
-    }
-  }
-  
-  return false
+// Simple event map type
+type EventMapEntry = {
+  event: NostrEvent
+  relaySources: string[]
+  tTags: string[]
+  hashtags: string[]
+  allTopics: string[]
+  categorizedTopic: string
 }
 
 const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
-  const { favoriteRelays, relaySets } = useFavoriteRelays()
+  const { relaySets } = useFavoriteRelays()
   const { pubkey } = useNostr()
-  const { isEventDeleted } = useDeletedEvent()
   const { push } = useSecondaryPage()
+  
+  // State management
   const [selectedTopic, setSelectedTopic] = useState('all')
   const [selectedSubtopic, setSelectedSubtopic] = useState<string | null>(null)
   const [selectedRelay, setSelectedRelay] = useState<string | null>(null)
   const [selectedSort, setSelectedSort] = useState<SortOption>('newest')
-  const [allThreads, setAllThreads] = useState<NostrEvent[]>([])
-  const [threads, setThreads] = useState<NostrEvent[]>([])
-  const [loading, setLoading] = useState(false)
+  const [eventMap, setEventMap] = useState<Map<string, EventMapEntry>>(new Map())
+  const [filteredEvents, setFilteredEvents] = useState<NostrEvent[]>([])
+  const [loading, setLoading] = useState(true)
   const [showCreateThread, setShowCreateThread] = useState(false)
-  const [statsLoaded, setStatsLoaded] = useState(false)
-  const [customVoteStats, setCustomVoteStats] = useState<Record<string, { upvotes: number; downvotes: number; score: number; controversy: number }>>({})
   const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped')
-  const [groupedThreads, setGroupedThreads] = useState<Record<string, NostrEvent[]>>({})
-  
-  // Search and filter state
+  const [groupedEvents, setGroupedEvents] = useState<Record<string, NostrEvent[]>>({})
   const [searchQuery, setSearchQuery] = useState('')
   
   // Topic analysis for dynamic subtopics
   const [topicAnalysis, setTopicAnalysis] = useState<ReturnType<typeof analyzeThreadTopics>>(new Map())
   const [availableSubtopics, setAvailableSubtopics] = useState<string[]>([])
 
-  // Use DEFAULT_FAVORITE_RELAYS for logged-out users, or user's favorite relays for logged-in users
-  const availableRelays = useMemo(() => 
-    pubkey && favoriteRelays.length > 0 ? favoriteRelays : DEFAULT_FAVORITE_RELAYS,
-    [pubkey, favoriteRelays]
-  )
+  // State for all available relays
+  const [allRelays, setAllRelays] = useState<string[]>([])
 
-  // State for relay URLs
-  const [relayUrls, setRelayUrls] = useState<string[]>([])
-
-  // Update relay URLs when dependencies change
+  // Get all available relays (always use all relays for building the map)
   useEffect(() => {
-    const updateRelayUrls = async () => {
-      if (selectedRelay) {
-        // Check if it's a relay set
-        const relaySet = relaySets.find(set => set.id === selectedRelay)
-        if (relaySet) {
-          setRelayUrls(relaySet.relayUrls)
-          return
-        }
-        // It's an individual relay
-        setRelayUrls([selectedRelay])
-        return
-      }
-      
-      // For "All Relays", include user's write relays and stored relay sets too
+    const updateRelays = async () => {
       let userWriteRelays: string[] = []
       let storedRelaySetRelays: string[] = []
       
@@ -160,8 +76,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
           const relayList = await client.fetchRelayList(pubkey)
           userWriteRelays = relayList?.write || []
           
-          // Get relays from stored relay sets (additional safety check)
-          // Note: favoriteRelays should already include these, but let's be thorough
+          // Get relays from stored relay sets
           const storedRelaySets = storage.getRelaySets()
           storedRelaySetRelays = storedRelaySets.flatMap(set => set.relayUrls)
         } catch (error) {
@@ -169,19 +84,19 @@ const DiscussionsPage = forwardRef((_, ref) => {
         }
       }
       
-      // Normalize and deduplicate all relays: favorite relays, user write relays, stored relay sets, and fast read relays
-      const allRelays = Array.from(new Set([
-        ...availableRelays.map(url => normalizeUrl(url) || url), 
+      // Normalize and deduplicate all relays
+      const relays = Array.from(new Set([
+        ...DEFAULT_FAVORITE_RELAYS.map(url => normalizeUrl(url) || url), 
         ...userWriteRelays.map(url => normalizeUrl(url) || url), 
         ...storedRelaySetRelays.map(url => normalizeUrl(url) || url), 
         ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
       ]))
       
-      setRelayUrls(allRelays)
+      setAllRelays(relays)
     }
     
-    updateRelayUrls()
-  }, [selectedRelay, availableRelays, relaySets, pubkey])
+    updateRelays()
+  }, [pubkey])
 
   // Available topic IDs for matching
   const availableTopicIds = useMemo(() => 
@@ -189,105 +104,244 @@ const DiscussionsPage = forwardRef((_, ref) => {
     []
   )
 
-  // Memoize helper functions to prevent recreating on every render
-  const getThreadVoteScore = useCallback((thread: NostrEvent) => {
-    const threadId = thread.id
-    if (customVoteStats[threadId]) {
-      return customVoteStats[threadId].score
-    }
-    const stats = noteStatsService.getNoteStats(threadId)
-    if (!stats?.likes) return 0
-    const upvoteReactions = stats.likes.filter(r => r.emoji === '⬆️')
-    const downvoteReactions = stats.likes.filter(r => r.emoji === '⬇️')
-    return upvoteReactions.length - downvoteReactions.length
-  }, [customVoteStats])
-
-  const getThreadControversyScore = useCallback((thread: NostrEvent) => {
-    const threadId = thread.id
-    if (customVoteStats[threadId]) {
-      return customVoteStats[threadId].controversy
-    }
-    const stats = noteStatsService.getNoteStats(threadId)
-    if (!stats?.likes) return 0
-    const upvoteReactions = stats.likes.filter(r => r.emoji === '⬆️')
-    const downvoteReactions = stats.likes.filter(r => r.emoji === '⬇️')
-    const balance = Math.min(upvoteReactions.length, downvoteReactions.length)
-    const magnitude = upvoteReactions.length + downvoteReactions.length
-    return balance * magnitude
-  }, [customVoteStats])
-
-  const getThreadZapAmount = useCallback((thread: NostrEvent) => {
-    const stats = noteStatsService.getNoteStats(thread.id)
-    if (!stats?.zaps) {
-      return 0
-    }
-    const totalAmount = stats.zaps.reduce((sum, zap) => sum + zap.amount, 0)
-    return totalAmount
-  }, [])
-
-  // Memoize fetchAllThreads to prevent recreating on every render
-  const fetchAllThreads = useCallback(async () => {
+  // Fetch all kind 11 events from all relays
+  const fetchAllEvents = useCallback(async () => {
     setLoading(true)
-    setCustomVoteStats({}) // Clear custom stats when fetching
     try {
-      // Fetch all kind 11 events (limit 100, newest first)
       // Fetch recent kind 11 events (last 30 days)
       const thirtyDaysAgo = Math.floor((Date.now() - (30 * 24 * 60 * 60 * 1000)) / 1000)
       
-      const events = await client.fetchEvents(relayUrls, [
+      const events = await client.fetchEvents(allRelays, [
         {
           kinds: [11], // Thread events
-          since: thirtyDaysAgo, // Only fetch events from last 30 days
+          since: thirtyDaysAgo,
           limit: 100
         }
       ])
       
-     // Filter and sort threads
-      const validThreads = events
-        .filter(event => {
-          // Filter out deleted events
-          if (isEventDeleted(event)) {
-            console.log(`Filtering out deleted event: ${event.id}`)
-            return false
-          }
+      // Create a map of events with their relay sources
+      const newEventMap = new Map<string, { event: NostrEvent, relaySources: string[] }>()
+      
+      events.forEach(event => {
+        const eventHints = client.getEventHints(event.id)
+        const relaySources = eventHints.length > 0 ? eventHints : ['unknown']
+        
+        if (newEventMap.has(event.id)) {
+          // Event already exists, add relay sources
+          const existing = newEventMap.get(event.id)!
+          existing.relaySources = [...new Set([...existing.relaySources, ...relaySources])]
+        } else {
+          // New event
+          newEventMap.set(event.id, { event, relaySources })
+        }
+      })
+      
+      // Get all event IDs to check for deletions
+      const eventIds = Array.from(newEventMap.keys())
+      
+      // Fetch deletion events for these specific event IDs
+      let deletedEventIds = new Set<string>()
+      if (eventIds.length > 0) {
+        try {
+          const deletionEvents = await client.fetchEvents(allRelays, [
+            {
+              kinds: [kinds.EventDeletion],
+              '#e': eventIds,
+              since: thirtyDaysAgo,
+              limit: 1000
+            }
+          ])
           
-          // Ensure it has a title tag
-          const titleTag = event.tags.find(tag => tag[0] === 'title' && tag[1])
-          return titleTag && event.content.trim().length > 0
+          // Extract deleted event IDs
+          deletionEvents.forEach(deletionEvent => {
+            const deletedEventTags = deletionEvent.tags.filter(tag => tag[0] === 'e' && tag[1])
+            deletedEventTags.forEach(tag => {
+              if (tag[1] && eventIds.includes(tag[1])) {
+                deletedEventIds.add(tag[1])
+              }
+            })
+          })
+        } catch (error) {
+          console.warn('Failed to fetch deletion events:', error)
+        }
+      }
+      
+      // Build the final event map with topic information
+      const finalEventMap = new Map<string, EventMapEntry>()
+      
+      newEventMap.forEach(({ event, relaySources }, eventId) => {
+        // Skip deleted events
+        if (deletedEventIds.has(eventId)) {
+          return
+        }
+        
+        // Extract topics
+        const tTags = event.tags.filter(tag => tag[0] === 't' && tag[1]).map(tag => tag[1])
+        const hashtags = (event.content.match(/#\w+/g) || []).map(tag => tag.slice(1))
+        const allTopics = [...new Set([...tTags, ...hashtags])]
+        const categorizedTopic = getCategorizedTopic(event, availableTopicIds)
+        
+        finalEventMap.set(eventId, {
+          event,
+          relaySources,
+          tTags,
+          hashtags,
+          allTopics,
+          categorizedTopic
         })
-        .map(event => {
-          // Get the relay where this event was actually found
-          const eventHints = client.getEventHints(event.id)
-          const relaySource = eventHints.length > 0 ? eventHints[0] : 'unknown'
-          
-          return {
-            ...event,
-            _relaySource: relaySource
-          }
-        })
-
-      setAllThreads(validThreads)
+      })
+      
+      setEventMap(finalEventMap)
     } catch (error) {
-      console.error('Error fetching threads:', error)
-      setAllThreads([])
+      console.error('Error fetching events:', error)
+      setEventMap(new Map())
     } finally {
       setLoading(false)
     }
-  }, [relayUrls, selectedRelay, selectedSort, pubkey, isEventDeleted])
+  }, [allRelays, availableTopicIds])
 
+  // Fetch events on component mount and periodically
   useEffect(() => {
-    fetchAllThreads()
-  }, [fetchAllThreads])
+    if (allRelays.length > 0) {
+      fetchAllEvents()
+      
+      // Refetch every 5 minutes
+      const interval = setInterval(fetchAllEvents, 5 * 60 * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [fetchAllEvents])
 
-  // Analyze topics whenever threads change
-        useEffect(() => {
-          if (allThreads.length > 0) {
-            const analysis = analyzeThreadTopics(allThreads, availableTopicIds)
-            setTopicAnalysis(analysis)
-          } else {
-            setTopicAnalysis(new Map())
-          }
-        }, [allThreads, availableTopicIds])
+  // Filter events based on selected relay
+  const getFilteredEvents = useCallback(() => {
+    const events = Array.from(eventMap.values())
+    
+    // Filter by selected relay if specified
+    let filtered = events
+    if (selectedRelay) {
+      // Check if it's a relay set
+      const relaySet = relaySets.find(set => set.id === selectedRelay)
+      if (relaySet) {
+        filtered = events.filter(entry => 
+          entry.relaySources.some(source => relaySet.relayUrls.includes(source))
+        )
+      } else {
+        // It's an individual relay
+        filtered = events.filter(entry => 
+          entry.relaySources.includes(selectedRelay)
+        )
+      }
+    }
+    
+    return filtered.map(entry => entry.event)
+  }, [eventMap, selectedRelay, relaySets])
+
+  // Filter threads by topic and search
+  const filterAndSortEvents = useCallback(() => {
+    const events = getFilteredEvents()
+    
+    // Filter by topic
+    let filtered = events
+    if (selectedTopic !== 'all') {
+      filtered = events.filter(event => {
+        const entry = eventMap.get(event.id)
+        if (!entry) return false
+        
+        if (entry.categorizedTopic !== selectedTopic) return false
+        
+        if (selectedSubtopic) {
+          return entry.allTopics.includes(selectedSubtopic)
+        }
+        
+        return true
+      })
+    }
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase().trim()
+      filtered = filtered.filter(event => {
+        // Search in title
+        const titleTag = event.tags.find(tag => tag[0] === 'title')
+        if (titleTag && titleTag[1]?.toLowerCase().includes(lowerQuery)) {
+          return true
+        }
+        
+        // Search in content
+        if (event.content.toLowerCase().includes(lowerQuery)) {
+          return true
+        }
+        
+        // Search in topics
+        const entry = eventMap.get(event.id)
+        if (entry) {
+          return entry.allTopics.some(topic => 
+            topic.toLowerCase().includes(lowerQuery)
+          )
+        }
+        
+        return false
+      })
+    }
+    
+    // Sort events
+    const sorted = [...filtered].sort((a, b) => {
+      switch (selectedSort) {
+        case 'newest':
+          return b.created_at - a.created_at
+        case 'oldest':
+          return a.created_at - b.created_at
+        default:
+          return b.created_at - a.created_at
+      }
+    })
+    
+    setFilteredEvents(sorted)
+    
+    // Handle grouped view
+    if (viewMode === 'grouped' && selectedTopic === 'all') {
+      const grouped = sorted.reduce((groups, event) => {
+        const entry = eventMap.get(event.id)
+        if (!entry) return groups
+        
+        const topic = entry.categorizedTopic || 'general'
+        if (!groups[topic]) {
+          groups[topic] = []
+        }
+        groups[topic].push(event)
+        return groups
+      }, {} as Record<string, NostrEvent[]>)
+      
+      // Sort groups by newest event
+      const sortedGrouped = Object.fromEntries(
+        Object.entries(grouped)
+          .sort(([, eventsA], [, eventsB]) => {
+            const newestA = eventsA[0]?.created_at || 0
+            const newestB = eventsB[0]?.created_at || 0
+            return newestB - newestA
+          })
+      )
+      
+      setGroupedEvents(sortedGrouped)
+    } else {
+      setGroupedEvents({})
+    }
+  }, [getFilteredEvents, selectedTopic, selectedSubtopic, selectedSort, searchQuery, viewMode, eventMap])
+
+  // Update filtered events when dependencies change
+  useEffect(() => {
+    filterAndSortEvents()
+  }, [filterAndSortEvents])
+
+  // Analyze topics whenever event map changes
+  useEffect(() => {
+    const events = Array.from(eventMap.values()).map(entry => entry.event)
+    if (events.length > 0) {
+      const analysis = analyzeThreadTopics(events, availableTopicIds)
+      setTopicAnalysis(analysis)
+    } else {
+      setTopicAnalysis(new Map())
+    }
+  }, [eventMap, availableTopicIds])
 
   // Update available subtopics when topic analysis or selected topic changes
   useEffect(() => {
@@ -296,7 +350,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       
       // Special case: Always include 'readings' as a subtopic for 'literature'
       if (selectedTopic === 'literature' && !subtopics.includes('readings')) {
-        subtopics.unshift('readings') // Add at the beginning
+        subtopics.unshift('readings')
       }
       
       setAvailableSubtopics(subtopics)
@@ -305,304 +359,14 @@ const DiscussionsPage = forwardRef((_, ref) => {
     }
   }, [topicAnalysis, selectedTopic])
 
-  useEffect(() => {
-    // Only wait for stats for vote-based sorting
-    if ((selectedSort === 'top' || selectedSort === 'controversial') && !statsLoaded) {
-      return
-    }
-    filterThreadsByTopic()
-  }, [allThreads, selectedTopic, selectedSubtopic, selectedSort, statsLoaded, viewMode, searchQuery])
-
-  // Fetch stats when sort changes to top/controversial
-  useEffect(() => {
-    if ((selectedSort === 'top' || selectedSort === 'controversial') && allThreads.length > 0) {
-      setStatsLoaded(false)
-      
-      // Use the same relay selection as thread fetching
-      const relayUrls = selectedRelay ? [selectedRelay] : availableRelays
-      
-      // Fetch ALL reactions in a single batch request instead of per-thread
-      const threadIds = allThreads.map(t => t.id)
-      
-      client.fetchEvents(relayUrls, [
-        {
-          '#e': threadIds,
-          kinds: [kinds.Reaction],
-          limit: 500
-        }
-      ]).then((reactions) => {
-        // Group reactions by thread
-        const newCustomStats: Record<string, { upvotes: number; downvotes: number; score: number; controversy: number }> = {}
-        
-        allThreads.forEach(thread => {
-          const threadReactions = reactions.filter(r => 
-            r.tags.some(tag => tag[0] === 'e' && tag[1] === thread.id)
-          )
-          const upvotes = threadReactions.filter(r => r.content === '⬆️')
-          const downvotes = threadReactions.filter(r => r.content === '⬇️')
-          
-          newCustomStats[thread.id] = {
-            upvotes: upvotes.length,
-            downvotes: downvotes.length,
-            score: upvotes.length - downvotes.length,
-            controversy: Math.min(upvotes.length, downvotes.length)
-          }
-        })
-        
-        setCustomVoteStats(newCustomStats)
-        setStatsLoaded(true)
-      }).catch((error) => {
-        console.error('Error fetching vote stats:', error)
-        setStatsLoaded(true)
-      })
-    } else {
-      setStatsLoaded(true) // For non-vote-based sorting, stats don't matter
-    }
-  }, [selectedSort, allThreads, selectedRelay, availableRelays])
-
-  const filterThreadsByTopic = useCallback(() => {
-    // First filter out deleted events
-    const nonDeletedThreads = allThreads.filter(thread => !isEventDeleted(thread))
-    
-    const categorizedThreads = nonDeletedThreads.map(thread => {
-      // Use new function to get categorized topic (considers both hashtags and t-tags)
-      const matchedTopic = getCategorizedTopic(thread, availableTopicIds)
-      
-      // Get all topics (hashtags + t-tags) for this thread
-      const allTopics = extractAllTopics(thread)
-      
-      // Check if this is a reading group thread (special subtopic for literature)
-      const isReadingGroup = allTopics.includes('readings')
-      
-      return {
-        ...thread,
-        _categorizedTopic: matchedTopic,
-        _isReadingGroup: isReadingGroup,
-        _allTopics: allTopics
-      }
-    })
-
-    // Filter threads for the selected topic (or show all if "all" is selected)
-    let threadsForTopic = selectedTopic === 'all' 
-      ? categorizedThreads.map(thread => {
-          // Remove the temporary categorization property but keep relay source
-          const { _categorizedTopic, _isReadingGroup, _allTopics, ...cleanThread } = thread
-          return cleanThread
-        })
-      : categorizedThreads
-          .filter(thread => {
-            if (thread._categorizedTopic !== selectedTopic) return false
-            
-            // Handle subtopic filtering
-            if (selectedSubtopic) {
-              // Check if thread matches the selected subtopic
-              return thread._allTopics.includes(selectedSubtopic)
-            }
-            
-            return true
-          })
-          .map(thread => {
-            // Remove the temporary categorization property but keep relay source
-            const { _categorizedTopic, _isReadingGroup, _allTopics, ...cleanThread } = thread
-            return cleanThread
-          })
-
-    // Apply global search filter
-    if (searchQuery.trim()) {
-      threadsForTopic = threadsForTopic.filter(thread => threadMatchesSearch(thread, searchQuery))
-    }
-
-    // Apply sorting based on selectedSort
-    
-    switch (selectedSort) {
-      case 'newest':
-        
-        // Create a new sorted array instead of mutating
-        const sortedNewest = [...threadsForTopic].sort((a, b) => {
-          const result = b.created_at - a.created_at
-          return result
-        })
-        
-        // Replace the original array
-        threadsForTopic.length = 0
-        threadsForTopic.push(...sortedNewest)
-        
-        break
-      case 'oldest':
-        // Create a new sorted array instead of mutating
-        const sortedOldest = [...threadsForTopic].sort((a, b) => a.created_at - b.created_at)
-        
-        // Replace the original array
-        threadsForTopic.length = 0
-        threadsForTopic.push(...sortedOldest)
-        
-        break
-      case 'top':
-        // Sort by vote score (upvotes - downvotes), then by newest if tied
-        const sortedTop = [...threadsForTopic].sort((a, b) => {
-          const scoreA = getThreadVoteScore(a)
-          const scoreB = getThreadVoteScore(b)
-          if (scoreA !== scoreB) {
-            return scoreB - scoreA // Higher scores first
-          }
-          return b.created_at - a.created_at // Newest first if tied
-        })
-        
-        // Replace the original array
-        threadsForTopic.length = 0
-        threadsForTopic.push(...sortedTop)
-        
-        break
-      case 'controversial':
-        // Sort by controversy score (min of upvotes and downvotes), then by newest if tied
-        const sortedControversial = [...threadsForTopic].sort((a, b) => {
-          const controversyA = getThreadControversyScore(a)
-          const controversyB = getThreadControversyScore(b)
-          if (controversyA !== controversyB) {
-            return controversyB - controversyA // Higher controversy first
-          }
-          return b.created_at - a.created_at // Newest first if tied
-        })
-        
-        // Replace the original array
-        threadsForTopic.length = 0
-        threadsForTopic.push(...sortedControversial)
-        
-        break
-      case 'most-zapped':
-        // Sort by total zap amount, then by newest if tied
-        const sortedMostZapped = [...threadsForTopic].sort((a, b) => {
-          const zapAmountA = getThreadZapAmount(a)
-          const zapAmountB = getThreadZapAmount(b)
-          if (zapAmountA !== zapAmountB) {
-            return zapAmountB - zapAmountA // Higher zap amounts first
-          }
-          return b.created_at - a.created_at // Newest first if tied
-        })
-        
-        // Replace the original array
-        threadsForTopic.length = 0
-        threadsForTopic.push(...sortedMostZapped)
-        break
-      default:
-        const sortedDefault = [...threadsForTopic].sort((a, b) => b.created_at - a.created_at)
-        threadsForTopic.length = 0
-        threadsForTopic.push(...sortedDefault)
-    }
-
-    // If grouped view and showing all topics, group threads by topic
-    if (viewMode === 'grouped' && selectedTopic === 'all') {
-      // Filter by search query first if present
-      const threadsToGroup = searchQuery.trim()
-        ? categorizedThreads.filter(thread => threadMatchesSearch(thread, searchQuery))
-        : categorizedThreads
-      
-      // Group threads by topic
-      const groupedThreads = threadsToGroup.reduce((groups, thread) => {
-        const topic = thread._categorizedTopic
-        if (!groups[topic]) {
-          groups[topic] = []
-        }
-        // Remove the temporary categorization property but keep relay source
-        const { _categorizedTopic, _isReadingGroup, _allTopics, ...cleanThread } = thread
-        groups[topic].push(cleanThread)
-        return groups
-      }, {} as Record<string, NostrEvent[]>)
-
-      // Sort threads within each group
-      Object.keys(groupedThreads).forEach(topic => {
-        groupedThreads[topic] = sortThreads(groupedThreads[topic])
-      })
-
-      // Sort groups by the newest thread in each group
-      const sortedGroupedThreads = Object.fromEntries(
-        Object.entries(groupedThreads)
-          .sort(([, threadsA], [, threadsB]) => {
-            // Get the newest thread from each group
-            const newestA = threadsA[0]?.created_at || 0 // First thread is newest after sorting
-            const newestB = threadsB[0]?.created_at || 0
-            return newestB - newestA // Newest groups first
-          })
-      )
-
-      // Store grouped data in a different state
-      setGroupedThreads(sortedGroupedThreads)
-      setThreads([]) // Clear flat threads
-    } else {
-      // Flat view or specific topic selected
-      setThreads(threadsForTopic)
-      setGroupedThreads({}) // Clear grouped threads
-    }
-  }, [
-    allThreads,
-    availableTopicIds,
-    selectedTopic,
-    selectedSubtopic,
-    selectedSort,
-    viewMode,
-    searchQuery,
-    customVoteStats,
-    getThreadVoteScore,
-    getThreadControversyScore,
-    getThreadZapAmount,
-    isEventDeleted
-  ])
-
-  // Helper function to sort threads
-  const sortThreads = useCallback((threadsToSort: NostrEvent[]) => {
-    const sortedThreads = [...threadsToSort]
-    
-    switch (selectedSort) {
-      case 'newest':
-        return sortedThreads.sort((a, b) => b.created_at - a.created_at)
-      case 'oldest':
-        return sortedThreads.sort((a, b) => a.created_at - b.created_at)
-      case 'top':
-        return sortedThreads.sort((a, b) => {
-          const scoreA = getThreadVoteScore(a)
-          const scoreB = getThreadVoteScore(b)
-          if (scoreA !== scoreB) return scoreB - scoreA
-          return b.created_at - a.created_at
-        })
-      case 'controversial':
-        return sortedThreads.sort((a, b) => {
-          const controversyA = getThreadControversyScore(a)
-          const controversyB = getThreadControversyScore(b)
-          if (controversyA !== controversyB) return controversyB - controversyA
-          return b.created_at - a.created_at
-        })
-      default:
-        return sortedThreads.sort((a, b) => b.created_at - a.created_at)
-    }
-  }, [selectedSort, getThreadVoteScore, getThreadControversyScore])
-
   const handleCreateThread = () => {
     setShowCreateThread(true)
   }
 
-  const handleThreadCreated = (publishedEvent?: NostrEvent) => {
+  const handleThreadCreated = () => {
     setShowCreateThread(false)
-    
-    if (publishedEvent) {
-      // Optimistically add the new thread to the local state
-      setAllThreads(prev => {
-        // Check if the thread is already in the list (avoid duplicates)
-        if (prev.some(thread => thread.id === publishedEvent.id)) {
-          return prev
-        }
-        
-        // Add relay source info
-        const eventHints = client.getEventHints(publishedEvent.id)
-        const relaySource = eventHints.length > 0 ? eventHints[0] : 'unknown'
-        const newThread = { ...publishedEvent, _relaySource: relaySource }
-        
-        // Add the new thread at the beginning (newest first)
-        return [newThread, ...prev]
-      })
-    } else {
-      // Fallback: refresh all threads if no published event provided
-      fetchAllThreads()
-    }
+    // Refetch events to include the new thread
+    fetchAllEvents()
   }
 
   return (
@@ -617,12 +381,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
               selectedTopic={selectedTopic}
               onTopicChange={(topic) => {
                 setSelectedTopic(topic)
-                setSelectedSubtopic(null) // Reset subtopic when changing topic
+                setSelectedSubtopic(null)
               }}
-              threads={viewMode === 'grouped' && selectedTopic === 'all' ? allThreads : threads}
+              threads={viewMode === 'grouped' && selectedTopic === 'all' ? filteredEvents : filteredEvents}
               replies={[]}
             />
-            {(availableRelays.length > 1 || relaySets.length > 0) && (
+            {(allRelays.length > 1 || relaySets.length > 0) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="h-10 text-sm">
@@ -647,7 +411,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                       {relaySet.name}
                     </DropdownMenuItem>
                   ))}
-                  {availableRelays.map(relay => (
+                  {allRelays.map(relay => (
                     <DropdownMenuItem 
                       key={relay} 
                       onClick={() => setSelectedRelay(relay)}
@@ -706,7 +470,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('Search by title, content, author, book, hashtags, or npub...')}
+                placeholder={t('Search by title, content, or topics...')}
                 className="w-full pl-10 pr-10 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
               {searchQuery && (
@@ -737,33 +501,35 @@ const DiscussionsPage = forwardRef((_, ref) => {
           </div>
         ) : selectedTopic !== 'all' && availableSubtopics.length > 0 && !selectedSubtopic ? (
           <div className="space-y-6">
-            {/* General section for the main topic (without subtopics) */}
+            {/* General section */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 pb-2 border-b">
                 <BookOpen className="w-5 h-5 text-primary" />
                 <h2 className="text-lg font-semibold">{t('General')}</h2>
                 <span className="text-sm text-muted-foreground">
-                  ({threads.filter(thread => {
-                    const allTopics = extractAllTopics(thread)
-                    // Threads that don't have any of the available subtopics
-                    return !availableSubtopics.some(subtopic => allTopics.includes(subtopic))
-                  }).length} {threads.filter(thread => {
-                    const allTopics = extractAllTopics(thread)
-                    return !availableSubtopics.some(subtopic => allTopics.includes(subtopic))
+                  ({filteredEvents.filter(event => {
+                    const entry = eventMap.get(event.id)
+                    if (!entry) return false
+                    return !availableSubtopics.some(subtopic => entry.allTopics.includes(subtopic))
+                  }).length} {filteredEvents.filter(event => {
+                    const entry = eventMap.get(event.id)
+                    if (!entry) return false
+                    return !availableSubtopics.some(subtopic => entry.allTopics.includes(subtopic))
                   }).length === 1 ? t('thread') : t('threads')})
                 </span>
               </div>
               <div className="space-y-3">
-                {threads.filter(thread => {
-                  const allTopics = extractAllTopics(thread)
-                  return !availableSubtopics.some(subtopic => allTopics.includes(subtopic))
-                }).map(thread => (
+                {filteredEvents.filter(event => {
+                  const entry = eventMap.get(event.id)
+                  if (!entry) return false
+                  return !availableSubtopics.some(subtopic => entry.allTopics.includes(subtopic))
+                }).map(event => (
                   <ThreadCard
-                    key={thread.id}
-                    thread={thread}
+                    key={event.id}
+                    thread={event}
                     subtopics={availableSubtopics}
                     onThreadClick={() => {
-                      push(toNote(thread))
+                      push(toNote(event))
                     }}
                   />
                 ))}
@@ -772,14 +538,14 @@ const DiscussionsPage = forwardRef((_, ref) => {
 
             {/* Dynamic subtopics sections */}
             {availableSubtopics.map(subtopic => {
-              const subtopicThreads = threads.filter(thread => {
-                const allTopics = extractAllTopics(thread)
-                return allTopics.includes(subtopic)
+              const subtopicEvents = filteredEvents.filter(event => {
+                const entry = eventMap.get(event.id)
+                if (!entry) return false
+                return entry.allTopics.includes(subtopic)
               })
               
-              if (subtopicThreads.length === 0) return null
+              if (subtopicEvents.length === 0) return null
               
-              // Special handling for 'readings' subtopic in literature
               const isReadingsSubtopic = subtopic === 'readings' && selectedTopic === 'literature'
               
               return (
@@ -794,29 +560,29 @@ const DiscussionsPage = forwardRef((_, ref) => {
                       {subtopic.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                     </h2>
                     <span className="text-sm text-muted-foreground">
-                      ({subtopicThreads.length} {subtopicThreads.length === 1 ? t('thread') : t('threads')})
+                      ({subtopicEvents.length} {subtopicEvents.length === 1 ? t('thread') : t('threads')})
                     </span>
                   </div>
                   
                   <div className="space-y-3">
-                    {subtopicThreads.map(thread => (
-                        <ThreadCard
-                          key={thread.id}
-                          thread={thread}
-                          subtopics={availableSubtopics}
-                          onThreadClick={() => {
-                            push(toNote(thread))
-                          }}
-                        />
-                      ))}
+                    {subtopicEvents.map(event => (
+                      <ThreadCard
+                        key={event.id}
+                        thread={event}
+                        subtopics={availableSubtopics}
+                        onThreadClick={() => {
+                          push(toNote(event))
+                        }}
+                      />
+                    ))}
                   </div>
                 </div>
               )
             })}
           </div>
         ) : (viewMode === 'grouped' && selectedTopic === 'all' ? 
-          Object.keys(groupedThreads).length === 0 : 
-          threads.length === 0) ? (
+          Object.keys(groupedEvents).length === 0 : 
+          filteredEvents.length === 0) ? (
           <Card>
             <CardContent className="p-8 text-center">
               <MessageSquarePlus className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
@@ -832,7 +598,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                   <MessageSquarePlus className="w-4 h-4 mr-2" />
                   {t('Create Thread')}
                 </Button>
-                <Button variant="outline" onClick={fetchAllThreads}>
+                <Button variant="outline" onClick={fetchAllEvents}>
                   {t('Refresh')}
                 </Button>
               </div>
@@ -840,9 +606,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
           </Card>
         ) : viewMode === 'grouped' && selectedTopic === 'all' ? (
           <div className="space-y-6">
-            {Object.entries(groupedThreads).map(([topicId, topicThreads]) => {
+            {Object.entries(groupedEvents).map(([topicId, topicEvents]) => {
               const topicInfo = DISCUSSION_TOPICS.find(t => t.id === topicId)
-              if (!topicInfo || topicThreads.length === 0) return null
+              if (!topicInfo || topicEvents.length === 0) return null
               
               return (
                 <div key={topicId} className="space-y-3">
@@ -850,24 +616,23 @@ const DiscussionsPage = forwardRef((_, ref) => {
                     <topicInfo.icon className="w-5 h-5 text-primary" />
                     <h2 className="text-lg font-semibold">{topicInfo.label}</h2>
                     <span className="text-sm text-muted-foreground">
-                      ({topicThreads.length} {topicThreads.length === 1 ? t('thread') : t('threads')})
+                      ({topicEvents.length} {topicEvents.length === 1 ? t('thread') : t('threads')})
                     </span>
                   </div>
                   <div className="space-y-3">
-                    {topicThreads.map(thread => {
-                      // For grouped view, determine subtopics based on thread's categorized topic
-                      const categorizedTopic = getCategorizedTopic(thread, availableTopicIds)
-                      const threadSubtopics = categorizedTopic === 'literature' 
-                        ? ['readings'] // Always include readings for literature threads
-                        : getDynamicSubtopics(topicAnalysis.get(categorizedTopic), 3)
+                    {topicEvents.map(event => {
+                      const entry = eventMap.get(event.id)
+                      const threadSubtopics = entry?.categorizedTopic === 'literature' 
+                        ? ['readings']
+                        : getDynamicSubtopics(topicAnalysis.get(entry?.categorizedTopic || 'general'), 3)
                       
                       return (
                         <ThreadCard
-                          key={thread.id}
-                          thread={thread}
+                          key={event.id}
+                          thread={event}
                           subtopics={threadSubtopics}
                           onThreadClick={() => {
-                            push(toNote(thread))
+                            push(toNote(event))
                           }}
                         />
                       )
@@ -879,21 +644,19 @@ const DiscussionsPage = forwardRef((_, ref) => {
           </div>
         ) : (
           <div className="space-y-3">
-            {threads.map(thread => {
-              // For "All Topics" view, determine subtopics based on thread's categorized topic
-              const categorizedTopic = getCategorizedTopic(thread, availableTopicIds)
-              const threadSubtopics = categorizedTopic === 'literature' 
-                ? ['readings'] // Always include readings for literature threads
-                : getDynamicSubtopics(topicAnalysis.get(categorizedTopic), 3)
-              
+            {filteredEvents.map(event => {
+              const entry = eventMap.get(event.id)
+              const threadSubtopics = entry?.categorizedTopic === 'literature' 
+                ? ['readings']
+                : getDynamicSubtopics(topicAnalysis.get(entry?.categorizedTopic || 'general'), 3)
               
               return (
                 <ThreadCard
-                  key={thread.id}
-                  thread={thread}
+                  key={event.id}
+                  thread={event}
                   subtopics={threadSubtopics}
                   onThreadClick={() => {
-                    push(toNote(thread))
+                    push(toNote(event))
                   }}
                 />
               )
@@ -905,7 +668,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       {showCreateThread && (
         <CreateThreadDialog
           topic={selectedTopic}
-          availableRelays={availableRelays}
+          availableRelays={allRelays}
           relaySets={relaySets}
           selectedRelay={selectedRelay}
           onClose={() => setShowCreateThread(false)}
@@ -918,4 +681,3 @@ const DiscussionsPage = forwardRef((_, ref) => {
 
 DiscussionsPage.displayName = 'DiscussionsPage'
 export default DiscussionsPage
-

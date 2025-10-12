@@ -38,7 +38,6 @@ import * as nip49 from 'nostr-tools/nip49'
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { useDeletedEvent } from '../DeletedEventProvider'
 import { BunkerSigner } from './bunker.signer'
 import { Nip07Signer } from './nip-07.signer'
 import { NostrConnectionSigner } from './nostrConnection.signer'
@@ -107,7 +106,7 @@ export const useNostr = () => {
 
 export function NostrProvider({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
-  const { addDeletedEvent } = useDeletedEvent()
+  // Note: Deletion event handling moved to individual components
   const [accounts, setAccounts] = useState<TAccountPointer[]>(
     storage.getAccounts().map((act) => ({ pubkey: act.pubkey, signerType: act.signerType }))
   )
@@ -278,41 +277,8 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       }
       setRelayList(relayList)
 
-      // Fetch deletion events to populate the deleted event keys
-      try {
-        const relays = relayList.read?.slice(0, 5) || []
-        if (relays.length > 0) {
-          // Fetch kind 5 (deletion) events from the last 30 days
-          const thirtyDaysAgo = Math.floor((Date.now() - (30 * 24 * 60 * 60 * 1000)) / 1000)
-          
-          const deletionEvents = await client.fetchEvents(relays, {
-            kinds: [kinds.EventDeletion],
-            since: thirtyDaysAgo,
-            limit: 1000
-          })
-
-          // Process deletion events to extract deleted event IDs
-          const newDeletedKeys = new Set<string>()
-          
-          for (const deletionEvent of deletionEvents) {
-            // Kind 5 events contain 'e' tags with the IDs of deleted events
-            const deletedEventTags = deletionEvent.tags.filter(tag => tag[0] === 'e' && tag[1])
-            
-            for (const tag of deletedEventTags) {
-              const deletedEventId = tag[1]
-              if (deletedEventId) {
-                newDeletedKeys.add(deletedEventId)
-                // Also add to the DeletedEventProvider
-                addDeletedEvent({ id: deletedEventId } as Event)
-              }
-            }
-          }
-
-          console.log(`Fetched ${deletionEvents.length} deletion events, found ${newDeletedKeys.size} deleted event IDs`)
-        }
-      } catch (error) {
-        console.warn('Failed to fetch deletion events:', error)
-      }
+      // Note: Deletion event fetching is now handled locally by individual components
+      // for better performance and accuracy
 
       const normalizedRelays = [
         ...relayList.write.map(url => normalizeUrl(url) || url),
@@ -804,7 +770,8 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
     const result = await client.publishEvent(relays, deletionRequest)
 
-    addDeletedEvent(targetEvent)
+    // Note: We don't need to add the deleted event to the provider here
+    // since it's being published as a kind 5 event and will be fetched later
     
     // Show publishing feedback
     if (result.relayStatuses) {
