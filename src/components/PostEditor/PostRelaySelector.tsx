@@ -87,7 +87,7 @@ export default function PostRelaySelector({
     }
 
     updateRelaySelection()
-  }, [openFrom, _parentEvent, favoriteRelays, blockedRelays, relaySets, isPublicMessage, postContent, pubkey, relayList, hasManualSelection, previousSelectableCount])
+  }, [openFrom, _parentEvent, favoriteRelays, blockedRelays, relaySets, isPublicMessage, postContent, pubkey, relayList])
 
   // Update description when selected relays change due to manual selection
   useEffect(() => {

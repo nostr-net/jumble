@@ -17,11 +17,13 @@ export default function DiscussionContent({
     () =>
       ({
         nostr: (props) => (
-          <NostrNode
-            rawText={props.rawText}
-            bech32Id={props.bech32Id}
-          />
-        ),
+          <div className="not-prose my-2">
+            <NostrNode
+              rawText={props.rawText}
+              bech32Id={props.bech32Id}
+            />
+          </div>
+        )
       }) as Components,
     []
   )
