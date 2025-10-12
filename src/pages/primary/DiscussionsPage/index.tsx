@@ -5,6 +5,7 @@ import { DEFAULT_FAVORITE_RELAYS, FAST_READ_RELAY_URLS } from '@/constants'
 import { normalizeUrl } from '@/lib/url'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
+import { useDeletedEvent } from '@/providers/DeletedEventProvider'
 import { forwardRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
@@ -103,6 +104,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
   const { favoriteRelays, relaySets } = useFavoriteRelays()
   const { pubkey } = useNostr()
+  const { isEventDeleted } = useDeletedEvent()
   const { push } = useSecondaryPage()
   const [selectedTopic, setSelectedTopic] = useState('all')
   const [selectedSubtopic, setSelectedSubtopic] = useState<string | null>(null)
@@ -243,6 +245,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
      // Filter and sort threads
       const validThreads = events
         .filter(event => {
+          // Filter out deleted events
+          if (isEventDeleted(event)) return false
+          
           // Ensure it has a title tag
           const titleTag = event.tags.find(tag => tag[0] === 'title' && tag[1])
           return titleTag && event.content.trim().length > 0
@@ -265,7 +270,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
     } finally {
       setLoading(false)
     }
-  }, [relayUrls, selectedRelay, selectedSort, pubkey])
+  }, [relayUrls, selectedRelay, selectedSort, pubkey, isEventDeleted])
 
   useEffect(() => {
     fetchAllThreads()
@@ -353,7 +358,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
   }, [selectedSort, allThreads, selectedRelay, availableRelays])
 
   const filterThreadsByTopic = useCallback(() => {
-    const categorizedThreads = allThreads.map(thread => {
+    // First filter out deleted events
+    const nonDeletedThreads = allThreads.filter(thread => !isEventDeleted(thread))
+    
+    const categorizedThreads = nonDeletedThreads.map(thread => {
       // Use new function to get categorized topic (considers both hashtags and t-tags)
       const matchedTopic = getCategorizedTopic(thread, availableTopicIds)
       
@@ -533,7 +541,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
     customVoteStats,
     getThreadVoteScore,
     getThreadControversyScore,
-    getThreadZapAmount
+    getThreadZapAmount,
+    isEventDeleted
   ])
 
   // Helper function to sort threads
