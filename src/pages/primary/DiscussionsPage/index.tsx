@@ -181,7 +181,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
     }
     
     updateRelayUrls()
-  }, [selectedRelay, availableRelays, relaySets, pubkey, favoriteRelays])
+  }, [selectedRelay, availableRelays, relaySets, pubkey])
 
   // Available topic IDs for matching
   const availableTopicIds = useMemo(() => 
@@ -246,7 +246,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
       const validThreads = events
         .filter(event => {
           // Filter out deleted events
-          if (isEventDeleted(event)) return false
+          if (isEventDeleted(event)) {
+            console.log(`Filtering out deleted event: ${event.id}`)
+            return false
+          }
           
           // Ensure it has a title tag
           const titleTag = event.tags.find(tag => tag[0] === 'title' && tag[1])
