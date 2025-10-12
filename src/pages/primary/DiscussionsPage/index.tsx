@@ -893,6 +893,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
         <CreateThreadDialog
           topic={selectedTopic}
           availableRelays={availableRelays}
+          relaySets={relaySets}
           selectedRelay={selectedRelay}
           onClose={() => setShowCreateThread(false)}
           onThreadCreated={handleThreadCreated}

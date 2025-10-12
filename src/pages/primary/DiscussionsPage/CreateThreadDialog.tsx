@@ -2,23 +2,26 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Checkbox } from '@/components/ui/checkbox'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book, Network, Car, Eye, Edit3 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
-import { TDraftEvent } from '@/types'
+import { TDraftEvent, TRelaySet } from '@/types'
 import { NostrEvent } from 'nostr-tools'
 import { prefixNostrAddresses } from '@/lib/nostr-address'
 import { showPublishingError } from '@/lib/publishing-feedback'
+import { simplifyUrl } from '@/lib/url'
 import dayjs from 'dayjs'
 import { extractHashtagsFromContent, normalizeTopic } from '@/lib/discussion-topics'
 import DiscussionContent from '@/components/Note/DiscussionContent'
+import RelayIcon from '@/components/RelayIcon'
 
 // Utility functions for thread creation
 function extractImagesFromContent(content: string): string[] {
@@ -42,7 +45,8 @@ function buildClientTag(): string[] {
 interface CreateThreadDialogProps {
   topic: string
   availableRelays: string[]
-  selectedRelay?: string | null
+  relaySets: TRelaySet[]
+  selectedRelay?: string | null  // null = "All relays", relay set ID, or single relay URL
   onClose: () => void
   onThreadCreated: (publishedEvent?: NostrEvent) => void
 }
@@ -72,6 +76,7 @@ export const DISCUSSION_TOPICS = [
 export default function CreateThreadDialog({ 
   topic: initialTopic, 
   availableRelays, 
+  relaySets,
   selectedRelay: initialRelay, 
   onClose, 
   onThreadCreated 
@@ -81,7 +86,7 @@ export default function CreateThreadDialog({
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [selectedTopic] = useState(initialTopic)
-  const [selectedRelay, setSelectedRelay] = useState<string>(initialRelay || '')
+  const [selectedRelayUrls, setSelectedRelayUrls] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<{ title?: string; content?: string; relay?: string; author?: string; subject?: string }>({})
   const [isNsfw, setIsNsfw] = useState(false)
@@ -94,6 +99,34 @@ export default function CreateThreadDialog({
   const [author, setAuthor] = useState('')
   const [subject, setSubject] = useState('')
   const [showReadingsPanel, setShowReadingsPanel] = useState(false)
+
+  // Get all selectable relays (includes relays from selected relay set if applicable)
+  const selectableRelays = useMemo(() => {
+    const relaySet = initialRelay ? relaySets.find(set => set.id === initialRelay) : null
+    if (relaySet) {
+      // Include relays from the selected set along with available relays
+      return Array.from(new Set([...availableRelays, ...relaySet.relayUrls]))
+    }
+    return availableRelays
+  }, [availableRelays, relaySets, initialRelay])
+
+  // Initialize selected relays based on the originating view state
+  useEffect(() => {
+    if (initialRelay === null || initialRelay === undefined) {
+      // "All relays" selected - check all available relays
+      setSelectedRelayUrls(availableRelays)
+    } else {
+      // Check if it's a relay set ID
+      const relaySet = relaySets.find(set => set.id === initialRelay)
+      if (relaySet) {
+        // It's a relay set - check all relays in that set
+        setSelectedRelayUrls(relaySet.relayUrls)
+      } else {
+        // It's a specific relay - check just that relay
+        setSelectedRelayUrls([initialRelay])
+      }
+    }
+  }, [initialRelay, availableRelays, relaySets])
 
   const validateForm = () => {
     const newErrors: { title?: string; content?: string; relay?: string; author?: string; subject?: string } = {}
@@ -110,8 +143,8 @@ export default function CreateThreadDialog({
       newErrors.content = t('Content must be 5000 characters or less')
     }
     
-    if (!selectedRelay) {
-      newErrors.relay = t('Please select a relay')
+    if (selectedRelayUrls.length === 0) {
+      newErrors.relay = t('Please select at least one relay')
     }
     
     // Validate readings fields if reading group is enabled
@@ -201,9 +234,9 @@ export default function CreateThreadDialog({
       }
       
       
-      // Publish to the selected relay only
+      // Publish to all selected relays
       const publishedEvent = await publish(threadEvent, {
-        specifiedRelayUrls: [selectedRelay],
+        specifiedRelayUrls: selectedRelayUrls,
         minPow
       })
       
@@ -474,25 +507,70 @@ export default function CreateThreadDialog({
 
             {/* Relay Selection */}
             <div className="space-y-2">
-              <Label htmlFor="relay">{t('Publish to Relay')}</Label>
-              <Select value={selectedRelay} onValueChange={setSelectedRelay}>
-                <SelectTrigger className={errors.relay ? 'border-destructive' : ''}>
-                  <SelectValue placeholder={t('Select a relay to publish to')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableRelays.map(relay => (
-                    <SelectItem key={relay} value={relay}>
-                      {relay.replace('wss://', '').replace('ws://', '')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>{t('Publish to Relays')}</Label>
+              <ScrollArea className={`max-h-64 rounded-md border p-4 ${errors.relay ? 'border-destructive' : ''}`}>
+                {selectableRelays.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    {t('No relays available. Please configure relays in settings.')}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectableRelays.map(relay => {
+                      const isChecked = selectedRelayUrls.includes(relay)
+                      return (
+                        <div key={relay} className="flex items-center space-x-3">
+                          <Checkbox
+                            id={`relay-${relay}`}
+                            checked={isChecked}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedRelayUrls(prev => [...prev, relay])
+                              } else {
+                                setSelectedRelayUrls(prev => prev.filter(url => url !== relay))
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`relay-${relay}`}
+                            className="flex items-center gap-2 text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex-1"
+                          >
+                            <RelayIcon url={relay} className="w-4 h-4" />
+                            <span className="truncate">{simplifyUrl(relay)}</span>
+                          </label>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </ScrollArea>
               {errors.relay && (
                 <p className="text-sm text-destructive">{errors.relay}</p>
               )}
-              <p className="text-sm text-muted-foreground">
-                {t('Choose the relay where this discussion will be hosted.')}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  {selectedRelayUrls.length === 0
+                    ? t('No relays selected')
+                    : t('{{count}} relay(s) selected', { count: selectedRelayUrls.length })}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedRelayUrls(selectableRelays)}
+                  >
+                    {t('Select All')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedRelayUrls([])}
+                  >
+                    {t('Clear All')}
+                  </Button>
+                </div>
+              </div>
             </div>
 
             {/* Advanced Options Toggle */}
