@@ -380,6 +380,18 @@ const DiscussionsPage = forwardRef((_, ref) => {
           return true
         }
         
+        // Search in author tags
+        const authorTag = event.tags.find(tag => tag[0] === 'author' && tag[1])
+        if (authorTag && authorTag[1]?.toLowerCase().includes(lowerQuery)) {
+          return true
+        }
+        
+        // Search in subject tags (for books)
+        const subjectTag = event.tags.find(tag => tag[0] === 'subject' && tag[1])
+        if (subjectTag && subjectTag[1]?.toLowerCase().includes(lowerQuery)) {
+          return true
+        }
+        
         // Search in topics
         const entry = eventMap.get(event.id)
         if (entry) {
