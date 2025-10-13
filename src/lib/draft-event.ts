@@ -3,6 +3,7 @@ import client from '@/services/client.service'
 import customEmojiService from '@/services/custom-emoji.service'
 import mediaUpload from '@/services/media-upload.service'
 import { prefixNostrAddresses } from '@/lib/nostr-address'
+import { normalizeHashtag } from '@/lib/discussion-topics'
 import {
   TDraftEvent,
   TEmoji,
@@ -742,11 +743,17 @@ async function extractCommentMentions(content: string, parentEvent: Event) {
 
 function extractHashtags(content: string) {
   const hashtags: string[] = []
-  const matches = content.match(/#[\p{L}\p{N}\p{M}]+/gu)
+  // Match hashtags including hyphens, underscores, and unicode characters
+  // But stop at whitespace or common punctuation
+  const matches = content.match(/#[\p{L}\p{N}\p{M}_-]+/gu)
   matches?.forEach((m) => {
-    const hashtag = m.slice(1).toLowerCase()
-    if (hashtag) {
-      hashtags.push(hashtag)
+    const hashtag = m.slice(1)
+    // Use shared normalization function (without space replacement for content hashtags)
+    const normalized = normalizeHashtag(hashtag, false)
+    
+    // Only add if not empty (normalizeHashtag already filters out pure numbers)
+    if (normalized) {
+      hashtags.push(normalized)
     }
   })
   return hashtags

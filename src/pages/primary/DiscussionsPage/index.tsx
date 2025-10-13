@@ -1,8 +1,9 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 // Removed dropdown menu import - no longer using relay selection
-import { FAST_READ_RELAY_URLS } from '@/constants'
+import { FAST_READ_RELAY_URLS, HASHTAG_REGEX } from '@/constants'
 import { normalizeUrl } from '@/lib/url'
+import { normalizeTopic } from '@/lib/discussion-topics'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { forwardRef, useEffect, useState, useCallback, useRef } from 'react'
@@ -22,89 +23,6 @@ import { useSecondaryPage } from '@/PageManager'
 import { toNote } from '@/lib/link'
 import { kinds } from 'nostr-tools'
 
-// Normalize subtopic hashtags using linguistic rules to group similar variations
-function normalizeSubtopic(tag: string): string {
-  let normalized = tag.toLowerCase().trim()
-  
-  // Don't normalize very short words (2 chars or less)
-  if (normalized.length <= 2) {
-    return normalized
-  }
-  
-  // Don't normalize compound hashtags (with hyphens or underscores)
-  if (normalized.includes('-') || normalized.includes('_')) {
-    return normalized
-  }
-  
-  // Handle common suffixes to find root forms
-  
-  // Remove trailing 's' for plurals (but not if word ends in 'ss')
-  if (normalized.endsWith('s') && !normalized.endsWith('ss')) {
-    // Special cases for words ending in 'ies' -> 'y' (e.g., stories -> story)
-    if (normalized.endsWith('ies') && normalized.length > 4) {
-      return normalized.slice(0, -3) + 'y'
-    }
-    // Special cases for words ending in 'es' (e.g., churches -> church, but not always)
-    if (normalized.endsWith('ches') || normalized.endsWith('shes') || normalized.endsWith('xes') || 
-        normalized.endsWith('zes') || normalized.endsWith('ses')) {
-      return normalized.slice(0, -2)
-    }
-    // Regular plural: just remove 's'
-    return normalized.slice(0, -1)
-  }
-  
-  // Handle -ing forms (e.g., reading -> read, cooking -> cook)
-  if (normalized.endsWith('ing') && normalized.length > 5) {
-    const root = normalized.slice(0, -3)
-    // Handle doubled consonants (e.g., running -> run, shopping -> shop)
-    if (root.length >= 2 && root[root.length - 1] === root[root.length - 2]) {
-      return root.slice(0, -1)
-    }
-    return root
-  }
-  
-  // Handle -ed forms (e.g., deleted -> delete)
-  if (normalized.endsWith('ed') && normalized.length > 4) {
-    const root = normalized.slice(0, -2)
-    // Handle doubled consonants
-    if (root.length >= 2 && root[root.length - 1] === root[root.length - 2]) {
-      return root.slice(0, -1)
-    }
-    return root
-  }
-  
-  // Handle -er forms (e.g., developer -> develop, but not 'user' -> 'us')
-  if (normalized.endsWith('er') && normalized.length > 4 && !normalized.endsWith('eer')) {
-    return normalized.slice(0, -2)
-  }
-  
-  // Handle -ly adverbs (e.g., quickly -> quick)
-  if (normalized.endsWith('ly') && normalized.length > 4) {
-    return normalized.slice(0, -2)
-  }
-  
-  // Handle -y to -ies (e.g., philosophy/philosophical, economy/economics)
-  // Already handled by the 'ies' -> 'y' rule above
-  
-  // Handle -ism, -ist, -ian variations (e.g., Buddhism/Buddhist, Christian/Christianity)
-  if (normalized.endsWith('ism') && normalized.length > 5) {
-    return normalized.slice(0, -3)
-  }
-  if (normalized.endsWith('ist') && normalized.length > 5) {
-    return normalized.slice(0, -3)
-  }
-  if (normalized.endsWith('ity') && normalized.length > 5) {
-    return normalized.slice(0, -3)
-  }
-  if (normalized.endsWith('ian') && normalized.length > 5) {
-    return normalized.slice(0, -3)
-  }
-  if (normalized.endsWith('ians') && normalized.length > 6) {
-    return normalized.slice(0, -4)
-  }
-  
-  return normalized
-}
 
 // Function to determine topic based on actual t-tags and hashtags
 function getTopicFromTags(allTopics: string[], availableTopicIds: string[]): string {
@@ -364,8 +282,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
         
         // Extract topics - normalize subtopics but keep originals for topic detection
         const tTagsRaw = event.tags.filter(tag => tag[0] === 't' && tag[1]).map(tag => tag[1].toLowerCase())
-        // Match hashtags with letters, numbers, hyphens, and underscores
-        const hashtagsRaw = (event.content.match(/#[\w-]+/g) || []).map(tag => tag.slice(1).toLowerCase())
+        // Match hashtags using the same regex as everywhere else
+        const hashtagsRaw = (event.content.match(HASHTAG_REGEX) || []).map(tag => tag.slice(1).toLowerCase())
         const allTopicsRaw = [...new Set([...tTagsRaw, ...hashtagsRaw])]
         
         // Determine the main topic from raw tags (use only predefined topics during fetch)
@@ -373,8 +291,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
         const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds)
         
         // Normalize subtopics for grouping (but not main topic IDs)
-        const tTags = tTagsRaw.map(tag => normalizeSubtopic(tag))
-        const hashtags = hashtagsRaw.map(tag => normalizeSubtopic(tag))
+        const tTags = tTagsRaw.map(tag => normalizeTopic(tag))
+        const hashtags = hashtagsRaw.map(tag => normalizeTopic(tag))
         const allTopics = [...new Set([...tTags, ...hashtags])]
         
         finalEventMap.set(eventId, {
@@ -574,16 +492,16 @@ const DiscussionsPage = forwardRef((_, ref) => {
       
       // Extract topics from the published event
       const tTagsRaw = publishedEvent.tags.filter(tag => tag[0] === 't' && tag[1]).map(tag => tag[1].toLowerCase())
-      const hashtagsRaw = (publishedEvent.content.match(/#[\w-]+/g) || []).map(tag => tag.slice(1).toLowerCase())
+      const hashtagsRaw = (publishedEvent.content.match(HASHTAG_REGEX) || []).map(tag => tag.slice(1).toLowerCase())
       const allTopicsRaw = [...new Set([...tTagsRaw, ...hashtagsRaw])]
       
       // Determine the main topic from raw tags
       const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
       const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds)
       
-      // Normalize subtopics for grouping
-      const tTags = tTagsRaw.map(tag => normalizeSubtopic(tag))
-      const hashtags = hashtagsRaw.map(tag => normalizeSubtopic(tag))
+      // Normalize subtopics for grouping using the same function as ThreadCard
+      const tTags = tTagsRaw.map(tag => normalizeTopic(tag))
+      const hashtags = hashtagsRaw.map(tag => normalizeTopic(tag))
         const allTopics = [...new Set([...tTags, ...hashtags])]
       
       // Get relay sources from event hints (tracked during publishing)

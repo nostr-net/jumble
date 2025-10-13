@@ -2,39 +2,53 @@ import { HASHTAG_REGEX } from '@/constants'
 import { NostrEvent } from 'nostr-tools'
 
 /**
- * Normalize a topic string to lowercase with hyphens, no spaces
- * Also converts plurals to singular form
+ * Normalize a hashtag/topic string
+ * @param text The text to normalize
+ * @param replaceSpaces Whether to replace spaces with hyphens (true for t-tags, false for content hashtags)
+ * @returns Normalized string (lowercase, filtered characters, singular form)
  */
-export function normalizeTopic(topic: string): string {
-  let normalized = topic
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+export function normalizeHashtag(text: string, replaceSpaces: boolean = true): string {
+  // Convert to lowercase and optionally replace spaces with hyphens
+  let normalized = text.toLowerCase()
+  if (replaceSpaces) {
+    normalized = normalized.replace(/\s+/g, '-')
+  }
+  
+  // Only allow letters, numbers, hyphens, and underscores
+  normalized = normalized.replace(/[^a-z0-9_-]/g, '')
+  
+  // Clean up multiple consecutive hyphens/underscores
+  normalized = normalized.replace(/[-_]+/g, '-')
+  
+  // Remove leading/trailing hyphens/underscores
+  normalized = normalized.replace(/^[-_]+|[-_]+$/g, '')
+  
+  // Reject hashtags that are only numbers
+  if (/^[0-9]+$/.test(normalized)) {
+    return ''
+  }
+  
+  // Reject empty strings
+  if (!normalized) {
+    return ''
+  }
   
   // Convert plural to singular (simple English plurals)
   // Handle common cases: -ies -> -y, -es -> (sometimes), -s -> remove
   if (normalized.endsWith('ies') && normalized.length > 4) {
     // cities -> city, berries -> berry
     normalized = normalized.slice(0, -3) + 'y'
-  } else if (normalized.endsWith('ves') && normalized.length > 4) {
-    // wives -> wife, knives -> knife
-    normalized = normalized.slice(0, -3) + 'fe'
   } else if (normalized.endsWith('ses') && normalized.length > 4) {
     // classes -> class, bosses -> boss
     normalized = normalized.slice(0, -2)
   } else if (normalized.endsWith('xes') && normalized.length > 4) {
     // boxes -> box
     normalized = normalized.slice(0, -2)
-  } else if (normalized.endsWith('shes') && normalized.length > 5) {
-    // dishes -> dish
-    normalized = normalized.slice(0, -2)
   } else if (normalized.endsWith('ches') && normalized.length > 5) {
     // churches -> church
     normalized = normalized.slice(0, -2)
   } else if (normalized.endsWith('s') && normalized.length > 2) {
-    // Simple plural: cats -> cat, bitcoins -> bitcoin
+    // Simple plural: cats -> cat, bitcoins -> bitcoin, Christians -> Christian
     // But avoid removing 's' from words that naturally end in 's'
     // Check if second-to-last character is not 's' to avoid "ss" words
     const secondLast = normalized[normalized.length - 2]
@@ -44,6 +58,14 @@ export function normalizeTopic(topic: string): string {
   }
   
   return normalized
+}
+
+/**
+ * Normalize a topic string (t-tags) - replaces spaces with hyphens
+ * Alias for normalizeHashtag with replaceSpaces=true
+ */
+export function normalizeTopic(topic: string): string {
+  return normalizeHashtag(topic, true)
 }
 
 /**
