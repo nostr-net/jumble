@@ -20,7 +20,9 @@ import RelayItem from './RelayItem'
 
 export default function FavoriteRelayList() {
   const { t } = useTranslation()
-  const { favoriteRelays, reorderFavoriteRelays } = useFavoriteRelays()
+  const { favoriteRelays, blockedRelays, reorderFavoriteRelays } = useFavoriteRelays()
+  
+  // Show all relays including blocked ones (they'll be marked visually)
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -53,7 +55,7 @@ export default function FavoriteRelayList() {
         <SortableContext items={favoriteRelays} strategy={verticalListSortingStrategy}>
           <div className="grid gap-2">
             {favoriteRelays.map((relay) => (
-              <RelayItem key={relay} relay={relay} />
+              <RelayItem key={relay} relay={relay} isBlocked={blockedRelays.includes(relay)} />
             ))}
           </div>
         </SortableContext>

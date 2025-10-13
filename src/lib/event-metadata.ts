@@ -9,18 +9,25 @@ import { generateBech32IdFromATag, generateBech32IdFromETag, tagNameEquals } fro
 import { isWebsocketUrl, normalizeHttpUrl, normalizeUrl } from './url'
 import { isTorBrowser } from './utils'
 
-export function getRelayListFromEvent(event?: Event | null) {
+export function getRelayListFromEvent(event?: Event | null, blockedRelays?: string[]) {
   if (!event) {
     return { write: BIG_RELAY_URLS, read: BIG_RELAY_URLS, originalRelays: [] }
   }
 
   const torBrowserDetected = isTorBrowser()
   const relayList = { write: [], read: [], originalRelays: [] } as TRelayList
+  
+  // Normalize blocked relays for comparison
+  const normalizedBlockedRelays = (blockedRelays || []).map(url => normalizeUrl(url) || url)
+  
   event.tags.filter(tagNameEquals('r')).forEach(([, url, type]) => {
     if (!url || !isWebsocketUrl(url)) return
 
     const normalizedUrl = normalizeUrl(url)
     if (!normalizedUrl) return
+    
+    // Filter out blocked relays
+    if (normalizedBlockedRelays.includes(normalizedUrl)) return
 
     const scope = type === 'read' ? 'read' : type === 'write' ? 'write' : 'both'
     relayList.originalRelays.push({ url: normalizedUrl, scope })
@@ -79,13 +86,18 @@ export function getProfileFromEvent(event: Event) {
   }
 }
 
-export function getRelaySetFromEvent(event: Event): TRelaySet {
+export function getRelaySetFromEvent(event: Event, blockedRelays?: string[]): TRelaySet {
   const id = getReplaceableEventIdentifier(event)
+  
+  // Normalize blocked relays for comparison
+  const normalizedBlockedRelays = (blockedRelays || []).map(url => normalizeUrl(url) || url)
+  
   const relayUrls = event.tags
     .filter(tagNameEquals('relay'))
     .map((tag) => tag[1])
     .filter((url) => url && isWebsocketUrl(url))
     .map((url) => normalizeUrl(url))
+    .filter((url) => !normalizedBlockedRelays.includes(url)) // Filter out blocked relays
 
   let name = event.tags.find(tagNameEquals('title'))?.[1]
   if (!name) {

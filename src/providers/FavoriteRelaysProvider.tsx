@@ -92,6 +92,8 @@ export function FavoriteRelaysProvider({ children }: { children: React.ReactNode
         }
       })
 
+      // Keep all favorites in state - don't filter blocked relays here
+      // Blocked relays are filtered at the relay selection service level
       setFavoriteRelays(relays)
 
       if (!pubkey || !relaySetIds.length) {
@@ -164,9 +166,9 @@ export function FavoriteRelaysProvider({ children }: { children: React.ReactNode
 
   useEffect(() => {
     setRelaySets(
-      relaySetEvents.map((evt) => getRelaySetFromEvent(evt)).filter(Boolean) as TRelaySet[]
+      relaySetEvents.map((evt) => getRelaySetFromEvent(evt, blockedRelays)).filter(Boolean) as TRelaySet[]
     )
-  }, [relaySetEvents])
+  }, [relaySetEvents, blockedRelays])
 
   const addFavoriteRelays = async (relayUrls: string[]) => {
     const normalizedUrls = relayUrls

@@ -21,6 +21,7 @@ const StoreNames = {
   USER_EMOJI_LIST_EVENTS: 'userEmojiListEvents',
   EMOJI_SET_EVENTS: 'emojiSetEvents',
   FAVORITE_RELAYS: 'favoriteRelays',
+  BLOCKED_RELAYS_EVENTS: 'blockedRelaysEvents',
   RELAY_SETS: 'relaySets',
   FOLLOWING_FAVORITE_RELAYS: 'followingFavoriteRelays',
   RELAY_INFOS: 'relayInfos',
@@ -43,7 +44,7 @@ class IndexedDbService {
   init(): Promise<void> {
     if (!this.initPromise) {
       this.initPromise = new Promise((resolve, reject) => {
-        const request = window.indexedDB.open('jumble', 9)
+        const request = window.indexedDB.open('jumble', 10)
 
         request.onerror = (event) => {
           reject(event)
@@ -79,6 +80,9 @@ class IndexedDbService {
           }
           if (!db.objectStoreNames.contains(StoreNames.FAVORITE_RELAYS)) {
             db.createObjectStore(StoreNames.FAVORITE_RELAYS, { keyPath: 'key' })
+          }
+          if (!db.objectStoreNames.contains(StoreNames.BLOCKED_RELAYS_EVENTS)) {
+            db.createObjectStore(StoreNames.BLOCKED_RELAYS_EVENTS, { keyPath: 'key' })
           }
           if (!db.objectStoreNames.contains(StoreNames.RELAY_SETS)) {
             db.createObjectStore(StoreNames.RELAY_SETS, { keyPath: 'key' })
@@ -461,6 +465,8 @@ class IndexedDbService {
         return StoreNames.RELAY_SETS
       case ExtendedKind.FAVORITE_RELAYS:
         return StoreNames.FAVORITE_RELAYS
+      case ExtendedKind.BLOCKED_RELAYS:
+        return StoreNames.BLOCKED_RELAYS_EVENTS
       case kinds.BookmarkList:
         return StoreNames.BOOKMARK_LIST_EVENTS
       case kinds.UserEmojiList:

@@ -12,8 +12,11 @@ import RelaySetCard from '../RelaySetCard'
 export default function FeedSwitcher({ close }: { close?: () => void }) {
   const { t } = useTranslation()
   const { pubkey } = useNostr()
-  const { relaySets, favoriteRelays } = useFavoriteRelays()
+  const { relaySets, favoriteRelays, blockedRelays } = useFavoriteRelays()
   const { feedInfo, switchFeed } = useFeed()
+  
+  // Filter out blocked relays for display
+  const visibleRelays = favoriteRelays.filter(relay => !blockedRelays.includes(relay))
 
   return (
     <div className="space-y-2">
@@ -53,7 +56,7 @@ export default function FeedSwitcher({ close }: { close?: () => void }) {
         </FeedSwitcherItem>
       )}
 
-      {favoriteRelays.length > 0 && (
+      {visibleRelays.length > 0 && (
         <FeedSwitcherItem
           isActive={feedInfo.feedType === 'all-favorites'}
           onClick={() => {
@@ -94,7 +97,7 @@ export default function FeedSwitcher({ close }: { close?: () => void }) {
             }}
           />
         ))}
-      {favoriteRelays.map((relay) => (
+      {visibleRelays.map((relay) => (
         <FeedSwitcherItem
           key={relay}
           isActive={feedInfo.feedType === 'relay' && feedInfo.id === relay}

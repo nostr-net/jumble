@@ -232,6 +232,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         storedMuteListEvent,
         storedBookmarkListEvent,
         storedFavoriteRelaysEvent,
+        storedBlockedRelaysEvent,
         storedUserEmojiListEvent
       ] = await Promise.all([
         indexedDb.getReplaceableEvent(account.pubkey, kinds.RelayList),
@@ -240,10 +241,26 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         indexedDb.getReplaceableEvent(account.pubkey, kinds.Mutelist),
         indexedDb.getReplaceableEvent(account.pubkey, kinds.BookmarkList),
         indexedDb.getReplaceableEvent(account.pubkey, ExtendedKind.FAVORITE_RELAYS),
+        indexedDb.getReplaceableEvent(account.pubkey, ExtendedKind.BLOCKED_RELAYS),
         indexedDb.getReplaceableEvent(account.pubkey, kinds.UserEmojiList)
       ])
+      
+      // Extract blocked relays from event
+      const blockedRelays: string[] = []
+      if (storedBlockedRelaysEvent) {
+        storedBlockedRelaysEvent.tags.forEach(([tagName, tagValue]) => {
+          if (tagName === 'relay' && tagValue) {
+            const normalizedUrl = normalizeUrl(tagValue)
+            if (normalizedUrl && !blockedRelays.includes(normalizedUrl)) {
+              blockedRelays.push(normalizedUrl)
+            }
+          }
+        })
+        setBlockedRelaysEvent(storedBlockedRelaysEvent)
+      }
+      
       if (storedRelayListEvent) {
-        setRelayList(getRelayListFromEvent(storedRelayListEvent))
+        setRelayList(getRelayListFromEvent(storedRelayListEvent, blockedRelays))
       }
       if (storedProfileEvent) {
         setProfileEvent(storedProfileEvent)
@@ -270,7 +287,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         authors: [account.pubkey]
       })
       const relayListEvent = getLatestEvent(relayListEvents) ?? storedRelayListEvent
-      const relayList = getRelayListFromEvent(relayListEvent)
+      const relayList = getRelayListFromEvent(relayListEvent, blockedRelays)
       if (relayListEvent) {
         client.updateRelayListCache(relayListEvent)
         await indexedDb.putReplaceableEvent(relayListEvent)
@@ -294,6 +311,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
             kinds.BookmarkList,
             10015, // Interest list
             ExtendedKind.FAVORITE_RELAYS,
+            ExtendedKind.BLOCKED_RELAYS,
             ExtendedKind.BLOSSOM_SERVER_LIST,
             kinds.UserEmojiList
           ],
@@ -369,6 +387,23 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         const updatedBlockedRelaysEvent = await indexedDb.putReplaceableEvent(blockedRelaysEvent)
         if (updatedBlockedRelaysEvent.id === blockedRelaysEvent.id) {
           setBlockedRelaysEvent(updatedBlockedRelaysEvent)
+          
+          // Update blockedRelays array and re-filter relay list
+          const newBlockedRelays: string[] = []
+          updatedBlockedRelaysEvent.tags.forEach(([tagName, tagValue]) => {
+            if (tagName === 'relay' && tagValue) {
+              const normalizedUrl = normalizeUrl(tagValue)
+              if (normalizedUrl && !newBlockedRelays.includes(normalizedUrl)) {
+                newBlockedRelays.push(normalizedUrl)
+              }
+            }
+          })
+          
+          // Re-filter relay list with updated blocked relays
+          if (relayListEvent) {
+            const updatedRelayList = getRelayListFromEvent(relayListEvent, newBlockedRelays)
+            setRelayList(updatedRelayList)
+          }
         }
       }
       if (blossomServerListEvent) {
