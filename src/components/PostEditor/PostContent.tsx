@@ -140,17 +140,11 @@ export default function PostContent({
   // Extract mentions from content for public messages
   const extractMentionsFromContent = useCallback(async (content: string) => {
     try {
-      // First try to extract nostr: protocol mentions
+      // Extract nostr: protocol mentions
       const { pubkeys: nostrPubkeys } = await extractMentions(content, undefined)
       
-      // Also extract regular @ mentions (simple pattern for now)
-      const atMentions = content.match(/@[a-zA-Z0-9_]+/g) || []
-      
-      console.log('Nostr mentions:', nostrPubkeys)
-      console.log('@ mentions:', atMentions)
-      
-      // For now, we'll use the nostr mentions and show that we detected @ mentions
-      // In a real implementation, you'd resolve @ mentions to pubkeys
+      // For now, we'll use the nostr mentions
+      // In a real implementation, you'd also resolve @ mentions to pubkeys
       setExtractedMentions(nostrPubkeys)
     } catch (error) {
       console.error('Error extracting mentions:', error)
@@ -495,23 +489,15 @@ export default function PostContent({
           </div>
         ))}
       {!isPoll && (
-        <>
-          {console.log('PostContent: Rendering PostRelaySelector with:', {
-            extractedMentions,
-            isPublicMessage,
-            isPoll,
-            textLength: text.length
-          })}
-          <PostRelaySelector
-            setIsProtectedEvent={setIsProtectedEvent}
-            setAdditionalRelayUrls={setAdditionalRelayUrls}
-            parentEvent={parentEvent}
-            openFrom={openFrom}
-            content={text}
-            isPublicMessage={isPublicMessage}
-            mentions={extractedMentions}
-          />
-        </>
+        <PostRelaySelector
+          setIsProtectedEvent={setIsProtectedEvent}
+          setAdditionalRelayUrls={setAdditionalRelayUrls}
+          parentEvent={parentEvent}
+          openFrom={openFrom}
+          content={text}
+          isPublicMessage={isPublicMessage}
+          mentions={extractedMentions}
+        />
       )}
       <div className="flex items-center justify-between">
         <div className="flex gap-2 items-center">

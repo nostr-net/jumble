@@ -122,24 +122,11 @@ export default function PostRelaySelector({
 
   // Separate effect for mention changes in non-discussion replies
   useEffect(() => {
-    console.log('PostRelaySelector: Mentions effect triggered', {
-      mentions,
-      previousMentions,
-      isDiscussionReply,
-      mentionsLength: mentions.length,
-      previousMentionsLength: previousMentions.length
-    })
-    
-    if (isDiscussionReply) {
-      console.log('PostRelaySelector: Skipping mention update - is discussion reply')
-      return // Skip for discussion replies
-    }
+    if (isDiscussionReply) return // Skip for discussion replies
     
     const mentionsChanged = JSON.stringify(mentions) !== JSON.stringify(previousMentions)
-    console.log('PostRelaySelector: Mentions changed?', mentionsChanged)
     
     if (mentionsChanged) {
-      console.log('PostRelaySelector: Updating relay selection due to mention changes')
       setPreviousMentions(mentions)
       
       // Update relay selection when mentions change

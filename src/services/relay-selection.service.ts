@@ -2,7 +2,7 @@ import { Event, kinds } from 'nostr-tools'
 import { ExtendedKind } from '@/constants'
 import { FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
-import { normalizeUrl } from '@/lib/url'
+import { normalizeUrl, isLocalNetworkUrl } from '@/lib/url'
 import { TRelaySet } from '@/types'
 
 export interface RelaySelectionContext {
@@ -28,6 +28,20 @@ export interface RelaySelectionResult {
 }
 
 class RelaySelectionService {
+  /**
+   * Filter out local network relays from other users' relay lists
+   * We should only use our own local relays, not other users' local relays
+   */
+  private filterLocalRelaysFromOthers(relays: string[], isOwnRelays: boolean = false): string[] {
+    if (isOwnRelays) {
+      // For our own relays, keep all of them including local ones
+      return relays
+    }
+    
+    // For other users' relays, filter out local network relays
+    return relays.filter(relay => !isLocalNetworkUrl(relay))
+  }
+
   /**
    * Main entry point for relay selection logic
    */
@@ -65,31 +79,45 @@ class RelaySelectionService {
 
     const selectableRelays = new Set<string>()
 
+    // Helper function to safely add normalized URLs
+    const addRelay = (url: string) => {
+      if (!url) return
+      const normalized = normalizeUrl(url)
+      if (normalized) {
+        selectableRelays.add(normalized)
+      } else {
+        // If normalization fails, add the original URL but log a warning
+        console.warn('Failed to normalize relay URL:', url)
+        selectableRelays.add(url)
+      }
+    }
+
     // Always include user's write relays (or fallback to fast write relays)
     const userRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
-    userRelays.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+    userRelays.forEach(addRelay)
 
     // Always include favorite relays
-    favoriteRelays.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+    favoriteRelays.forEach(addRelay)
 
     // Always include relays from relay sets
     relaySets.forEach(set => {
-      set.relayUrls.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+      set.relayUrls.forEach(addRelay)
     })
 
     // Add contextual relays for replies and public messages
     if (parentEvent || isPublicMessage) {
       const contextualRelays = await this.getContextualRelays(context)
-      contextualRelays.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+      contextualRelays.forEach(addRelay)
     }
 
     // If called with specific relay URLs (e.g., from openFrom), include those
     if (openFrom && openFrom.length > 0) {
-      openFrom.forEach(url => selectableRelays.add(normalizeUrl(url) || url))
+      openFrom.forEach(addRelay)
     }
 
-    // Filter out blocked relays
-    return this.filterBlockedRelays(Array.from(selectableRelays).filter(Boolean), context.blockedRelays)
+    // Filter out blocked relays and return deduplicated list
+    const deduplicatedRelays = Array.from(selectableRelays).filter(Boolean)
+    return this.filterBlockedRelays(deduplicatedRelays, context.blockedRelays)
   }
 
   /**
@@ -103,11 +131,12 @@ class RelaySelectionService {
     try {
       // For replies (any kind) and public messages
       if (parentEvent || isPublicMessage) {
-        // Get the replied-to author's read relays
+        // Get the replied-to author's read relays (filter out their local relays)
         if (parentEvent) {
           const authorRelayList = await client.fetchRelayList(parentEvent.pubkey)
           if (authorRelayList?.read) {
-            authorRelayList.read.slice(0, 4).forEach(url => contextualRelays.add(url))
+            const filteredRelays = this.filterLocalRelaysFromOthers(authorRelayList.read)
+            filteredRelays.slice(0, 4).forEach(url => contextualRelays.add(url))
           }
         }
 
@@ -142,7 +171,9 @@ class RelaySelectionService {
                   const relayList = await client.fetchRelayList(pubkey)
                   // Use write relays for replies, read relays for public messages
                   const relayType = isPublicMessage ? 'read' : 'write'
-                  return relayList?.[relayType] || []
+                  const userRelays = relayList?.[relayType] || []
+                  // Filter out local relays from other users
+                  return this.filterLocalRelaysFromOthers(userRelays)
                 } catch (error) {
                   console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
                   return []
@@ -181,6 +212,8 @@ class RelaySelectionService {
     // If called with specific relay URLs, use those
     if (openFrom && openFrom.length > 0) {
       selectedRelays = openFrom.map(url => normalizeUrl(url) || url).filter(Boolean)
+      // Deduplicate the selected relays
+      selectedRelays = Array.from(new Set(selectedRelays))
     }
     // For discussion replies, use relay hint from the kind 11 at the top of the thread
     else if (parentEvent && (parentEvent.kind === ExtendedKind.DISCUSSION || parentEvent.kind === ExtendedKind.COMMENT)) {
@@ -198,6 +231,8 @@ class RelaySelectionService {
       // Get user's write relays
       const userRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
       selectedRelays = userRelays.map(url => normalizeUrl(url) || url).filter(Boolean)
+      // Deduplicate the selected relays
+      selectedRelays = Array.from(new Set(selectedRelays))
       
       // Add mention relays
       if (userPubkey) {
@@ -221,7 +256,9 @@ class RelaySelectionService {
             mentionedPubkeys.map(async (pubkey) => {
               try {
                 const relayList = await client.fetchRelayList(pubkey)
-                return relayList?.write || []
+                const userRelays = relayList?.write || []
+                // Filter out local relays from other users
+                return this.filterLocalRelaysFromOthers(userRelays)
               } catch (error) {
                 console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
                 return []
@@ -230,6 +267,8 @@ class RelaySelectionService {
           )
           const mentionRelays = mentionRelayLists.flat().map(url => normalizeUrl(url) || url).filter(Boolean)
           selectedRelays = [...selectedRelays, ...mentionRelays]
+          // Deduplicate after adding mention relays
+          selectedRelays = Array.from(new Set(selectedRelays))
         }
       }
     }
@@ -237,6 +276,8 @@ class RelaySelectionService {
     else {
       const defaultRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
       selectedRelays = defaultRelays.map(url => normalizeUrl(url) || url).filter(Boolean)
+      // Deduplicate the selected relays
+      selectedRelays = Array.from(new Set(selectedRelays))
     }
 
     // Filter out blocked relays
@@ -253,7 +294,14 @@ class RelaySelectionService {
     try {
       // Add sender's write relays (outboxes) - fallback to fast write relays if no user relays
       const senderRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
-      senderRelays.forEach(url => relays.add(normalizeUrl(url) || url))
+      senderRelays.forEach(url => {
+        const normalized = normalizeUrl(url)
+        if (normalized) {
+          relays.add(normalized)
+        } else {
+          relays.add(url)
+        }
+      })
 
       // Add receiver's read relays (inboxes)
       if (isPublicMessage && content && userPubkey) {
@@ -266,21 +314,38 @@ class RelaySelectionService {
             mentionedPubkeys.map(async (pubkey) => {
               try {
                 const relayList = await client.fetchRelayList(pubkey)
-                return relayList?.read || []
+                const userRelays = relayList?.read || []
+                // Filter out local relays from other users
+                return this.filterLocalRelaysFromOthers(userRelays)
               } catch (error) {
                 console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
                 return []
               }
             })
           )
-          receiverRelayLists.flat().forEach(url => relays.add(normalizeUrl(url) || url))
+          receiverRelayLists.flat().forEach(url => {
+            const normalized = normalizeUrl(url)
+            if (normalized) {
+              relays.add(normalized)
+            } else {
+              relays.add(url)
+            }
+          })
         }
       } else if (parentEvent && parentEvent.kind === ExtendedKind.PUBLIC_MESSAGE) {
-        // For public message replies, get original sender's read relays
+        // For public message replies, get original sender's read relays (filter out their local relays)
         try {
           const senderRelayList = await client.fetchRelayList(parentEvent.pubkey)
           if (senderRelayList?.read) {
-            senderRelayList.read.forEach(url => relays.add(normalizeUrl(url) || url))
+            const filteredRelays = this.filterLocalRelaysFromOthers(senderRelayList.read)
+            filteredRelays.forEach(url => {
+              const normalized = normalizeUrl(url)
+              if (normalized) {
+                relays.add(normalized)
+              } else {
+                relays.add(url)
+              }
+            })
           }
         } catch (error) {
           console.warn(`Failed to fetch relay list for ${parentEvent.pubkey}:`, error)
