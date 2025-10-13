@@ -3,12 +3,15 @@ import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { useNostr } from '@/providers/NostrProvider'
-import { Check } from 'lucide-react'
+import { Check, ChevronDown, Server } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { Dispatch, SetStateAction, useCallback, useEffect, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import RelayIcon from '../RelayIcon'
 import relaySelectionService from '@/services/relay-selection.service'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 
 export default function PostRelaySelector({
   parentEvent: _parentEvent,
@@ -212,9 +215,9 @@ export default function PostRelaySelector({
   }, [])
 
   const content = (
-    <div className="space-y-2">
+    <>
       {selectableRelays.length > 0 && (
-        <div className="flex gap-2">
+        <div className="flex gap-2 mb-2">
           <button
             onClick={handleSelectAll}
             className="text-xs text-muted-foreground hover:text-foreground"
@@ -230,18 +233,18 @@ export default function PostRelaySelector({
         </div>
       )}
       
-      <div className="max-h-48 overflow-y-auto space-y-1">
-        {isLoading ? (
-          <div className="text-sm text-muted-foreground p-2">{t('Loading relays...')}</div>
-        ) : selectableRelays.length === 0 ? (
-          <div className="text-sm text-muted-foreground p-2">{t('No relays available')}</div>
-        ) : (
-          selectableRelays.map((url) => {
+      {isLoading ? (
+        <div className="text-sm text-muted-foreground p-2">{t('Loading relays...')}</div>
+      ) : selectableRelays.length === 0 ? (
+        <div className="text-sm text-muted-foreground p-2">{t('No relays available')}</div>
+      ) : (
+        <div className="space-y-1">
+          {selectableRelays.map((url) => {
             const isChecked = selectedRelayUrls.includes(url)
             return (
               <div
                 key={url}
-                className="flex items-center gap-2 p-2 hover:bg-accent rounded cursor-pointer"
+                className="flex items-center gap-2 p-2 hover:bg-accent rounded cursor-pointer touch-manipulation"
                 onClick={() => handleRelayCheckedChange(!isChecked, url)}
               >
                 <div className="flex items-center justify-center w-4 h-4 border border-border rounded">
@@ -251,38 +254,83 @@ export default function PostRelaySelector({
                 <span className="text-sm flex-1 truncate">{simplifyUrl(url)}</span>
               </div>
             )
-          })
-        )}
-      </div>
-    </div>
+          })}
+        </div>
+      )}
+    </>
   )
+
+  // Create compact trigger button text
+  const triggerText = useMemo(() => {
+    if (isLoading) return t('Loading...')
+    if (selectedRelayUrls.length === 0) return t('Select relays')
+    if (selectedRelayUrls.length === 1) return simplifyUrl(selectedRelayUrls[0])
+    return t('{{count}} relays', { count: selectedRelayUrls.length })
+  }, [selectedRelayUrls, isLoading, t])
 
   if (isSmallScreen) {
     return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{t('Post to')}</span>
-          <span className="text-sm text-muted-foreground">{description}</span>
-        </div>
-        
-        {/* Drawer implementation would go here */}
-        <div className="border border-border rounded p-2">
-          {content}
-        </div>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">{t('Post to')}</span>
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-xs justify-between min-w-0 flex-1"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Server className="w-3 h-3 shrink-0" />
+                <span className="truncate">{triggerText}</span>
+              </div>
+              <ChevronDown className="w-3 h-3 shrink-0" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="bottom" className="h-[60vh] p-0">
+            <div className="flex flex-col h-full">
+              <div className="p-4 border-b flex items-center justify-between shrink-0 pr-12">
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-lg font-medium">{t('Select relays')}</span>
+                  <span className="text-sm text-muted-foreground truncate">{description}</span>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                {content}
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     )
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">{t('Post to')}</span>
-        <span className="text-sm text-muted-foreground">{description}</span>
-      </div>
-      
-      <div className="border border-border rounded p-2">
-        {content}
-      </div>
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-medium">{t('Post to')}</span>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-3 text-xs justify-between min-w-0 flex-1"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Server className="w-3 h-3 shrink-0" />
+              <span className="truncate">{triggerText}</span>
+            </div>
+            <ChevronDown className="w-3 h-3 shrink-0" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[90vw] max-w-md p-0 max-h-[40vh] flex flex-col" align="start" side="bottom" sideOffset={8}>
+          <div className="p-3 border-b flex items-center justify-between shrink-0">
+            <span className="text-sm font-medium">{t('Select relays')}</span>
+            <span className="text-xs text-muted-foreground truncate ml-2">{description}</span>
+          </div>
+          <div className="p-3 overflow-y-auto overscroll-contain touch-pan-y max-h-[30vh] -webkit-overflow-scrolling-touch">
+            {content}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }
