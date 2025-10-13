@@ -827,6 +827,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                           key={event.id}
                           thread={event}
                           subtopics={threadSubtopics}
+                          primaryTopic={entry?.categorizedTopic}
                           onThreadClick={() => {
                             push(toNote(event))
                           }}
@@ -851,6 +852,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                   key={event.id}
                   thread={event}
                   subtopics={threadSubtopics}
+                  primaryTopic={entry?.categorizedTopic}
                   onThreadClick={() => {
                     push(toNote(event))
                   }}

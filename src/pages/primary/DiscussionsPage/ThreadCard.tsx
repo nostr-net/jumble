@@ -21,9 +21,10 @@ interface ThreadCardProps {
   onThreadClick: () => void
   className?: string
   subtopics?: string[] // Available subtopics for this thread
+  primaryTopic?: string // The categorized primary topic (e.g., 'general', 'tech', etc.)
 }
 
-export default function ThreadCard({ thread, onThreadClick, className, subtopics = [] }: ThreadCardProps) {
+export default function ThreadCard({ thread, onThreadClick, className, subtopics = [], primaryTopic }: ThreadCardProps) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
 
@@ -31,9 +32,15 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
   const titleTag = thread.tags.find(tag => tag[0] === 'title' && tag[1])
   const title = titleTag?.[1] || t('Untitled')
 
-  // Extract topic from tags
-  const topicTag = thread.tags.find(tag => tag[0] === 't' && tag[1])
-  const topic = topicTag?.[1] || 'general'
+  // Use the categorized primary topic if provided, otherwise extract from tags
+  const topic = primaryTopic || (() => {
+    const topicTag = thread.tags.find(tag => tag[0] === 't' && tag[1])
+    const firstTag = topicTag?.[1] || 'general'
+    
+    // If the first tag is not a predefined topic, default to 'general'
+    const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
+    return predefinedTopicIds.includes(firstTag) ? firstTag : 'general'
+  })()
   
   // Extract author and subject for readings threads
   const authorTag = thread.tags.find(tag => tag[0] === 'author' && tag[1])
