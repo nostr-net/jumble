@@ -107,7 +107,7 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                 <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 break-words">
                   {title}
                 </h3>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <topicInfo.icon className="w-4 h-4" />
                     <span className="text-xs">{topicInfo.id}</span>
@@ -119,6 +119,16 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                     </Badge>
                   ))}
                 </div>
+                {isReadingGroup && (authorTag || subjectTag) && (
+                  <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 mt-2">
+                    {authorTag && (
+                      <span><strong>Author:</strong> {authorTag[1]}</span>
+                    )}
+                    {subjectTag && (
+                      <span><strong>Book:</strong> {subjectTag[1]}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -139,16 +149,6 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                   <Clock className="w-3 h-3" />
                   <span>{timeAgo}</span>
                 </div>
-                {isReadingGroup && (authorTag || subjectTag) && (
-                  <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4">
-                    {authorTag && (
-                      <span><strong>Author:</strong> {authorTag[1]}</span>
-                    )}
-                    {subjectTag && (
-                      <span><strong>Book:</strong> {subjectTag[1]}</span>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -168,7 +168,7 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground">
                   <Badge variant="secondary" className="text-xs">
                     <topicInfo.icon className="w-3 h-3 mr-1" />
                     {topicInfo.label}
