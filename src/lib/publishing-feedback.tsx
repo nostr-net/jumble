@@ -43,7 +43,7 @@ export function showPublishingFeedback(
   const toastFunction = isSuccess ? toast.success : toast.error
   
   toastFunction(
-    <div className="w-full">
+    <div className="w-full min-w-0">
       <div className="flex items-center gap-2 mb-3">
         <CheckCircle2 className={`w-5 h-5 ${isSuccess ? 'text-green-500' : 'text-red-500'}`} />
         <div className="font-semibold">{message}</div>
@@ -59,7 +59,7 @@ export function showPublishingFeedback(
     </div>,
     { 
       duration,
-      className: 'max-w-md'
+      className: 'max-w-lg w-full'
     }
   )
 }

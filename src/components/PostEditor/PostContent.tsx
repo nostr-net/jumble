@@ -59,7 +59,7 @@ export default function PostContent({
   const [isNsfw, setIsNsfw] = useState(false)
   const [isPoll, setIsPoll] = useState(false)
   const [isPublicMessage, setIsPublicMessage] = useState(false)
-  const [publicMessageRecipients, setPublicMessageRecipients] = useState<string[]>([])
+  const [extractedMentions, setExtractedMentions] = useState<string[]>([])
   const [isProtectedEvent, setIsProtectedEvent] = useState(false)
   const [additionalRelayUrls, setAdditionalRelayUrls] = useState<string[]>([])
   const [isHighlight, setIsHighlight] = useState(false)
@@ -82,7 +82,7 @@ export default function PostContent({
       !posting &&
       !uploadProgresses.length &&
       (!isPoll || pollCreateData.options.filter((option) => !!option.trim()).length >= 2) &&
-      (!isPublicMessage || publicMessageRecipients.length > 0 || parentEvent?.kind === ExtendedKind.PUBLIC_MESSAGE) &&
+      (!isPublicMessage || extractedMentions.length > 0 || parentEvent?.kind === ExtendedKind.PUBLIC_MESSAGE) &&
       (!isProtectedEvent || additionalRelayUrls.length > 0) &&
       (!isHighlight || highlightData.sourceValue.trim() !== '')
     )
@@ -96,7 +96,7 @@ export default function PostContent({
     isPoll,
     pollCreateData,
     isPublicMessage,
-    publicMessageRecipients,
+    extractedMentions,
     parentEvent?.kind,
     isProtectedEvent,
     additionalRelayUrls,
@@ -151,25 +151,20 @@ export default function PostContent({
       
       // For now, we'll use the nostr mentions and show that we detected @ mentions
       // In a real implementation, you'd resolve @ mentions to pubkeys
-      setPublicMessageRecipients(nostrPubkeys)
+      setExtractedMentions(nostrPubkeys)
     } catch (error) {
       console.error('Error extracting mentions:', error)
-      setPublicMessageRecipients([])
+      setExtractedMentions([])
     }
   }, [])
 
   useEffect(() => {
-    if (!isPublicMessage) {
-      setPublicMessageRecipients([])
-      return
-    }
-
     if (!text) {
-      setPublicMessageRecipients([])
+      setExtractedMentions([])
       return
     }
 
-    // Debounce the mention extraction
+    // Debounce the mention extraction for all posts (not just public messages)
     const timeoutId = setTimeout(() => {
       extractMentionsFromContent(text)
     }, 300)
@@ -177,7 +172,7 @@ export default function PostContent({
     return () => {
       clearTimeout(timeoutId)
     }
-  }, [text, isPublicMessage, extractMentionsFromContent])
+  }, [text, extractMentionsFromContent])
 
   const post = async (e?: React.MouseEvent) => {
     e?.stopPropagation()
@@ -197,9 +192,11 @@ export default function PostContent({
       // })
 
       setPosting(true)
+      let draftEvent: any = null
+      let newEvent: any = null
+      
       try {
         
-        let draftEvent
         if (isHighlight) {
           // For highlights, pass the original sourceValue which contains the full identifier
           // The createHighlightDraftEvent function will parse it correctly
@@ -215,7 +212,7 @@ export default function PostContent({
           }
         )
         } else if (isPublicMessage) {
-          draftEvent = await createPublicMessageDraftEvent(text, publicMessageRecipients, {
+          draftEvent = await createPublicMessageDraftEvent(text, extractedMentions, {
             addClientTag,
             isNsfw
           })
@@ -245,10 +242,11 @@ export default function PostContent({
         }
 
         // console.log('Publishing draft event:', draftEvent)
-        const newEvent = await publish(draftEvent, {
+        newEvent = await publish(draftEvent, {
           specifiedRelayUrls: additionalRelayUrls.length > 0 ? additionalRelayUrls : undefined,
           additionalRelayUrls: isPoll ? pollCreateData.relays : additionalRelayUrls,
-          minPow
+          minPow,
+          disableFallbacks: additionalRelayUrls.length > 0 // Don't use fallbacks if user explicitly selected relays
         })
         // console.log('Published event:', newEvent)
         
@@ -283,6 +281,7 @@ export default function PostContent({
           showSimplePublishSuccess(parentEvent ? t('Reply published') : t('Post published'))
         }
         
+        // Full success - clean up and close
         postEditorCache.clearPostCache({ defaultContent, parentEvent })
         deleteDraftEventCache(draftEvent)
         addReplies([newEvent])
@@ -313,6 +312,15 @@ export default function PostContent({
               (parentEvent ? t('Failed to publish reply') : t('Failed to publish post')),
             duration: 6000
           })
+          
+          // Handle partial success
+          if (successCount > 0) {
+            // Clean up and close on partial success
+            postEditorCache.clearPostCache({ defaultContent, parentEvent })
+            if (draftEvent) deleteDraftEventCache(draftEvent)
+            if (newEvent) addReplies([newEvent])
+            close()
+          }
         } else {
           // Use standard publishing error feedback for cases without relay statuses
           if (error instanceof AggregateError) {
@@ -323,6 +331,7 @@ export default function PostContent({
           } else {
             showPublishingError('Failed to publish')
           }
+          // Don't close form on complete failure - let user try again
         }
       } finally {
         setPosting(false)
@@ -443,12 +452,12 @@ export default function PostContent({
             <Mentions
               content={text}
               parentEvent={undefined}
-              mentions={publicMessageRecipients}
-              setMentions={setPublicMessageRecipients}
+              mentions={extractedMentions}
+              setMentions={setExtractedMentions}
             />
-            {publicMessageRecipients.length > 0 ? (
+            {extractedMentions.length > 0 ? (
               <div className="text-sm text-muted-foreground">
-                {t('Recipients detected from your message:')} {publicMessageRecipients.length}
+                {t('Recipients detected from your message:')} {extractedMentions.length}
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">
@@ -486,14 +495,23 @@ export default function PostContent({
           </div>
         ))}
       {!isPoll && (
-        <PostRelaySelector
-          setIsProtectedEvent={setIsProtectedEvent}
-          setAdditionalRelayUrls={setAdditionalRelayUrls}
-          parentEvent={parentEvent}
-          openFrom={openFrom}
-          content={text}
-          isPublicMessage={isPublicMessage}
-        />
+        <>
+          {console.log('PostContent: Rendering PostRelaySelector with:', {
+            extractedMentions,
+            isPublicMessage,
+            isPoll,
+            textLength: text.length
+          })}
+          <PostRelaySelector
+            setIsProtectedEvent={setIsProtectedEvent}
+            setAdditionalRelayUrls={setAdditionalRelayUrls}
+            parentEvent={parentEvent}
+            openFrom={openFrom}
+            content={text}
+            isPublicMessage={isPublicMessage}
+            mentions={extractedMentions}
+          />
+        </>
       )}
       <div className="flex items-center justify-between">
         <div className="flex gap-2 items-center">

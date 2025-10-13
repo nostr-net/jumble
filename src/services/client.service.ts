@@ -100,10 +100,16 @@ class ClientService extends EventTarget {
     if (specifiedRelayUrls?.length && (event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT)) {
       // For discussion replies, try ONLY the specified relay first
       // The fallback will be handled in the publishing logic if this fails
-      relays = specifiedRelayUrls
+      // But still filter blocked relays from specified relays
+      if (this.pubkey) {
+        const blockedRelays = await this.fetchBlockedRelays(this.pubkey)
+        relays = this.filterBlockedRelays(specifiedRelayUrls, blockedRelays)
+      } else {
+        relays = specifiedRelayUrls
+      }
       return relays
     } else if (specifiedRelayUrls?.length) {
-      // For non-discussion events, use specified relays as-is
+      // For non-discussion events, use specified relays (will be filtered below)
       relays = specifiedRelayUrls
     } else {
       const _additionalRelayUrls: string[] = additionalRelayUrls ?? []
@@ -155,10 +161,16 @@ class ClientService extends EventTarget {
       relays.push(...FAST_WRITE_RELAY_URLS)
     }
 
+    // Filter out blocked relays
+    if (this.pubkey) {
+      const blockedRelays = await this.fetchBlockedRelays(this.pubkey)
+      relays = this.filterBlockedRelays(relays, blockedRelays)
+    }
+
     return relays
   }
 
-  async publishEvent(relayUrls: string[], event: NEvent): Promise<{
+  async publishEvent(relayUrls: string[], event: NEvent, options: { disableFallbacks?: boolean } = {}): Promise<{
     success: boolean
     relayStatuses: Array<{
       url: string
@@ -170,7 +182,8 @@ class ClientService extends EventTarget {
     totalCount: number
   }> {
     // Special handling for discussion events: try relay hint first, then fallback
-    if ((event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT) && relayUrls.length === 1) {
+    // BUT: if disableFallbacks is true (user explicitly selected relays), don't use fallbacks
+    if ((event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT) && relayUrls.length === 1 && !options.disableFallbacks) {
       try {
         // Try publishing to the relay hint first
         const result = await this._publishToRelays(relayUrls, event)
@@ -180,9 +193,11 @@ class ClientService extends EventTarget {
           return result
         }
         
-        // If failed, try fallback relays
+        // If failed, try fallback relays (filtering out blocked relays)
         const userRelays = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
-        const fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
+        const blockedRelays = this.pubkey ? await this.fetchBlockedRelays(this.pubkey) : []
+        let fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
+        fallbackRelays = this.filterBlockedRelays(fallbackRelays, blockedRelays)
         
         console.log('Relay hint failed, trying fallback relays:', fallbackRelays)
         const fallbackResult = await this._publishToRelays(fallbackRelays, event)
@@ -208,7 +223,9 @@ class ClientService extends EventTarget {
         }
         
         const userRelays = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
-        const fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
+        const blockedRelays = this.pubkey ? await this.fetchBlockedRelays(this.pubkey) : []
+        let fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
+        fallbackRelays = this.filterBlockedRelays(fallbackRelays, blockedRelays)
         
         console.log('Trying fallback relays:', fallbackRelays)
         const fallbackResult = await this._publishToRelays(fallbackRelays, event)
@@ -242,6 +259,13 @@ class ClientService extends EventTarget {
     totalCount: number
   }> {
     const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
+    
+    // Handle case where no relays are available (all filtered out)
+    if (uniqueRelayUrls.length === 0) {
+      const error = new Error('No relays available for publishing - all relays may be blocked or unavailable')
+      ;(error as any).relayStatuses = []
+      throw error
+    }
     
     const relayStatuses: Array<{
       url: string
@@ -1513,6 +1537,44 @@ class ClientService extends EventTarget {
 
   async updateRelayListCache(event: NEvent) {
     await this.updateReplaceableEventFromBigRelaysCache(event)
+  }
+
+  /**
+   * Fetch blocked relays from IndexedDB
+   */
+  async fetchBlockedRelays(pubkey: string): Promise<string[]> {
+    try {
+      const blockedRelaysEvent = await indexedDb.getReplaceableEvent(pubkey, ExtendedKind.BLOCKED_RELAYS)
+      if (!blockedRelaysEvent) {
+        return []
+      }
+      
+      // Extract relay URLs from the relay tags
+      const relayUrls = blockedRelaysEvent.tags
+        .filter(([tagName]) => tagName === 'relay')
+        .map(([, url]) => url)
+        .filter(Boolean)
+      
+      return relayUrls
+    } catch (error) {
+      console.error('Failed to fetch blocked relays:', error)
+      return []
+    }
+  }
+
+  /**
+   * Filter out blocked relays from a relay list
+   */
+  private filterBlockedRelays(relays: string[], blockedRelays: string[]): string[] {
+    if (!blockedRelays || blockedRelays.length === 0) {
+      return relays
+    }
+
+    const normalizedBlocked = blockedRelays.map(url => normalizeUrl(url) || url)
+    return relays.filter(relay => {
+      const normalizedRelay = normalizeUrl(relay) || relay
+      return !normalizedBlocked.includes(normalizedRelay)
+    })
   }
 
   /** =========== Replaceable event from big relays dataloader =========== */

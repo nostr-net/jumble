@@ -123,6 +123,7 @@ export type TPublishOptions = {
   specifiedRelayUrls?: string[]
   additionalRelayUrls?: string[]
   minPow?: number
+  disableFallbacks?: boolean // If true, don't use fallback relays when publishing fails
 }
 
 export type TNoteListMode = 'posts' | 'postsAndReplies' | 'you'

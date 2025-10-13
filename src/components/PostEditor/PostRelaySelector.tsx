@@ -5,7 +5,7 @@ import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { Check } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
-import { Dispatch, SetStateAction, useCallback, useEffect, useState } from 'react'
+import { Dispatch, SetStateAction, useCallback, useEffect, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import RelayIcon from '../RelayIcon'
 import relaySelectionService from '@/services/relay-selection.service'
@@ -16,7 +16,8 @@ export default function PostRelaySelector({
   setIsProtectedEvent,
   setAdditionalRelayUrls,
   content: postContent = '',
-  isPublicMessage = false
+  isPublicMessage = false,
+  mentions = []
 }: {
   parentEvent?: NostrEvent
   openFrom?: string[]
@@ -24,6 +25,7 @@ export default function PostRelaySelector({
   setAdditionalRelayUrls: Dispatch<SetStateAction<string[]>>
   content?: string
   isPublicMessage?: boolean
+  mentions?: string[]
 }) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
@@ -36,8 +38,38 @@ export default function PostRelaySelector({
   const [isLoading, setIsLoading] = useState(true)
   const [hasManualSelection, setHasManualSelection] = useState(false)
   const [previousSelectableCount, setPreviousSelectableCount] = useState(0)
+  const [previousMentions, setPreviousMentions] = useState<string[]>([])
 
-  // Use centralized relay selection service
+  // Initialize previousMentions with the initial mentions value
+  useEffect(() => {
+    setPreviousMentions(mentions)
+  }, []) // Only run once on mount
+
+  // For discussion replies, content doesn't affect relay selection
+  // Check if this is a reply to a discussion by looking for "K" tag with "11"
+  const isDiscussionReply = useMemo(() => {
+    if (!_parentEvent) return false
+    
+    // Direct reply to discussion
+    if (_parentEvent.kind === 11) return true
+    
+    // Check if parent event has "K" tag containing "11" (discussion root kind)
+    const eventTags = _parentEvent.tags || []
+    const kindTag = eventTags.find(([tagName]) => tagName === 'K')
+    if (kindTag && kindTag[1] === '11') {
+      return true
+    }
+    
+    return false
+  }, [_parentEvent])
+
+  // Memoize arrays to prevent unnecessary re-renders
+  const memoizedFavoriteRelays = useMemo(() => favoriteRelays, [favoriteRelays])
+  const memoizedBlockedRelays = useMemo(() => blockedRelays, [blockedRelays])
+  const memoizedRelaySets = useMemo(() => relaySets, [relaySets])
+  const memoizedOpenFrom = useMemo(() => openFrom, [openFrom])
+
+  // Use centralized relay selection service - only for non-content dependencies
   useEffect(() => {
     const updateRelaySelection = async () => {
       setIsLoading(true)
@@ -45,14 +77,14 @@ export default function PostRelaySelector({
         const result = await relaySelectionService.selectRelays({
           userWriteRelays: relayList?.write || [],
           userReadRelays: relayList?.read || [],
-          favoriteRelays,
-          blockedRelays,
-          relaySets,
+          favoriteRelays: memoizedFavoriteRelays,
+          blockedRelays: memoizedBlockedRelays,
+          relaySets: memoizedRelaySets,
           parentEvent: _parentEvent,
           isPublicMessage,
-          content: postContent,
+          content: isDiscussionReply ? '' : postContent, // Don't use content for discussion replies
           userPubkey: pubkey || undefined,
-          openFrom
+          openFrom: memoizedOpenFrom
         })
 
         const newSelectableCount = result.selectableRelays.length
@@ -63,17 +95,16 @@ export default function PostRelaySelector({
         
         // Only update selected relays if:
         // 1. User hasn't manually modified them, OR
-        // 2. New mention relays were added (selectable count changed)
+        // 2. Selectable relays changed
         if (!hasManualSelection || selectableRelaysChanged) {
           setSelectedRelayUrls(result.selectedRelays)
           setDescription(result.description)
-          // Reset manual selection flag if mentions changed
+          // Reset manual selection flag if relays changed
           if (selectableRelaysChanged && hasManualSelection) {
             setHasManualSelection(false)
           }
         }
         
-        console.log('PostRelaySelector: Updated relay selection:', result)
       } catch (error) {
         console.error('Failed to update relay selection:', error)
         setSelectableRelays([])
@@ -87,7 +118,75 @@ export default function PostRelaySelector({
     }
 
     updateRelaySelection()
-  }, [openFrom, _parentEvent, favoriteRelays, blockedRelays, relaySets, isPublicMessage, postContent, pubkey, relayList])
+  }, [memoizedOpenFrom, _parentEvent, memoizedFavoriteRelays, memoizedBlockedRelays, memoizedRelaySets, isPublicMessage, pubkey, relayList, isDiscussionReply])
+
+  // Separate effect for mention changes in non-discussion replies
+  useEffect(() => {
+    console.log('PostRelaySelector: Mentions effect triggered', {
+      mentions,
+      previousMentions,
+      isDiscussionReply,
+      mentionsLength: mentions.length,
+      previousMentionsLength: previousMentions.length
+    })
+    
+    if (isDiscussionReply) {
+      console.log('PostRelaySelector: Skipping mention update - is discussion reply')
+      return // Skip for discussion replies
+    }
+    
+    const mentionsChanged = JSON.stringify(mentions) !== JSON.stringify(previousMentions)
+    console.log('PostRelaySelector: Mentions changed?', mentionsChanged)
+    
+    if (mentionsChanged) {
+      console.log('PostRelaySelector: Updating relay selection due to mention changes')
+      setPreviousMentions(mentions)
+      
+      // Update relay selection when mentions change
+      const updateRelaySelection = async () => {
+        setIsLoading(true)
+        try {
+          const result = await relaySelectionService.selectRelays({
+            userWriteRelays: relayList?.write || [],
+            userReadRelays: relayList?.read || [],
+            favoriteRelays: memoizedFavoriteRelays,
+            blockedRelays: memoizedBlockedRelays,
+            relaySets: memoizedRelaySets,
+            parentEvent: _parentEvent,
+            isPublicMessage,
+            content: postContent,
+            userPubkey: pubkey || undefined,
+            openFrom: memoizedOpenFrom
+          })
+
+          const newSelectableCount = result.selectableRelays.length
+          const selectableRelaysChanged = newSelectableCount !== previousSelectableCount
+          
+          setSelectableRelays(result.selectableRelays)
+          setPreviousSelectableCount(newSelectableCount)
+          
+          // Only update selected relays if:
+          // 1. User hasn't manually modified them, OR
+          // 2. Selectable relays changed
+          if (!hasManualSelection || selectableRelaysChanged) {
+            setSelectedRelayUrls(result.selectedRelays)
+            setDescription(result.description)
+            // Reset manual selection flag if relays changed
+            if (selectableRelaysChanged && hasManualSelection) {
+              setHasManualSelection(false)
+            }
+          }
+          
+        } catch (error) {
+          console.error('Failed to update relay selection:', error)
+        } finally {
+          setIsLoading(false)
+        }
+      }
+      
+      updateRelaySelection()
+    }
+  }, [mentions, isDiscussionReply, memoizedFavoriteRelays, memoizedBlockedRelays, memoizedRelaySets, _parentEvent, isPublicMessage, pubkey, relayList, memoizedOpenFrom, previousSelectableCount, hasManualSelection, postContent])
 
   // Update description when selected relays change due to manual selection
   useEffect(() => {
