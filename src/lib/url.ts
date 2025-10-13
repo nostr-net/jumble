@@ -144,3 +144,78 @@ export function isMedia(url: string) {
     return false
   }
 }
+
+/**
+ * Remove tracking parameters from URLs
+ * Removes common tracking parameters like utm_*, fbclid, gclid, etc.
+ */
+export function cleanUrl(url: string): string {
+  try {
+    const parsedUrl = new URL(url)
+    
+    // List of tracking parameter prefixes and exact names to remove
+    const trackingParams = [
+      // Google Analytics & Ads
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'utm_id', 'utm_source_platform', 'utm_creative_format', 'utm_marketing_tactic',
+      'gclid', 'gclsrc', 'dclid', 'gbraid', 'wbraid',
+      
+      // Facebook
+      'fbclid', 'fb_action_ids', 'fb_action_types', 'fb_source', 'fb_ref',
+      
+      // Twitter/X
+      'twclid', 'twsrc',
+      
+      // Microsoft/Bing
+      'msclkid', 'mc_cid', 'mc_eid',
+      
+      // Adobe
+      'adobe_mc', 'adobe_mc_ref', 'adobe_mc_sdid',
+      
+      // Mailchimp
+      'mc_cid', 'mc_eid',
+      
+      // HubSpot
+      'hsCtaTracking', 'hsa_acc', 'hsa_cam', 'hsa_grp', 'hsa_ad', 'hsa_src', 'hsa_tgt', 'hsa_kw', 'hsa_mt', 'hsa_net', 'hsa_ver',
+      
+      // Marketo
+      'mkt_tok',
+      
+      // YouTube
+      'si', 'feature', 'kw', 'pp',
+      
+      // Other common tracking
+      'ref', 'referrer', 'source', 'campaign', 'medium', 'content',
+      'yclid', 'srsltid', '_ga', '_gl', 'igshid', 'epik', 'pk_campaign', 'pk_kwd',
+      
+      // Mobile app tracking
+      'adjust_tracker', 'adjust_campaign', 'adjust_adgroup', 'adjust_creative',
+      
+      // Amazon
+      'tag', 'linkCode', 'creative', 'creativeASIN', 'linkId', 'ascsubtag',
+      
+      // Affiliate tracking
+      'aff_id', 'affiliate_id', 'aff', 'ref_', 'refer',
+      
+      // Social media share tracking
+      'share', 'shared', 'sharesource'
+    ]
+    
+    // Remove all tracking parameters
+    trackingParams.forEach(param => {
+      parsedUrl.searchParams.delete(param)
+    })
+    
+    // Remove any parameter that starts with utm_
+    Array.from(parsedUrl.searchParams.keys()).forEach(key => {
+      if (key.startsWith('utm_') || key.startsWith('_')) {
+        parsedUrl.searchParams.delete(key)
+      }
+    })
+    
+    return parsedUrl.toString()
+  } catch {
+    // If URL parsing fails, return original URL
+    return url
+  }
+}

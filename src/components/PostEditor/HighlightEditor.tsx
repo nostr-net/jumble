@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { cleanUrl } from '@/lib/url'
 import { X } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -38,11 +39,13 @@ export default function HighlightEditor({
     }
 
     // Check if it's a URL
-    if (sourceInput.startsWith('https://')) {
+    if (sourceInput.startsWith('https://') || sourceInput.startsWith('http://')) {
+      // Clean tracking parameters from the URL before publishing
+      const cleanedUrl = cleanUrl(sourceInput)
       setError('')
       setHighlightData({
         sourceType: 'url',
-        sourceValue: sourceInput,
+        sourceValue: cleanedUrl,
         context
       })
       return

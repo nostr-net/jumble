@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card'
 import { transformCustomEmojisInContent } from '@/lib/draft-event'
 import { createFakeEvent } from '@/lib/event'
+import { cleanUrl } from '@/lib/url'
 import { cn } from '@/lib/utils'
 import { useMemo } from 'react'
 import Content from '../../Content'
@@ -15,7 +16,20 @@ export default function Preview({
   kind?: number
 }) {
   const { content: processedContent, emojiTags } = useMemo(
-    () => transformCustomEmojisInContent(content),
+    () => {
+      // Clean tracking parameters from URLs in the preview
+      const cleanedContent = content.replace(
+        /(https?:\/\/[^\s]+)/g,
+        (url) => {
+          try {
+            return cleanUrl(url)
+          } catch {
+            return url
+          }
+        }
+      )
+      return transformCustomEmojisInContent(cleanedContent)
+    },
     [content]
   )
   return (

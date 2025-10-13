@@ -15,7 +15,7 @@ import { isTouchDevice } from '@/lib/utils'
 import { useNostr } from '@/providers/NostrProvider'
 import { useFeed } from '@/providers/FeedProvider'
 import { useReply } from '@/providers/ReplyProvider'
-import { normalizeUrl } from '@/lib/url'
+import { normalizeUrl, cleanUrl } from '@/lib/url'
 import postEditorCache from '@/services/post-editor-cache.service'
 import { TPollCreateData } from '@/types'
 import { ImageUp, ListTodo, LoaderCircle, MessageCircle, Settings, Smile, X, Highlighter } from 'lucide-react'
@@ -190,12 +190,23 @@ export default function PostContent({
       let newEvent: any = null
       
       try {
+        // Clean tracking parameters from URLs in the post content
+        const cleanedText = text.replace(
+          /(https?:\/\/[^\s]+)/g,
+          (url) => {
+            try {
+              return cleanUrl(url)
+            } catch {
+              return url
+            }
+          }
+        )
         
         if (isHighlight) {
           // For highlights, pass the original sourceValue which contains the full identifier
           // The createHighlightDraftEvent function will parse it correctly
         draftEvent = await createHighlightDraftEvent(
-          text,
+          cleanedText,
           highlightData.sourceType,
           highlightData.sourceValue,
           highlightData.context,
@@ -206,28 +217,28 @@ export default function PostContent({
           }
         )
         } else if (isPublicMessage) {
-          draftEvent = await createPublicMessageDraftEvent(text, extractedMentions, {
+          draftEvent = await createPublicMessageDraftEvent(cleanedText, extractedMentions, {
             addClientTag,
             isNsfw
           })
         } else if (parentEvent && parentEvent.kind === ExtendedKind.PUBLIC_MESSAGE) {
-          draftEvent = await createPublicMessageReplyDraftEvent(text, parentEvent, mentions, {
+          draftEvent = await createPublicMessageReplyDraftEvent(cleanedText, parentEvent, mentions, {
             addClientTag,
             isNsfw
           })
         } else if (parentEvent && parentEvent.kind !== kinds.ShortTextNote) {
-          draftEvent = await createCommentDraftEvent(text, parentEvent, mentions, {
+          draftEvent = await createCommentDraftEvent(cleanedText, parentEvent, mentions, {
             addClientTag,
             protectedEvent: isProtectedEvent,
             isNsfw
           })
         } else if (isPoll) {
-          draftEvent = await createPollDraftEvent(pubkey!, text, mentions, pollCreateData, {
+          draftEvent = await createPollDraftEvent(pubkey!, cleanedText, mentions, pollCreateData, {
             addClientTag,
             isNsfw
           })
         } else {
-          draftEvent = await createShortTextNoteDraftEvent(text, mentions, {
+          draftEvent = await createShortTextNoteDraftEvent(cleanedText, mentions, {
             parentEvent,
             addClientTag,
             protectedEvent: isProtectedEvent,
