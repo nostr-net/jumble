@@ -482,9 +482,15 @@ class RelaySelectionService {
       return relays
     }
 
-    const normalizedBlocked = blockedRelays.map(url => normalizeUrl(url) || url)
+    // Helper function to safely normalize URLs
+    const safeNormalize = (url: string): string => {
+      const normalized = normalizeUrl(url)
+      return normalized || url
+    }
+
+    const normalizedBlocked = blockedRelays.map(safeNormalize)
     return relays.filter(relay => {
-      const normalizedRelay = normalizeUrl(relay) || relay
+      const normalizedRelay = safeNormalize(relay)
       return !normalizedBlocked.includes(normalizedRelay)
     })
   }

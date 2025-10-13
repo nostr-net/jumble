@@ -20,6 +20,13 @@ export function normalizeUrl(url: string): string {
     } else if (p.protocol === 'http:') {
       p.protocol = 'ws:'
     }
+    
+    // Normalize localhost and local network addresses to always use ws:// instead of wss://
+    // This fixes the common typo where people use wss:// for local relays
+    if (isLocalNetworkUrl(p.toString())) {
+      p.protocol = 'ws:'
+    }
+    
     if ((p.port === '80' && p.protocol === 'ws:') || (p.port === '443' && p.protocol === 'wss:')) {
       p.port = ''
     }
