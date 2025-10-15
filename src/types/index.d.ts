@@ -117,6 +117,11 @@ export type TImetaInfo = {
   blurHash?: string
   dim?: { width: number; height: number }
   pubkey?: string
+  // NIP-92 fields
+  m?: string // MIME type
+  alt?: string // Alternative text
+  x?: string // SHA256 hash as specified in NIP 94
+  fallback?: string[] // Array of fallback URLs
 }
 
 export type TPublishOptions = {

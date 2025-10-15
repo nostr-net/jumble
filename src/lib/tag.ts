@@ -1,4 +1,5 @@
 import { TEmoji, TImetaInfo } from '@/types'
+import { cleanUrl } from './url'
 import { isBlurhashValid } from 'blurhash'
 import { nip19 } from 'nostr-tools'
 import { isValidPubkey } from './pubkey'
@@ -48,11 +49,31 @@ export function generateBech32IdFromATag(tag: string[]) {
 
 export function getImetaInfoFromImetaTag(tag: string[], pubkey?: string): TImetaInfo | null {
   if (tag[0] !== 'imeta') return null
+  
+  // Handle different imeta tag structures:
+  // Structure 1: ["imeta", "url https://example.com/image.jpg", "alt text", ...]
+  // Structure 2: ["imeta", "url", "https://example.com/image.jpg", "alt", "text", ...]
+  let url: string | undefined
+  
+  // First try the space-separated format
   const urlItem = tag.find((item) => item.startsWith('url '))
-  const url = urlItem?.slice(4)
+  if (urlItem) {
+    url = urlItem.slice(4)
+  } else {
+    // Try the separate element format
+    const urlIndex = tag.findIndex((item) => item === 'url')
+    if (urlIndex !== -1 && urlIndex + 1 < tag.length) {
+      url = tag[urlIndex + 1]
+    }
+  }
+  
   if (!url) return null
 
-  const imeta: TImetaInfo = { url, pubkey }
+  // Clean the URL to remove tracking parameters
+  const cleanedUrl = cleanUrl(url)
+  const imeta: TImetaInfo = { url: cleanedUrl, pubkey }
+  
+  // Parse blurhash
   const blurHashItem = tag.find((item) => item.startsWith('blurhash '))
   const blurHash = blurHashItem?.slice(9)
   if (blurHash) {
@@ -61,6 +82,8 @@ export function getImetaInfoFromImetaTag(tag: string[], pubkey?: string): TImeta
       imeta.blurHash = blurHash
     }
   }
+  
+  // Parse dimensions
   const dimItem = tag.find((item) => item.startsWith('dim '))
   const dim = dimItem?.slice(4)
   if (dim) {
@@ -69,6 +92,94 @@ export function getImetaInfoFromImetaTag(tag: string[], pubkey?: string): TImeta
       imeta.dim = { width, height }
     }
   }
+  
+  // Parse MIME type
+  let mimeType: string | undefined
+  
+  // First try the space-separated format
+  const mItem = tag.find((item) => item.startsWith('m '))
+  if (mItem) {
+    mimeType = mItem.slice(2)
+  } else {
+    // Try the separate element format
+    const mIndex = tag.findIndex((item) => item === 'm')
+    if (mIndex !== -1 && mIndex + 1 < tag.length) {
+      mimeType = tag[mIndex + 1]
+    }
+  }
+  
+  if (mimeType) {
+    imeta.m = mimeType
+  }
+  
+  // Parse alt text
+  let altText: string | undefined
+  
+  // First try the space-separated format
+  const altItem = tag.find((item) => item.startsWith('alt '))
+  if (altItem) {
+    altText = altItem.slice(4)
+  } else {
+    // Try the separate element format
+    const altIndex = tag.findIndex((item) => item === 'alt')
+    if (altIndex !== -1 && altIndex + 1 < tag.length) {
+      altText = tag[altIndex + 1]
+    }
+  }
+  
+  if (altText) {
+    imeta.alt = altText
+  }
+  
+  // Parse SHA256 hash
+  let hash: string | undefined
+  
+  // First try the space-separated format
+  const xItem = tag.find((item) => item.startsWith('x '))
+  if (xItem) {
+    hash = xItem.slice(2)
+  } else {
+    // Try the separate element format
+    const xIndex = tag.findIndex((item) => item === 'x')
+    if (xIndex !== -1 && xIndex + 1 < tag.length) {
+      hash = tag[xIndex + 1]
+    }
+  }
+  
+  if (hash) {
+    imeta.x = hash
+  }
+  
+  // Parse fallback URLs
+  const fallbackUrls: string[] = []
+  
+  // First try the space-separated format
+  const fallbackItems = tag.filter((item) => item.startsWith('fallback '))
+  fallbackItems.forEach((item) => {
+    const url = item.slice(9)
+    if (url) fallbackUrls.push(cleanUrl(url))
+  })
+  
+  // Also try the separate element format
+  let fallbackIndex = 0
+  while (fallbackIndex < tag.length) {
+    const index = tag.findIndex((item, i) => i >= fallbackIndex && item === 'fallback')
+    if (index === -1 || index + 1 >= tag.length) break
+    
+    const url = tag[index + 1]
+    if (url) {
+      const cleanedUrl = cleanUrl(url)
+      if (!fallbackUrls.includes(cleanedUrl)) {
+        fallbackUrls.push(cleanedUrl)
+      }
+    }
+    fallbackIndex = index + 1
+  }
+  
+  if (fallbackUrls.length > 0) {
+    imeta.fallback = fallbackUrls
+  }
+  
   return imeta
 }
 

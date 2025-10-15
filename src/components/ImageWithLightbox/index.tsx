@@ -38,15 +38,15 @@ export default function ImageWithLightbox({
 
   if (!display) {
     return (
-      <div
-        className="text-primary hover:underline truncate w-fit cursor-pointer"
+      <span
+        className="text-primary hover:underline truncate w-fit cursor-pointer inline-block"
         onClick={(e) => {
           e.stopPropagation()
           setDisplay(true)
         }}
       >
         [{t('Click to load image')}]
-      </div>
+      </span>
     )
   }
 
@@ -57,7 +57,7 @@ export default function ImageWithLightbox({
   }
 
   return (
-    <div>
+    <span className="inline-block">
       <Image
         key={0}
         className={className}
@@ -73,7 +73,10 @@ export default function ImageWithLightbox({
           <div onClick={(e) => e.stopPropagation()}>
             <Lightbox
               index={index}
-              slides={[{ src: image.url }]}
+              slides={[{ 
+                src: image.url, 
+                alt: image.alt || image.url 
+              }]}
               plugins={[Zoom]}
               open={index >= 0}
               close={() => setIndex(-1)}
@@ -89,6 +92,6 @@ export default function ImageWithLightbox({
           </div>,
           document.body
         )}
-    </div>
+    </span>
   )
 }

@@ -8,7 +8,7 @@ import { ImageOff } from 'lucide-react'
 import { HTMLAttributes, useEffect, useMemo, useRef, useState } from 'react'
 
 export default function Image({
-  image: { url, blurHash, pubkey, dim },
+  image: { url, blurHash, pubkey, dim, alt: imetaAlt, fallback },
   alt,
   className = '',
   classNames = {},
@@ -30,6 +30,10 @@ export default function Image({
   const [hasError, setHasError] = useState(false)
   const [imageUrl, setImageUrl] = useState(url)
   const [tried, setTried] = useState(new Set())
+  const [fallbackIndex, setFallbackIndex] = useState(0)
+  
+  // Use imeta alt text if available, otherwise use the passed alt prop
+  const finalAlt = imetaAlt || alt
 
   useEffect(() => {
     setImageUrl(url)
@@ -37,11 +41,21 @@ export default function Image({
     setHasError(false)
     setDisplaySkeleton(true)
     setTried(new Set())
+    setFallbackIndex(0)
   }, [url])
 
   if (hideIfError && hasError) return null
 
   const handleError = async () => {
+    // First, try fallback URLs from imeta if available
+    if (fallback && fallbackIndex < fallback.length) {
+      const nextFallbackUrl = fallback[fallbackIndex]
+      setFallbackIndex(prev => prev + 1)
+      setImageUrl(nextFallbackUrl)
+      return
+    }
+    
+    // If no more fallbacks, try Blossom servers
     let oldImageUrl: URL | undefined
     let hash: string | null = null
     try {
@@ -88,9 +102,9 @@ export default function Image({
   }
 
   return (
-    <div className={cn('relative overflow-hidden', classNames.wrapper)} {...props}>
+    <span className={cn('relative overflow-hidden inline-block', classNames.wrapper)} {...props}>
       {displaySkeleton && (
-        <div className="absolute inset-0 z-10">
+        <span className="absolute inset-0 z-10 inline-block">
           {blurHash ? (
             <BlurHashCanvas
               blurHash={blurHash}
@@ -107,12 +121,12 @@ export default function Image({
               )}
             />
           )}
-        </div>
+        </span>
       )}
       {!hasError && (
         <img
           src={imageUrl}
-          alt={alt}
+          alt={finalAlt}
           decoding="async"
           loading="lazy"
           onLoad={handleLoad}
@@ -127,17 +141,17 @@ export default function Image({
         />
       )}
       {hasError && (
-        <div
+        <span
           className={cn(
-            'object-cover flex flex-col items-center justify-center w-full h-full bg-muted',
+            'object-cover flex flex-col items-center justify-center w-full h-full bg-muted inline-block',
             className,
             classNames.errorPlaceholder
           )}
         >
           {errorPlaceholder}
-        </div>
+        </span>
       )}
-    </div>
+    </span>
   )
 }
 

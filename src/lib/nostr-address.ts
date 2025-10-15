@@ -29,6 +29,21 @@ export function prefixNostrAddresses(content: string): string {
       return match
     }
     
+    // Check if the match is within a URL by looking for common URL patterns before it
+    // This includes http://, https://, and common URL characters like /, ?, #
+    const urlPattern = /(https?:\/\/|www\.|\/[^\/]*|\?[^=]*=|#[^\/]*\/)$/
+    if (urlPattern.test(beforeMatch)) {
+      return match
+    }
+    
+    // Also check if the match is followed by URL-like characters
+    const afterMatch = content.substring(offset + match.length)
+    const urlSuffixPattern = /^(\/|\.|\?|#|&|%|\s|$)/
+    if (!urlSuffixPattern.test(afterMatch)) {
+      // If it's not followed by URL characters, it might be within a URL
+      return match
+    }
+    
     // Add nostr: prefix
     return `nostr:${match}`
   })

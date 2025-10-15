@@ -87,7 +87,11 @@
     "tippy.js": "^6.3.7",
     "vaul": "^1.1.2",
     "yet-another-react-lightbox": "^3.21.7",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "asciidoctor": "^2.2.8",
+    "katex": "^0.16.9",
+    "react-katex": "^3.0.1",
+    "highlight.js": "^11.9.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

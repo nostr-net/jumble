@@ -12,6 +12,7 @@ import {
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { getEmojiInfosFromEmojiTags, getImetaInfoFromImetaTag } from '@/lib/tag'
 import { cn } from '@/lib/utils'
+import { cleanUrl } from '@/lib/url'
 import mediaUpload from '@/services/media-upload.service'
 import { TImetaInfo } from '@/types'
 import { Event } from 'nostr-tools'
@@ -60,20 +61,43 @@ const Content = memo(
     const allImages = nodes
       .map((node) => {
         if (node.type === 'image') {
+          // Always ensure we have a valid image info object
           const imageInfo = imetaInfos.find((image) => image.url === node.data)
           if (imageInfo) {
             return imageInfo
           }
+          
+          // Try to get imeta from media upload service
           const tag = mediaUpload.getImetaTagByUrl(node.data)
-          return tag
-            ? getImetaInfoFromImetaTag(tag, event?.pubkey)
-            : { url: node.data, pubkey: event?.pubkey }
+          if (tag) {
+            const parsedImeta = getImetaInfoFromImetaTag(tag, event?.pubkey)
+            if (parsedImeta) {
+              return parsedImeta
+            }
+          }
+          
+          // Fallback: always create a basic image info object with cleaned URL
+          return { url: cleanUrl(node.data), pubkey: event?.pubkey }
         }
         if (node.type === 'images') {
           const urls = Array.isArray(node.data) ? node.data : [node.data]
           return urls.map((url) => {
             const imageInfo = imetaInfos.find((image) => image.url === url)
-            return imageInfo ?? { url, pubkey: event?.pubkey }
+            if (imageInfo) {
+              return imageInfo
+            }
+            
+            // Try to get imeta from media upload service
+            const tag = mediaUpload.getImetaTagByUrl(url)
+            if (tag) {
+              const parsedImeta = getImetaInfoFromImetaTag(tag, event?.pubkey)
+              if (parsedImeta) {
+                return parsedImeta
+              }
+            }
+            
+            // Fallback: always create a basic image info object with cleaned URL
+            return { url: cleanUrl(url), pubkey: event?.pubkey }
           })
         }
         return null
