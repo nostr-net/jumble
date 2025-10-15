@@ -83,7 +83,7 @@ const SecondaryPageLayout = forwardRef(
     return (
       <DeepBrowsingProvider active={currentIndex === index} scrollAreaRef={scrollAreaRef}>
         <ScrollArea
-          className="h-full overflow-auto"
+          className="h-[calc(100vh-2rem)] overflow-auto"
           scrollBarClassName="z-50 pt-12"
           ref={scrollAreaRef}
         >

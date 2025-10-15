@@ -102,7 +102,7 @@ export default function Image({
   }
 
   return (
-    <span className={cn('relative overflow-hidden inline-block', classNames.wrapper)} {...props}>
+    <div className={cn('relative overflow-hidden', classNames.wrapper)} {...props}>
       {displaySkeleton && (
         <span className="absolute inset-0 z-10 inline-block">
           {blurHash ? (
@@ -141,17 +141,17 @@ export default function Image({
         />
       )}
       {hasError && (
-        <span
+        <div
           className={cn(
-            'object-cover flex flex-col items-center justify-center w-full h-full bg-muted inline-block',
+            'object-cover flex flex-col items-center justify-center w-full h-full bg-muted',
             className,
             classNames.errorPlaceholder
           )}
         >
           {errorPlaceholder}
-        </span>
+        </div>
       )}
-    </span>
+    </div>
   )
 }
 

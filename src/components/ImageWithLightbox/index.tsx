@@ -57,7 +57,7 @@ export default function ImageWithLightbox({
   }
 
   return (
-    <span className="inline-block">
+    <div>
       <Image
         key={0}
         className={className}
@@ -92,6 +92,6 @@ export default function ImageWithLightbox({
           </div>,
           document.body
         )}
-    </span>
+    </div>
   )
 }

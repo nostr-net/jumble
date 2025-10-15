@@ -4,7 +4,7 @@ import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNote, toNoteList, toProfile } from '@/lib/link'
 import { ExternalLink } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
-import { useMemo } from 'react'
+import React, { useMemo } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import NostrNode from './NostrNode'
@@ -61,7 +61,18 @@ export default function LongFormArticle({
             </a>
           )
         },
-        p: (props) => <p {...props} className="break-words" />,
+        p: (props) => {
+          // Check if the paragraph contains only an image
+          const children = props.children
+          if (React.Children.count(children) === 1 && React.isValidElement(children)) {
+            const child = children as React.ReactElement
+            if (child.type === ImageWithLightbox) {
+              // Render image outside paragraph context
+              return <div {...props} className="break-words" />
+            }
+          }
+          return <p {...props} className="break-words" />
+        },
         div: (props) => <div {...props} className="break-words" />,
         code: (props) => <code {...props} className="break-words whitespace-pre-wrap" />,
         img: (props) => (
