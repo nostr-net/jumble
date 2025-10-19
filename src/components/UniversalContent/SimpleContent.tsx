@@ -1,11 +1,13 @@
 import { useMemo } from 'react'
 import { cleanUrl } from '@/lib/url'
+import { getImetaInfosFromEvent } from '@/lib/event'
 import { Event } from 'nostr-tools'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { remarkNostr } from '../Note/LongFormArticle/remarkNostr'
 import NostrNode from '../Note/LongFormArticle/NostrNode'
 import { cn } from '@/lib/utils'
+import ImageWithLightbox from '../ImageWithLightbox'
 
 interface SimpleContentProps {
   event?: Event
@@ -18,6 +20,8 @@ export default function SimpleContent({
   content,
   className
 }: SimpleContentProps) {
+  const imetaInfos = useMemo(() => event ? getImetaInfosFromEvent(event) : [], [event])
+  
   const processedContent = useMemo(() => {
     const rawContent = content || event?.content || ''
     
@@ -35,6 +39,50 @@ export default function SimpleContent({
     
     return cleaned
   }, [content, event?.content])
+
+  // Process content to handle images and markdown
+  const { markdownContent, mediaElements } = useMemo(() => {
+    const lines = processedContent.split('\n')
+    const elements: JSX.Element[] = []
+    let markdownLines: string[] = []
+    let key = 0
+
+    lines.forEach((line) => {
+      // Check if line contains an image URL
+      const imageMatch = line.match(/(https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp|heic|svg))/i)
+      
+      if (imageMatch) {
+        const imageUrl = imageMatch[1]
+        const imageInfo = imetaInfos.find((info) => info.url === imageUrl)
+        const imageData = imageInfo || { url: imageUrl, pubkey: event?.pubkey }
+        
+        elements.push(
+          <div key={key++} className="my-4">
+            <ImageWithLightbox
+              image={imageData}
+              className="max-w-full h-auto rounded-lg cursor-zoom-in"
+            />
+          </div>
+        )
+        
+        // Add the rest of the line as text if there's anything else
+        const beforeImage = line.substring(0, imageMatch.index).trim()
+        const afterImage = line.substring(imageMatch.index! + imageUrl.length).trim()
+        
+        if (beforeImage || afterImage) {
+          markdownLines.push(beforeImage + afterImage)
+        }
+      } else {
+        // Regular text line - add to markdown processing
+        markdownLines.push(line)
+      }
+    })
+
+    return { 
+      markdownContent: markdownLines.join('\n'), 
+      mediaElements: elements 
+    }
+  }, [processedContent, imetaInfos, event?.pubkey])
 
   const components = useMemo(() => ({
     nostr: ({ rawText, bech32Id }: { rawText: string; bech32Id: string }) => (
@@ -82,8 +130,9 @@ export default function SimpleContent({
         }}
         components={components}
       >
-        {processedContent}
+        {markdownContent}
       </Markdown>
+      {mediaElements}
     </div>
   )
 }
