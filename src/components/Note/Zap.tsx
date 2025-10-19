@@ -26,6 +26,22 @@ export default function Zap({ event, className }: { event: Event; className?: st
   }
 
   const { senderPubkey, recipientPubkey, amount, comment } = zapInfo
+  
+  // Determine if this is an event zap or profile zap
+  const isEventZap = targetEvent || zapInfo.eventId
+  const isProfileZap = !isEventZap && recipientPubkey
+  
+  // For event zaps, we need to determine the recipient from the zapped event
+  const actualRecipientPubkey = useMemo(() => {
+    if (isEventZap && targetEvent) {
+      // Event zap - recipient is the author of the zapped event
+      return targetEvent.pubkey
+    } else if (isProfileZap) {
+      // Profile zap - recipient is directly specified
+      return recipientPubkey
+    }
+    return undefined
+  }, [isEventZap, isProfileZap, targetEvent, recipientPubkey])
 
   return (
     <div className={cn('relative border rounded-lg p-4 bg-gradient-to-br from-yellow-50/50 to-amber-50/50 dark:from-yellow-950/20 dark:to-amber-950/20', className)}>
@@ -33,21 +49,29 @@ export default function Zap({ event, className }: { event: Event; className?: st
       <button
         onClick={(e) => {
           e.stopPropagation()
-          if (targetEvent) {
-            push(toNote(targetEvent.id))
-          } else if (zapInfo.eventId) {
-            // Event ID exists but targetEvent not loaded yet, try to navigate anyway
-            push(toNote(zapInfo.eventId))
-          } else if (recipientPubkey) {
-            push(toProfile(recipientPubkey))
+          if (isEventZap) {
+            // Event zap - navigate to the zapped event
+            if (targetEvent) {
+              push(toNote(targetEvent.id))
+            } else if (zapInfo.eventId) {
+              push(toNote(zapInfo.eventId))
+            }
+          } else if (isProfileZap && actualRecipientPubkey) {
+            // Profile zap - navigate to the zapped profile
+            push(toProfile(actualRecipientPubkey))
           }
         }}
-        className="absolute bottom-2 right-2 px-2 py-1 bg-white/80 dark:bg-black/40 border border-gray-200 dark:border-gray-700 rounded-md text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-black hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200 shadow-sm hover:shadow-md"
+        className="absolute bottom-2 right-2 px-3 py-2 bg-white/90 dark:bg-black/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-black hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-900 dark:hover:text-gray-100 transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
       >
-        {targetEvent || zapInfo.eventId ? (
-          <span className="font-mono text-[10px]">{(targetEvent?.id || zapInfo.eventId)?.substring(0, 12)}...</span>
+        {isEventZap ? (
+          <span className="font-mono text-xs">{(targetEvent?.id || zapInfo.eventId)?.substring(0, 12)}...</span>
+        ) : isProfileZap && actualRecipientPubkey ? (
+          <>
+            <UserAvatar userId={actualRecipientPubkey} size="xSmall" />
+            <span>{t('Zapped profile')}</span>
+          </>
         ) : (
-          t('Zapped profile')
+          t('Zap')
         )}
       </button>
       

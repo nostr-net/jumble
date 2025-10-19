@@ -164,6 +164,32 @@ export function getZapInfoFromEvent(receiptEvent: Event) {
         if (!senderPubkey) {
           senderPubkey = zapRequest.pubkey
         }
+        // Extract recipient from zap request
+        // Priority: e tag (event) -> a tag (addressable event) -> p tag (profile)
+        if (zapRequest.tags) {
+          const eTag = zapRequest.tags.find((tag: string[]) => tag[0] === 'e')
+          const aTag = zapRequest.tags.find((tag: string[]) => tag[0] === 'a')
+          const pTag = zapRequest.tags.find((tag: string[]) => tag[0] === 'p')
+          
+          if (eTag && eTag[1]) {
+            // Event zap - recipient is the author of the zapped event
+            // We'll need to fetch this event to get the author's pubkey
+            // For now, fall back to p tag
+            if (pTag && pTag[1]) {
+              recipientPubkey = pTag[1]
+            }
+          } else if (aTag && aTag[1]) {
+            // Addressable event zap - recipient is the author of the zapped event
+            // We'll need to fetch this event to get the author's pubkey
+            // For now, fall back to p tag
+            if (pTag && pTag[1]) {
+              recipientPubkey = pTag[1]
+            }
+          } else if (pTag && pTag[1]) {
+            // Profile zap - recipient is directly specified
+            recipientPubkey = pTag[1]
+          }
+        }
         // If invoice parsing failed, try to get amount from zap request tags
         if (amount === 0 && zapRequest.tags) {
           const amountTag = zapRequest.tags.find((tag: string[]) => tag[0] === 'amount')
