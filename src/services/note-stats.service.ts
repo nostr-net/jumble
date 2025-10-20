@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind } from '@/constants'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
 import { getZapInfoFromEvent } from '@/lib/event-metadata'
 import { getEmojiInfosFromEmojiTags, tagNameEquals } from '@/lib/tag'
@@ -14,6 +14,8 @@ export type TNoteStats = {
   reposts: { id: string; pubkey: string; created_at: number }[]
   zapPrSet: Set<string>
   zaps: { pr: string; pubkey: string; amount: number; created_at: number; comment?: string }[]
+  replyIdSet: Set<string>
+  replies: { id: string; pubkey: string; created_at: number }[]
   updatedAt?: number
 }
 
@@ -55,6 +57,11 @@ class NoteStatsService {
         '#e': [event.id],
         kinds: [kinds.Repost],
         limit: 100
+      },
+      {
+        '#e': [event.id],
+        kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
+        limit: 500
       }
     ]
 
@@ -69,6 +76,11 @@ class NoteStatsService {
           '#a': [replaceableCoordinate],
           kinds: [kinds.Repost],
           limit: 100
+        },
+        {
+          '#a': [replaceableCoordinate],
+          kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
+          limit: 500
         }
       )
     }
@@ -197,6 +209,8 @@ class NoteStatsService {
         updatedEventId = this.addRepostByEvent(evt)
       } else if (evt.kind === kinds.Zap) {
         updatedEventId = this.addZapByEvent(evt)
+      } else if (evt.kind === kinds.ShortTextNote || evt.kind === ExtendedKind.COMMENT || evt.kind === ExtendedKind.VOICE_COMMENT) {
+        updatedEventId = this.addReplyByEvent(evt)
       }
       if (updatedEventId) {
         updatedEventIdSet.add(updatedEventId)
@@ -266,6 +280,71 @@ class NoteStatsService {
       evt.created_at,
       false
     )
+  }
+
+  private addReplyByEvent(evt: Event) {
+    // Use the same logic as isReplyNoteEvent to identify replies
+    let originalEventId: string | undefined
+
+    // For kind 1111 and 1244, always consider them replies and look for parent event
+    if (evt.kind === ExtendedKind.COMMENT || evt.kind === ExtendedKind.VOICE_COMMENT) {
+      const eTag = evt.tags.find(tagNameEquals('e')) ?? evt.tags.find(tagNameEquals('E'))
+      originalEventId = eTag?.[1]
+    }
+    // For kind 1 (ShortTextNote), check if it's actually a reply
+    else if (evt.kind === kinds.ShortTextNote) {
+      // Check for parent E tag (reply or root marker)
+      const parentETag = evt.tags.find(([tagName, , , marker]) => {
+        return tagName === 'e' && (marker === 'reply' || marker === 'root')
+      })
+      if (parentETag) {
+        originalEventId = parentETag[1]
+      } else {
+        // Look for the last E tag that's not a mention
+        const embeddedEventIds = this.getEmbeddedNoteBech32Ids(evt)
+        const lastETag = evt.tags.findLast(
+          ([tagName, tagValue, , marker]) =>
+            tagName === 'e' &&
+            !!tagValue &&
+            marker !== 'mention' &&
+            !embeddedEventIds.includes(tagValue)
+        )
+        originalEventId = lastETag?.[1]
+      }
+      
+      // Also check for parent A tag
+      if (!originalEventId) {
+        const aTag = evt.tags.find(tagNameEquals('a'))
+        originalEventId = aTag?.[1]
+      }
+    }
+
+    if (!originalEventId) return
+
+    const old = this.noteStatsMap.get(originalEventId) || {}
+    const replyIdSet = old.replyIdSet || new Set()
+    const replies = old.replies || []
+
+    if (replyIdSet.has(evt.id)) return
+
+    replyIdSet.add(evt.id)
+    replies.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
+    this.noteStatsMap.set(originalEventId, { ...old, replyIdSet, replies })
+    return originalEventId
+  }
+
+  private getEmbeddedNoteBech32Ids(event: Event): string[] {
+    // Simple implementation - in practice, this should match the logic in lib/event.ts
+    const embeddedIds: string[] = []
+    const content = event.content || ''
+    const matches = content.match(/nostr:(note1|nevent1)[a-zA-Z0-9]+/g)
+    if (matches) {
+      matches.forEach(match => {
+        const id = match.replace('nostr:', '')
+        embeddedIds.push(id)
+      })
+    }
+    return embeddedIds
   }
 }
 
