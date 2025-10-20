@@ -23,7 +23,7 @@ export function isNsfwEvent(event: Event) {
 }
 
 export function isReplyNoteEvent(event: Event) {
-  if ([ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT].includes(event.kind)) {
+  if ([ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT, 1111].includes(event.kind)) {
     return true
   }
 

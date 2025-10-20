@@ -1,4 +1,4 @@
-import { FAST_READ_RELAY_URLS, ExtendedKind } from '@/constants'
+import { FAST_READ_RELAY_URLS } from '@/constants'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
 import { normalizeUrl } from '@/lib/url'
 import { useNostr } from '@/providers/NostrProvider'
@@ -37,21 +37,39 @@ export default function QuoteList({ event, className }: { event: Event; classNam
         ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
       ]))
 
+      const eventId = isReplaceableEvent(event.kind) ? getReplaceableCoordinateFromEvent(event) : event.id
+      const eventCoordinate = isReplaceableEvent(event.kind) ? getReplaceableCoordinateFromEvent(event) : `${event.kind}:${event.pubkey}:${event.id}`
+
       const { closer, timelineKey } = await client.subscribeTimeline(
         [
           {
             urls: finalRelayUrls,
             filter: {
-              '#q': [
-                isReplaceableEvent(event.kind) ? getReplaceableCoordinateFromEvent(event) : event.id
-              ],
+              '#q': [eventId],
               kinds: [
-                kinds.ShortTextNote,
+                kinds.ShortTextNote
+              ],
+              limit: LIMIT
+            }
+          },
+          {
+            urls: finalRelayUrls,
+            filter: {
+              '#e': [eventId],
+              kinds: [
                 kinds.Highlights,
-                kinds.LongFormArticle,
-                ExtendedKind.COMMENT,
-                ExtendedKind.POLL,
-                ExtendedKind.PUBLIC_MESSAGE
+                kinds.LongFormArticle
+              ],
+              limit: LIMIT
+            }
+          },
+          {
+            urls: finalRelayUrls,
+            filter: {
+              '#a': [eventCoordinate],
+              kinds: [
+                kinds.Highlights,
+                kinds.LongFormArticle
               ],
               limit: LIMIT
             }
