@@ -41,7 +41,17 @@ export default function Highlight({
           })
         }
       } else {
-        const rTag = event.tags.find(tag => tag[0] === 'r' && tag[2] === 'source')
+        // First try to find r-tag with 'source' marker
+        let rTag = event.tags.find(tag => tag[0] === 'r' && tag[2] === 'source')
+        
+        // If no r-tag with 'source' marker found, check if there's only one r-tag
+        if (!rTag) {
+          const rTags = event.tags.filter(tag => tag[0] === 'r')
+          if (rTags.length === 1) {
+            rTag = rTags[0]
+          }
+        }
+        
         if (rTag) {
           source = {
             type: 'url' as const,
