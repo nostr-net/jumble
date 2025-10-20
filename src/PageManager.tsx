@@ -121,7 +121,7 @@ export function useSmartNoteNavigation() {
       // When right panel is hidden, show note in primary area
       // Extract note ID from URL (e.g., "/notes/note1..." -> "note1...")
       const noteId = url.replace('/notes/', '')
-      setPrimaryNoteView(<NotePage id={noteId} hideTitlebar={true} />)
+      setPrimaryNoteView(<NotePage id={noteId} index={0} hideTitlebar={true} />)
     } else {
       // Normal behavior - use secondary navigation
       pushSecondary(url)
@@ -245,6 +245,7 @@ function MainContentArea({
 }
 
 export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
+  const { isSmallScreen } = useScreenSize()
   const [currentPrimaryPage, setCurrentPrimaryPage] = useState<TPrimaryPageName>('home')
   const [primaryPages, setPrimaryPages] = useState<
     { name: TPrimaryPageName; element: ReactNode; props?: any }[]
@@ -256,7 +257,6 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   ])
   const [secondaryStack, setSecondaryStack] = useState<TStackItem[]>([])
   const [primaryNoteView, setPrimaryNoteView] = useState<ReactNode | null>(null)
-  const { isSmallScreen } = useScreenSize()
   const ignorePopStateRef = useRef(false)
 
   useEffect(() => {

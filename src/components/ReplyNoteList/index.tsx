@@ -12,7 +12,7 @@ import {
 import { toNote } from '@/lib/link'
 import { generateBech32IdFromETag, tagNameEquals } from '@/lib/tag'
 import { normalizeUrl } from '@/lib/url'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation, useSecondaryPage } from '@/PageManager'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
@@ -36,7 +36,8 @@ const SHOW_COUNT = 10
 
 function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
   const { t } = useTranslation()
-  const { push, currentIndex } = useSecondaryPage()
+  const { navigateToNote } = useSmartNoteNavigation()
+  const { currentIndex } = useSecondaryPage()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
   const { mutePubkeySet } = useMuteList()
   const { hideContentMentioningMutedUsers } = useContentPolicy()
@@ -254,23 +255,24 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
               ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
               ...userRelays.map(url => normalizeUrl(url) || url) // User's mailbox relays
             ]))
+            
 
         const filters: (Omit<Filter, 'since' | 'until'> & {
           limit: number
         })[] = []
         if (rootInfo.type === 'E') {
+          // Fetch all reply types for event-based replies
           filters.push({
             '#e': [rootInfo.id],
-            kinds: [kinds.ShortTextNote, 1111],
+            kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
             limit: LIMIT
           })
-          if (event.kind !== kinds.ShortTextNote) {
-            filters.push({
-              '#E': [rootInfo.id],
-              kinds: [ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-              limit: LIMIT
-            })
-          }
+          // Also fetch with uppercase E tag for replaceable events
+          filters.push({
+            '#E': [rootInfo.id],
+            kinds: [ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
+            limit: LIMIT
+          })
           // For public messages (kind 24), also look for replies using 'q' tags
           if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
             filters.push({
@@ -280,10 +282,11 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
             })
           }
         } else if (rootInfo.type === 'A') {
+          // Fetch all reply types for replaceable event-based replies
           filters.push(
             {
               '#a': [rootInfo.id],
-              kinds: [kinds.ShortTextNote, 1111],
+              kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
               limit: LIMIT
             },
             {
@@ -296,6 +299,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
             finalRelayUrls.push(rootInfo.relay)
           }
         } else {
+          // Fetch replies for discussion threads (kind 11)
           filters.push({
             '#I': [rootInfo.id],
             kinds: [ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
@@ -304,6 +308,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
         }
 
 
+        
         const { closer, timelineKey } = await client.subscribeTimeline(
           filters.map((filter) => ({
             urls: finalRelayUrls.slice(0, 8), // Increased from 5 to 8 for better coverage
@@ -438,7 +443,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
                 onClickParent={() => {
                   if (!parentEventHexId) return
                   if (replies.every((r) => r.id !== parentEventHexId)) {
-                    push(toNote(parentEventId ?? parentEventHexId))
+                    navigateToNote(toNote(parentEventId ?? parentEventHexId))
                     return
                   }
                   highlightReply(parentEventHexId)
