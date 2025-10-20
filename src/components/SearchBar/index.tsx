@@ -4,7 +4,7 @@ import { toNote } from '@/lib/link'
 import { randomString } from '@/lib/random'
 import { normalizeUrl } from '@/lib/url'
 import { cn } from '@/lib/utils'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation } from '@/PageManager'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import modalManager from '@/services/modal-manager.service'
 import { TSearchParams } from '@/types'
@@ -32,7 +32,7 @@ const SearchBar = forwardRef<
   }
 >(({ input, setInput, onSearch }, ref) => {
   const { t } = useTranslation()
-  const { push } = useSecondaryPage()
+  const { navigateToNote } = useSmartNoteNavigation()
   const { isSmallScreen } = useScreenSize()
   const [debouncedInput, setDebouncedInput] = useState(input)
   const { profiles, isFetching: isFetchingProfiles } = useSearchProfiles(debouncedInput, 5)
@@ -88,7 +88,7 @@ const SearchBar = forwardRef<
     blur()
 
     if (params.type === 'note') {
-      push(toNote(params.search))
+      navigateToNote(toNote(params.search))
     } else {
       onSearch(params)
     }

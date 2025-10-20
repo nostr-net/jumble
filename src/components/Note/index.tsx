@@ -1,4 +1,4 @@
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation } from '@/PageManager'
 import { ExtendedKind, SUPPORTED_KINDS } from '@/constants'
 import { getParentBech32Id, isNsfwEvent } from '@/lib/event'
 import { toNote } from '@/lib/link'
@@ -51,7 +51,7 @@ export default function Note({
   hideParentNotePreview?: boolean
   showFull?: boolean
 }) {
-  const { push } = useSecondaryPage()
+  const { navigateToNote } = useSmartNoteNavigation()
   const { isSmallScreen } = useScreenSize()
   const parentEventId = useMemo(
     () => (hideParentNotePreview ? undefined : getParentBech32Id(event)),
@@ -169,7 +169,7 @@ export default function Note({
               className="p-1 hover:bg-muted rounded transition-colors"
               onClick={(e) => {
                 e.stopPropagation()
-                push(toNote(event))
+                navigateToNote(toNote(event))
               }}
               title="View in Discussions"
             >
@@ -188,7 +188,7 @@ export default function Note({
           className="mt-2"
           onClick={(e) => {
             e.stopPropagation()
-            push(toNote(parentEventId))
+            navigateToNote(toNote(parentEventId))
           }}
         />
       )}

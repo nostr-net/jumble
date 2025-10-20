@@ -2,7 +2,7 @@ import ParentNotePreview from '@/components/ParentNotePreview'
 import { NOTIFICATION_LIST_STYLE } from '@/constants'
 import { getEmbeddedPubkeys, getParentBech32Id } from '@/lib/event'
 import { toNote } from '@/lib/link'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import { useUserPreferences } from '@/providers/UserPreferencesProvider'
 import { AtSign, MessageCircle, Quote } from 'lucide-react'
@@ -19,7 +19,7 @@ export function MentionNotification({
   isNew?: boolean
 }) {
   const { t } = useTranslation()
-  const { push } = useSecondaryPage()
+  const { navigateToNote } = useSmartNoteNavigation()
   const { pubkey } = useNostr()
   const { notificationListStyle } = useUserPreferences()
   const isMention = useMemo(() => {

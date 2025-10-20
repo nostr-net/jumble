@@ -1,4 +1,4 @@
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation } from '@/PageManager'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { isMentioningMutedUsers } from '@/lib/event'
@@ -34,7 +34,7 @@ export default function ReplyNote({
 }) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
-  const { push } = useSecondaryPage()
+  const { navigateToNote } = useSmartNoteNavigation()
   const { mutePubkeySet } = useMuteList()
   const { hideContentMentioningMutedUsers } = useContentPolicy()
   const [showMuted, setShowMuted] = useState(false)
@@ -55,7 +55,7 @@ export default function ReplyNote({
   return (
     <div
       className={`pb-3 border-b transition-colors duration-500 clickable ${highlight ? 'bg-primary/50' : ''}`}
-      onClick={() => push(toNote(event))}
+      onClick={() => navigateToNote(toNote(event))}
     >
       <Collapsible>
         <div className="flex space-x-2 items-start px-4 pt-3">

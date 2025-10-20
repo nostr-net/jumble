@@ -7,7 +7,7 @@ import Username from '@/components/Username'
 import { NOTIFICATION_LIST_STYLE } from '@/constants'
 import { toNote, toProfile } from '@/lib/link'
 import { cn } from '@/lib/utils'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation, useSecondaryPage } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import { useNotification } from '@/providers/NotificationProvider'
 import { useUserPreferences } from '@/providers/UserPreferencesProvider'
@@ -37,6 +37,7 @@ export default function Notification({
   showStats?: boolean
 }) {
   const { t } = useTranslation()
+  const { navigateToNote } = useSmartNoteNavigation()
   const { push } = useSecondaryPage()
   const { pubkey } = useNostr()
   const { isNotificationRead, markNotificationAsRead } = useNotification()
@@ -49,7 +50,7 @@ export default function Notification({
   const handleClick = () => {
     markNotificationAsRead(notificationId)
     if (targetEvent) {
-      push(toNote(targetEvent.id))
+      navigateToNote(toNote(targetEvent.id))
     } else if (pubkey) {
       push(toProfile(pubkey))
     }

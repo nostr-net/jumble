@@ -7,12 +7,13 @@ import { Zap as ZapIcon } from 'lucide-react'
 import { Event } from 'nostr-tools'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation, useSecondaryPage } from '@/PageManager'
 import Username from '../Username'
 import UserAvatar from '../UserAvatar'
 
 export default function Zap({ event, className }: { event: Event; className?: string }) {
   const { t } = useTranslation()
+  const { navigateToNote } = useSmartNoteNavigation()
   const { push } = useSecondaryPage()
   const zapInfo = useMemo(() => getZapInfoFromEvent(event), [event])
   const { event: targetEvent } = useFetchEvent(zapInfo?.eventId)
@@ -52,9 +53,9 @@ export default function Zap({ event, className }: { event: Event; className?: st
           if (isEventZap) {
             // Event zap - navigate to the zapped event
             if (targetEvent) {
-              push(toNote(targetEvent.id))
+              navigateToNote(toNote(targetEvent.id))
             } else if (zapInfo.eventId) {
-              push(toNote(zapInfo.eventId))
+              navigateToNote(toNote(zapInfo.eventId))
             }
           } else if (isProfileZap && actualRecipientPubkey) {
             // Profile zap - navigate to the zapped profile

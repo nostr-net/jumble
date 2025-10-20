@@ -1,6 +1,6 @@
 import { useFetchRelayInfo } from '@/hooks'
 import { toRelay } from '@/lib/link'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartRelayNavigation } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
 import { useEffect, useRef, useState } from 'react'
@@ -73,7 +73,7 @@ export default function FollowingFavoriteRelayList() {
 }
 
 function RelayItem({ url, users }: { url: string; users: string[] }) {
-  const { push } = useSecondaryPage()
+  const { navigateToRelay } = useSmartRelayNavigation()
   const { relayInfo } = useFetchRelayInfo(url)
 
   return (
@@ -84,7 +84,7 @@ function RelayItem({ url, users }: { url: string; users: string[] }) {
       className="clickable p-4 border-b"
       onClick={(e) => {
         e.stopPropagation()
-        push(toRelay(url))
+        navigateToRelay(toRelay(url))
       }}
     />
   )

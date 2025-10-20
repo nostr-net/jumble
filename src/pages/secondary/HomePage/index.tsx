@@ -1,4 +1,4 @@
-import { usePrimaryPage, useSecondaryPage } from '@/PageManager'
+import { usePrimaryPage, useSmartRelayNavigation } from '@/PageManager'
 import RelaySimpleInfo from '@/components/RelaySimpleInfo'
 import { Button } from '@/components/ui/button'
 import { RECOMMENDED_RELAYS } from '@/constants'
@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next'
 const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
   const { t } = useTranslation()
   const { navigate } = usePrimaryPage()
-  const { push } = useSecondaryPage()
+  const { navigateToRelay } = useSmartRelayNavigation()
   const { updateHideRecommendedRelaysPanel } = useUserPreferences()
   const [recommendedRelayInfos, setRecommendedRelayInfos] = useState<TRelayInfo[]>([])
 
@@ -73,7 +73,7 @@ const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
               relayInfo={relayInfo}
               onClick={(e) => {
                 e.stopPropagation()
-                push(toRelay(relayInfo.url))
+                navigateToRelay(toRelay(relayInfo.url))
               }}
             />
           ))}

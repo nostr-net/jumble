@@ -1,7 +1,7 @@
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFetchRelayInfo } from '@/hooks'
 import { toRelay } from '@/lib/link'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartRelayNavigation } from '@/PageManager'
 import relayInfoService from '@/services/relay-info.service'
 import { TAwesomeRelayCollection } from '@/types'
 import { useEffect, useState } from 'react'
@@ -60,7 +60,7 @@ function RelayCollection({ collection }: { collection: TAwesomeRelayCollection }
 }
 
 function RelayItem({ url }: { url: string }) {
-  const { push } = useSecondaryPage()
+  const { navigateToRelay } = useSmartRelayNavigation()
   const { relayInfo, isFetching } = useFetchRelayInfo(url)
 
   if (isFetching) {
@@ -78,7 +78,7 @@ function RelayItem({ url }: { url: string }) {
       relayInfo={relayInfo}
       onClick={(e) => {
         e.stopPropagation()
-        push(toRelay(relayInfo.url))
+        navigateToRelay(toRelay(relayInfo.url))
       }}
     />
   )

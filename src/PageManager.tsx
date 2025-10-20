@@ -131,6 +131,27 @@ export function useSmartNoteNavigation() {
   return { navigateToNote }
 }
 
+// Custom hook for intelligent relay navigation
+export function useSmartRelayNavigation() {
+  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  const { push: pushSecondary } = useSecondaryPage()
+  const { navigate: navigatePrimary } = usePrimaryPage()
+  
+  const navigateToRelay = (url: string) => {
+    if (hideRecommendedRelaysPanel) {
+      // When right panel is hidden, navigate to relay page in primary area
+      // Extract relay URL from the path (e.g., "/relays/wss%3A%2F%2F..." -> "wss://...")
+      const relayUrl = url.startsWith('/relays/') ? decodeURIComponent(url.replace('/relays/', '')) : url
+      navigatePrimary('relay', { url: relayUrl })
+    } else {
+      // Normal behavior - use secondary navigation
+      pushSecondary(url)
+    }
+  }
+  
+  return { navigateToRelay }
+}
+
 function ConditionalHomePage() {
   const { hideRecommendedRelaysPanel } = useUserPreferences()
   
