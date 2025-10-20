@@ -19,7 +19,7 @@ import SubtopicFilter from '@/pages/primary/DiscussionsPage/SubtopicFilter'
 import TopicSubscribeButton from '@/components/TopicSubscribeButton'
 import { NostrEvent } from 'nostr-tools'
 import client from '@/services/client.service'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation } from '@/PageManager'
 import { toNote } from '@/lib/link'
 import { kinds } from 'nostr-tools'
 
@@ -107,7 +107,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
   const { favoriteRelays } = useFavoriteRelays()
   const { pubkey } = useNostr()
-  const { push } = useSecondaryPage()
+  const { navigateToNote } = useSmartNoteNavigation()
   
   // State management
   const [selectedTopic, setSelectedTopic] = useState('all')
@@ -718,7 +718,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                     thread={event}
                     subtopics={availableSubtopics}
                     onThreadClick={() => {
-                      push(toNote(event))
+                      navigateToNote(toNote(event))
                     }}
                   />
                 ))}
@@ -760,7 +760,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                         thread={event}
                         subtopics={availableSubtopics}
                         onThreadClick={() => {
-                          push(toNote(event))
+                          navigateToNote(toNote(event))
                         }}
                       />
                     ))}
@@ -841,7 +841,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                           subtopics={threadSubtopics}
                           primaryTopic={entry?.categorizedTopic}
                           onThreadClick={() => {
-                            push(toNote(event))
+                            navigateToNote(toNote(event))
                           }}
                         />
                       )
@@ -866,7 +866,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
                   subtopics={threadSubtopics}
                   primaryTopic={entry?.categorizedTopic}
                   onThreadClick={() => {
-                    push(toNote(event))
+                    navigateToNote(toNote(event))
                   }}
                 />
               )

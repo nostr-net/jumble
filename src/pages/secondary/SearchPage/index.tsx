@@ -8,7 +8,7 @@ import { TSearchParams } from '@/types'
 import { ChevronLeft } from 'lucide-react'
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
 
-const SearchPage = forwardRef(({ index }: { index?: number }, ref) => {
+const SearchPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { push, pop } = useSecondaryPage()
   const [input, setInput] = useState('')
   const searchBarRef = useRef<TSearchBarRef>(null)
@@ -49,14 +49,14 @@ const SearchPage = forwardRef(({ index }: { index?: number }, ref) => {
     <SecondaryPageLayout
       ref={ref}
       index={index}
-      titlebar={
+      titlebar={hideTitlebar ? undefined : (
         <div className="flex items-center gap-1 h-full">
           <Button variant="ghost" size="titlebar-icon" onClick={() => pop()}>
             <ChevronLeft />
           </Button>
           <SearchBar ref={searchBarRef} input={input} setInput={setInput} onSearch={onSearch} />
         </div>
-      }
+      )}
       displayScrollToTopButton
     >
       <SearchResult searchParams={searchParams} />

@@ -6,7 +6,7 @@ import { forwardRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import NotFoundPage from '../NotFoundPage'
 
-const RelayReviewsPage = forwardRef(({ url, index }: { url?: string; index?: number }, ref) => {
+const RelayReviewsPage = forwardRef(({ url, index, hideTitlebar = false }: { url?: string; index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
   const normalizedUrl = useMemo(() => (url ? normalizeUrl(url) : undefined), [url])
   const title = useMemo(
@@ -19,7 +19,7 @@ const RelayReviewsPage = forwardRef(({ url, index }: { url?: string; index?: num
   }
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={title} displayScrollToTopButton>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : title} displayScrollToTopButton>
       <NoteList
         showKinds={[ExtendedKind.RELAY_REVIEW]}
         subRequests={[

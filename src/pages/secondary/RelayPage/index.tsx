@@ -4,7 +4,7 @@ import { normalizeUrl, simplifyUrl } from '@/lib/url'
 import { forwardRef, useMemo } from 'react'
 import NotFoundPage from '../NotFoundPage'
 
-const RelayPage = forwardRef(({ url, index }: { url?: string; index?: number }, ref) => {
+const RelayPage = forwardRef(({ url, index, hideTitlebar = false }: { url?: string; index?: number; hideTitlebar?: boolean }, ref) => {
   const normalizedUrl = useMemo(() => (url ? normalizeUrl(url) : undefined), [url])
   const title = useMemo(() => (url ? simplifyUrl(url) : undefined), [url])
 
@@ -13,7 +13,7 @@ const RelayPage = forwardRef(({ url, index }: { url?: string; index?: number }, 
   }
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={title} displayScrollToTopButton>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : title} displayScrollToTopButton>
       <Relay url={normalizedUrl} />
     </SecondaryPageLayout>
   )

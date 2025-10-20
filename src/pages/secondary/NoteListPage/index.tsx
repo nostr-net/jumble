@@ -14,7 +14,7 @@ import { UserRound } from 'lucide-react'
 import React, { forwardRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const NoteListPage = forwardRef(({ index }: { index?: number }, ref) => {
+const NoteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
   const { push } = useSecondaryPage()
   const { relayList, pubkey } = useNostr()
@@ -130,7 +130,7 @@ const NoteListPage = forwardRef(({ index }: { index?: number }, ref) => {
     <SecondaryPageLayout
       ref={ref}
       index={index}
-      title={title}
+      title={hideTitlebar ? undefined : title}
       controls={controls}
       displayScrollToTopButton
     >
