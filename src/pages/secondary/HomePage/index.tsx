@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button'
 import { RECOMMENDED_RELAYS } from '@/constants'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { toRelay } from '@/lib/link'
+import { useUserPreferences } from '@/providers/UserPreferencesProvider'
 import relayInfoService from '@/services/relay-info.service'
 import { TRelayInfo } from '@/types'
-import { ArrowRight, Server } from 'lucide-react'
+import { ArrowRight, Server, X } from 'lucide-react'
 import { forwardRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -14,6 +15,7 @@ const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
   const { t } = useTranslation()
   const { navigate } = usePrimaryPage()
   const { push } = useSecondaryPage()
+  const { updateHideRecommendedRelaysPanel } = useUserPreferences()
   const [recommendedRelayInfos, setRecommendedRelayInfos] = useState<TRelayInfo[]>([])
 
   useEffect(() => {
@@ -43,10 +45,21 @@ const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
       ref={ref}
       index={index}
       title={
-        <>
+        <div className="flex items-center gap-2">
           <Server />
           <div>{t('Recommended relays')}</div>
-        </>
+        </div>
+      }
+      controls={
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => updateHideRecommendedRelaysPanel(true)}
+          title={t('Close')}
+        >
+          <X className="h-4 w-4" />
+        </Button>
       }
       hideBackButton
       hideTitlebarBottomBorder

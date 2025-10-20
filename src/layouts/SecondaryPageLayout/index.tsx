@@ -66,13 +66,15 @@ const SecondaryPageLayout = forwardRef(
               paddingBottom: 'calc(env(safe-area-inset-bottom) + 3rem)'
             }}
           >
-            <SecondaryPageTitlebar
-              title={title}
-              controls={controls}
-              hideBackButton={hideBackButton}
-              hideBottomBorder={hideTitlebarBottomBorder}
-              titlebar={titlebar}
-            />
+            {title && (
+              <SecondaryPageTitlebar
+                title={title}
+                controls={controls}
+                hideBackButton={hideBackButton}
+                hideBottomBorder={hideTitlebarBottomBorder}
+                titlebar={titlebar}
+              />
+            )}
             {children}
           </div>
           {displayScrollToTopButton && <ScrollToTopButton />}
@@ -84,16 +86,18 @@ const SecondaryPageLayout = forwardRef(
       <DeepBrowsingProvider active={currentIndex === index} scrollAreaRef={scrollAreaRef}>
         <ScrollArea
           className="h-[calc(100vh-2rem)] overflow-auto"
-          scrollBarClassName="z-50 pt-12"
+          scrollBarClassName={title ? "z-50 pt-12" : "z-50"}
           ref={scrollAreaRef}
         >
-          <SecondaryPageTitlebar
-            title={title}
-            controls={controls}
-            hideBackButton={hideBackButton}
-            hideBottomBorder={hideTitlebarBottomBorder}
-            titlebar={titlebar}
-          />
+          {title && (
+            <SecondaryPageTitlebar
+              title={title}
+              controls={controls}
+              hideBackButton={hideBackButton}
+              hideBottomBorder={hideTitlebarBottomBorder}
+              titlebar={titlebar}
+            />
+          )}
           {children}
           <div className="h-4" />
         </ScrollArea>

@@ -1,9 +1,13 @@
 import Sidebar from '@/components/Sidebar'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { ChevronLeft } from 'lucide-react'
 import NoteListPage from '@/pages/primary/NoteListPage'
 import HomePage from '@/pages/secondary/HomePage'
+import NotePage from '@/pages/secondary/NotePage'
 import { CurrentRelaysProvider } from '@/providers/CurrentRelaysProvider'
 import { NotificationProvider } from '@/providers/NotificationProvider'
+import { UserPreferencesProvider, useUserPreferences } from '@/providers/UserPreferencesProvider'
 import { TPageRef } from '@/types'
 import {
   cloneElement,
@@ -78,6 +82,10 @@ const PrimaryPageContext = createContext<TPrimaryPageContext | undefined>(undefi
 
 const SecondaryPageContext = createContext<TSecondaryPageContext | undefined>(undefined)
 
+const PrimaryNoteViewContext = createContext<{
+  setPrimaryNoteView: (view: ReactNode | null) => void
+} | undefined>(undefined)
+
 export function usePrimaryPage() {
   const context = useContext(PrimaryPageContext)
   if (!context) {
@@ -94,6 +102,127 @@ export function useSecondaryPage() {
   return context
 }
 
+export function usePrimaryNoteView() {
+  const context = useContext(PrimaryNoteViewContext)
+  if (!context) {
+    throw new Error('usePrimaryNoteView must be used within a PrimaryNoteViewContext.Provider')
+  }
+  return context
+}
+
+// Custom hook for intelligent note navigation
+export function useSmartNoteNavigation() {
+  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  const { push: pushSecondary } = useSecondaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
+  
+  const navigateToNote = (url: string) => {
+    if (hideRecommendedRelaysPanel) {
+      // When right panel is hidden, show note in primary area
+      // Extract note ID from URL (e.g., "/notes/note1..." -> "note1...")
+      const noteId = url.replace('/notes/', '')
+      setPrimaryNoteView(<NotePage id={noteId} hideTitlebar={true} />)
+    } else {
+      // Normal behavior - use secondary navigation
+      pushSecondary(url)
+    }
+  }
+  
+  return { navigateToNote }
+}
+
+function ConditionalHomePage() {
+  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  
+  if (hideRecommendedRelaysPanel) {
+    return null
+  }
+  
+  return <HomePage />
+}
+
+function MainContentArea({ 
+  primaryPages, 
+  currentPrimaryPage, 
+  secondaryStack,
+  primaryNoteView,
+  setPrimaryNoteView
+}: {
+  primaryPages: { name: TPrimaryPageName; element: ReactNode; props?: any }[]
+  currentPrimaryPage: TPrimaryPageName
+  secondaryStack: { index: number; component: ReactNode }[]
+  primaryNoteView: ReactNode | null
+  setPrimaryNoteView: (view: ReactNode | null) => void
+}) {
+  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  
+  // If recommended relays panel is hidden, use single column layout
+  // Otherwise use two-column grid layout
+  const gridClass = hideRecommendedRelaysPanel ? "grid-cols-1" : "grid-cols-2"
+  
+  return (
+    <div className={`grid ${gridClass} gap-2 w-full pr-2 py-2`}>
+      <div className="rounded-lg shadow-lg bg-background overflow-hidden">
+        {hideRecommendedRelaysPanel && primaryNoteView ? (
+          // Show note view with back button when right panel is hidden
+          <div className="flex flex-col h-full w-full">
+            <div className="flex gap-1 p-1 items-center justify-between font-semibold border-b">
+              <div className="flex items-center flex-1 w-0">
+                <Button
+                  className="flex gap-1 items-center w-fit max-w-full justify-start pl-2 pr-3"
+                  variant="ghost"
+                  size="titlebar-icon"
+                  title="Back to feed"
+                  onClick={() => setPrimaryNoteView(null)}
+                >
+                  <ChevronLeft />
+                  <div className="truncate text-lg font-semibold">Note</div>
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {primaryNoteView}
+            </div>
+          </div>
+        ) : (
+          // Show normal primary pages
+          primaryPages.map(({ name, element, props }) => (
+            <div
+              key={name}
+              className="flex flex-col h-full w-full"
+              style={{
+                display: currentPrimaryPage === name ? 'block' : 'none'
+              }}
+            >
+              {props ? cloneElement(element as React.ReactElement, props) : element}
+            </div>
+          ))
+        )}
+      </div>
+      {!hideRecommendedRelaysPanel && (
+        <div className="rounded-lg shadow-lg bg-background overflow-hidden">
+          {secondaryStack.map((item, index) => (
+            <div
+              key={item.index}
+              className="flex flex-col h-full w-full"
+              style={{ display: index === secondaryStack.length - 1 ? 'block' : 'none' }}
+            >
+              {item.component}
+            </div>
+          ))}
+          <div
+            key="home"
+            className="w-full"
+            style={{ display: secondaryStack.length === 0 ? 'block' : 'none' }}
+          >
+            <ConditionalHomePage />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   const [currentPrimaryPage, setCurrentPrimaryPage] = useState<TPrimaryPageName>('home')
   const [primaryPages, setPrimaryPages] = useState<
@@ -105,6 +234,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     }
   ])
   const [secondaryStack, setSecondaryStack] = useState<TStackItem[]>([])
+  const [primaryNoteView, setPrimaryNoteView] = useState<ReactNode | null>(null)
   const { isSmallScreen } = useScreenSize()
   const ignorePopStateRef = useRef(false)
 
@@ -310,6 +440,8 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
         >
           <CurrentRelaysProvider>
             <NotificationProvider>
+              <UserPreferencesProvider>
+                <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView }}>
               {!!secondaryStack.length &&
                 secondaryStack.map((item, index) => (
                   <div
@@ -335,6 +467,8 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
               <BottomNavigationBar />
               <TooManyRelaysAlertDialog />
               <CreateWalletGuideToast />
+                </PrimaryNoteViewContext.Provider>
+              </UserPreferencesProvider>
             </NotificationProvider>
           </CurrentRelaysProvider>
         </SecondaryPageContext.Provider>
@@ -359,6 +493,8 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
       >
         <CurrentRelaysProvider>
           <NotificationProvider>
+            <UserPreferencesProvider>
+              <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView }}>
             <div className="flex flex-col items-center bg-surface-background">
               <div
                 className="flex h-[var(--vh)] w-full bg-surface-background"
@@ -367,43 +503,20 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
                 }}
               >
                 <Sidebar />
-                <div className="grid grid-cols-2 gap-2 w-full pr-2 py-2">
-                  <div className="rounded-lg shadow-lg bg-background overflow-hidden">
-                    {primaryPages.map(({ name, element, props }) => (
-                      <div
-                        key={name}
-                        className="flex flex-col h-full w-full"
-                        style={{
-                          display: currentPrimaryPage === name ? 'block' : 'none'
-                        }}
-                      >
-                        {props ? cloneElement(element as React.ReactElement, props) : element}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rounded-lg shadow-lg bg-background overflow-hidden">
-                    {secondaryStack.map((item, index) => (
-                      <div
-                        key={item.index}
-                        className="flex flex-col h-full w-full"
-                        style={{ display: index === secondaryStack.length - 1 ? 'block' : 'none' }}
-                      >
-                        {item.component}
-                      </div>
-                    ))}
-                    <div
-                      key="home"
-                      className="w-full"
-                      style={{ display: secondaryStack.length === 0 ? 'block' : 'none' }}
-                    >
-                      <HomePage />
-                    </div>
-                  </div>
-                </div>
+                <MainContentArea 
+                  primaryPages={primaryPages}
+                  currentPrimaryPage={currentPrimaryPage}
+                  secondaryStack={secondaryStack}
+                  primaryNoteView={primaryNoteView}
+                  setPrimaryNoteView={setPrimaryNoteView}
+                />
               </div>
             </div>
+            <BottomNavigationBar />
             <TooManyRelaysAlertDialog />
             <CreateWalletGuideToast />
+              </PrimaryNoteViewContext.Provider>
+            </UserPreferencesProvider>
           </NotificationProvider>
         </CurrentRelaysProvider>
       </SecondaryPageContext.Provider>

@@ -49,6 +49,7 @@ class LocalStorageService {
   private hideContentMentioningMutedUsers: boolean = false
   private notificationListStyle: TNotificationStyle = NOTIFICATION_LIST_STYLE.DETAILED
   private mediaAutoLoadPolicy: TMediaAutoLoadPolicy = MEDIA_AUTO_LOAD_POLICY.ALWAYS
+  private hideRecommendedRelaysPanel: boolean = false
   private shownCreateWalletGuideToastPubkeys: Set<string> = new Set()
 
   constructor() {
@@ -163,6 +164,9 @@ class LocalStorageService {
 
     this.dismissedTooManyRelaysAlert =
       window.localStorage.getItem(StorageKey.DISMISSED_TOO_MANY_RELAYS_ALERT) === 'true'
+
+    this.hideRecommendedRelaysPanel =
+      window.localStorage.getItem(StorageKey.HIDE_RECOMMENDED_RELAYS_PANEL) === 'true'
 
     const showKindsStr = window.localStorage.getItem(StorageKey.SHOW_KINDS)
     if (!showKindsStr) {
@@ -454,6 +458,15 @@ class LocalStorageService {
   setDismissedTooManyRelaysAlert(dismissed: boolean) {
     this.dismissedTooManyRelaysAlert = dismissed
     window.localStorage.setItem(StorageKey.DISMISSED_TOO_MANY_RELAYS_ALERT, dismissed.toString())
+  }
+
+  getHideRecommendedRelaysPanel() {
+    return this.hideRecommendedRelaysPanel
+  }
+
+  setHideRecommendedRelaysPanel(hide: boolean) {
+    this.hideRecommendedRelaysPanel = hide
+    window.localStorage.setItem(StorageKey.HIDE_RECOMMENDED_RELAYS_PANEL, hide.toString())
   }
 
   getShowKinds() {

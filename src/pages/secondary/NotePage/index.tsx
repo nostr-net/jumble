@@ -20,7 +20,7 @@ import { forwardRef, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import NotFound from './NotFound'
 
-const NotePage = forwardRef(({ id, index }: { id?: string; index?: number }, ref) => {
+const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string; index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
   const { event, isFetching } = useFetchEvent(id)
   const [externalEvent, setExternalEvent] = useState<Event | undefined>(undefined)
@@ -37,7 +37,7 @@ const NotePage = forwardRef(({ id, index }: { id?: string; index?: number }, ref
 
   if (!event && isFetching) {
     return (
-      <SecondaryPageLayout ref={ref} index={index} title={t('Note')}>
+      <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Note')}>
         <div className="px-4 pt-3">
           <div className="flex items-center space-x-2">
             <Skeleton className="w-10 h-10 rounded-full" />
@@ -64,14 +64,14 @@ const NotePage = forwardRef(({ id, index }: { id?: string; index?: number }, ref
   }
   if (!finalEvent) {
     return (
-      <SecondaryPageLayout ref={ref} index={index} title={t('Note')} displayScrollToTopButton>
+      <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Note')} displayScrollToTopButton>
         <NotFound bech32Id={id} onEventFound={setExternalEvent} />
       </SecondaryPageLayout>
     )
   }
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={t('Note')} displayScrollToTopButton>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Note')} displayScrollToTopButton>
       <div className="px-4 pt-3">
         {rootITag && <ExternalRoot value={rootITag[1]} />}
         {rootEventId && rootEventId !== parentEventId && (

@@ -1,6 +1,6 @@
 import { Separator } from '@/components/ui/separator'
 import { toNote } from '@/lib/link'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation } from '@/PageManager'
 import { Event } from 'nostr-tools'
 import Collapsible from '../Collapsible'
 import Note from '../Note'
@@ -20,14 +20,14 @@ export default function MainNoteCard({
   embedded?: boolean
   originalNoteId?: string
 }) {
-  const { push } = useSecondaryPage()
+  const { navigateToNote } = useSmartNoteNavigation()
 
   return (
     <div
       className={className}
       onClick={(e) => {
         e.stopPropagation()
-        push(toNote(originalNoteId ?? event))
+        navigateToNote(toNote(originalNoteId ?? event))
       }}
     >
       <div className={`clickable ${embedded ? 'p-2 sm:p-3 border rounded-lg' : 'py-3'}`}>
