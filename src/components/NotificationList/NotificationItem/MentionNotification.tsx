@@ -52,7 +52,7 @@ export function MentionNotification({
             className=""
             onClick={(e) => {
               e.stopPropagation()
-              push(toNote(parentEventId))
+              navigateToNote(toNote(parentEventId))
             }}
           />
         )
