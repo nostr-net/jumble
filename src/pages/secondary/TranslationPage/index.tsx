@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next'
 import JumbleTranslate from './JumbleTranslate'
 import LibreTranslate from './LibreTranslate'
 
-const TranslationPage = forwardRef(({ index }: { index?: number }, ref) => {
+const TranslationPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { t, i18n } = useTranslation()
   const { config, updateConfig } = useTranslationService()
   const [language, setLanguage] = useState<TLanguage>(i18n.language as TLanguage)
@@ -26,7 +26,7 @@ const TranslationPage = forwardRef(({ index }: { index?: number }, ref) => {
   }
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={t('Translation')}>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Translation')}>
       <div className="px-4 pt-3 space-y-4">
         <div className="space-y-2">
           <Label htmlFor="languages" className="text-base font-medium">

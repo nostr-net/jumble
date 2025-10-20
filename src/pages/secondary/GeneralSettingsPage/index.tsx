@@ -15,7 +15,7 @@ import { ExternalLink } from 'lucide-react'
 import { forwardRef, HTMLProps, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const GeneralSettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
+const GeneralSettingsPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { t, i18n } = useTranslation()
   const [language, setLanguage] = useState<TLanguage>(i18n.language as TLanguage)
   const { themeSetting, setThemeSetting } = useTheme()
@@ -38,7 +38,7 @@ const GeneralSettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
   }
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={t('General')}>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('General')}>
       <div className="space-y-4 mt-3">
         <SettingItem>
           <Label htmlFor="languages" className="text-base font-normal">

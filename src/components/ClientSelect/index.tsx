@@ -1,5 +1,5 @@
 import { Button, ButtonProps } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerOverlay, DrawerTrigger } from '@/components/ui/drawer'
 import { Separator } from '@/components/ui/separator'
 import { ExtendedKind } from '@/constants'
@@ -187,6 +187,10 @@ export default function ClientSelect({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>{trigger}</DialogTrigger>
         <DialogContent className="px-8" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader className="sr-only">
+            <DialogTitle>Client Selection</DialogTitle>
+            <DialogDescription>Select a client for this action</DialogDescription>
+          </DialogHeader>
           {content}
         </DialogContent>
       </Dialog>

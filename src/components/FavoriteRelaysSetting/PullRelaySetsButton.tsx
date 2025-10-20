@@ -71,7 +71,7 @@ export default function PullRelaySetsButton() {
       <DialogContent className="max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle>{t('Select the relay sets you want to pull')}</DialogTitle>
-          <DialogDescription className="hidden" />
+          <DialogDescription className="sr-only">Choose relay sets to import</DialogDescription>
         </DialogHeader>
         <RemoteRelaySets close={() => setOpen(false)} />
       </DialogContent>

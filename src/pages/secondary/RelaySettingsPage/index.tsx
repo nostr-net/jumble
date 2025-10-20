@@ -5,7 +5,7 @@ import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { forwardRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const RelaySettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
+const RelaySettingsPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
   const [tabValue, setTabValue] = useState('favorite-relays')
 
@@ -21,7 +21,7 @@ const RelaySettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
   }, [])
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={t('Relay settings')}>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Relay settings')}>
       <Tabs value={tabValue} onValueChange={setTabValue} className="px-4 py-3 space-y-4">
         <TabsList>
           <TabsTrigger value="favorite-relays">{t('Favorite Relays')}</TabsTrigger>

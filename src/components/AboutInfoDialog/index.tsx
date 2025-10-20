@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer'
 import { CODY_PUBKEY, SILBERENGEL_PUBKEY } from '@/constants'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
@@ -96,7 +96,13 @@ export default function AboutInfoDialog({ children }: { children: React.ReactNod
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent>{content}</DialogContent>
+      <DialogContent>
+        <DialogHeader className="sr-only">
+          <DialogTitle>About</DialogTitle>
+          <DialogDescription>Information about the application</DialogDescription>
+        </DialogHeader>
+        {content}
+      </DialogContent>
     </Dialog>
   )
 }

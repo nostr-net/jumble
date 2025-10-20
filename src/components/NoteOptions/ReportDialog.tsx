@@ -46,9 +46,9 @@ export default function ReportDialog({
         }}
       >
         <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle className="hidden" />
-            <DrawerDescription className="hidden" />
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>Report Content</DrawerTitle>
+            <DrawerDescription>Report inappropriate content</DrawerDescription>
           </DrawerHeader>
           <div className="p-4">
             <ReportContent event={event} closeDialog={closeDialog} />
@@ -68,9 +68,9 @@ export default function ReportDialog({
       }}
     >
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="hidden" />
-          <DialogDescription className="hidden" />
+        <DialogHeader className="sr-only">
+          <DialogTitle>Report Content</DialogTitle>
+          <DialogDescription>Report inappropriate content</DialogDescription>
         </DialogHeader>
         <ReportContent event={event} closeDialog={closeDialog} />
       </DialogContent>

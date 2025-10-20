@@ -96,38 +96,26 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     if (isReplaceableEvent(event.kind) && currentEventKey !== eventIdKey) {
       parentEventKeys.push(eventIdKey)
     }
-    
-    console.log('🔍 ReplyNoteList debug:', {
-      eventId: event.id,
-      currentEventKey,
-      repliesMapSize: repliesMap.size,
-      repliesMapKeys: Array.from(repliesMap.keys()),
-      repliesForEvent: repliesMap.get(currentEventKey)?.events?.length || 0
-    })
+
     
     while (parentEventKeys.length > 0) {
       const events = parentEventKeys.flatMap((id) => repliesMap.get(id)?.events || [])
-      console.log('🔍 Processing events for keys:', parentEventKeys, 'found:', events.length)
       
       events.forEach((evt) => {
         if (replyIdSet.has(evt.id)) return
         if (mutePubkeySet.has(evt.pubkey)) {
-          console.log('🔍 Filtered out muted user:', evt.pubkey)
           return
         }
         if (hideContentMentioningMutedUsers && isMentioningMutedUsers(evt, mutePubkeySet)) {
-          console.log('🔍 Filtered out content mentioning muted users')
           return
         }
 
         replyIdSet.add(evt.id)
         replyEvents.push(evt)
-        console.log('🔍 Added reply:', evt.id, 'kind:', evt.kind)
       })
       parentEventKeys = events.map((evt) => evt.id)
     }
     
-    console.log('🔍 Final replies count:', replyEvents.length)
 
 
     // Apply sorting based on the sort parameter

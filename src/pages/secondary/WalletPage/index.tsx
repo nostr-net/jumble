@@ -21,12 +21,12 @@ import LightningAddressInput from './LightningAddressInput'
 import QuickZapSwitch from './QuickZapSwitch'
 import ZapReplyThresholdInput from './ZapReplyThresholdInput'
 
-const WalletPage = forwardRef(({ index }: { index?: number }, ref) => {
+const WalletPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
   const { isWalletConnected, walletInfo } = useZap()
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={t('Wallet')}>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Wallet')}>
       <div className="px-4 pt-3 space-y-4">
         {isWalletConnected ? (
           <>

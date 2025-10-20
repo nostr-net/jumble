@@ -22,7 +22,7 @@ export default function RawEventDialog({
       <DialogContent className="h-[60vh]">
         <DialogHeader>
           <DialogTitle>Raw Event</DialogTitle>
-          <DialogDescription className="hidden" />
+          <DialogDescription className="sr-only">View the raw event data</DialogDescription>
         </DialogHeader>
         <ScrollArea className="h-full">
           <pre className="text-sm text-muted-foreground select-text">

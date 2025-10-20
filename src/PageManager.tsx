@@ -5,6 +5,12 @@ import { ChevronLeft } from 'lucide-react'
 import NoteListPage from '@/pages/primary/NoteListPage'
 import HomePage from '@/pages/secondary/HomePage'
 import NotePage from '@/pages/secondary/NotePage'
+import SettingsPage from '@/pages/secondary/SettingsPage'
+import RelaySettingsPage from '@/pages/secondary/RelaySettingsPage'
+import WalletPage from '@/pages/secondary/WalletPage'
+import PostSettingsPage from '@/pages/secondary/PostSettingsPage'
+import GeneralSettingsPage from '@/pages/secondary/GeneralSettingsPage'
+import TranslationPage from '@/pages/secondary/TranslationPage'
 import { CurrentRelaysProvider } from '@/providers/CurrentRelaysProvider'
 import { NotificationProvider } from '@/providers/NotificationProvider'
 import { UserPreferencesProvider, useUserPreferences } from '@/providers/UserPreferencesProvider'
@@ -83,7 +89,7 @@ const PrimaryPageContext = createContext<TPrimaryPageContext | undefined>(undefi
 const SecondaryPageContext = createContext<TSecondaryPageContext | undefined>(undefined)
 
 const PrimaryNoteViewContext = createContext<{
-  setPrimaryNoteView: (view: ReactNode | null) => void
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub') => void
 } | undefined>(undefined)
 
 export function usePrimaryPage() {
@@ -121,7 +127,7 @@ export function useSmartNoteNavigation() {
       // When right panel is hidden, show note in primary area
       // Extract note ID from URL (e.g., "/notes/note1..." -> "note1...")
       const noteId = url.replace('/notes/', '')
-      setPrimaryNoteView(<NotePage id={noteId} index={0} hideTitlebar={true} />)
+        setPrimaryNoteView(<NotePage id={noteId} index={0} hideTitlebar={true} />, 'note')
     } else {
       // Normal behavior - use secondary navigation
       pushSecondary(url)
@@ -152,6 +158,37 @@ export function useSmartRelayNavigation() {
   return { navigateToRelay }
 }
 
+// Custom hook for intelligent settings navigation
+export function useSmartSettingsNavigation() {
+  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  const { push: pushSecondary } = useSecondaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
+  
+  const navigateToSettings = (url: string) => {
+    if (hideRecommendedRelaysPanel) {
+      // When right panel is hidden, show settings page in primary area
+      if (url === '/settings') {
+        setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
+      } else if (url === '/settings/relays') {
+        setPrimaryNoteView(<RelaySettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
+      } else if (url === '/settings/wallet') {
+        setPrimaryNoteView(<WalletPage index={0} hideTitlebar={true} />, 'settings-sub')
+      } else if (url === '/settings/posts') {
+        setPrimaryNoteView(<PostSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
+      } else if (url === '/settings/general') {
+        setPrimaryNoteView(<GeneralSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
+      } else if (url === '/settings/translation') {
+        setPrimaryNoteView(<TranslationPage index={0} hideTitlebar={true} />, 'settings-sub')
+      }
+    } else {
+      // Normal behavior - use secondary navigation
+      pushSecondary(url)
+    }
+  }
+  
+  return { navigateToSettings }
+}
+
 function ConditionalHomePage() {
   const { hideRecommendedRelaysPanel } = useUserPreferences()
   
@@ -167,13 +204,15 @@ function MainContentArea({
   currentPrimaryPage, 
   secondaryStack,
   primaryNoteView,
+  primaryViewType,
   setPrimaryNoteView
 }: {
   primaryPages: { name: TPrimaryPageName; element: ReactNode; props?: any }[]
   currentPrimaryPage: TPrimaryPageName
   secondaryStack: { index: number; component: ReactNode }[]
   primaryNoteView: ReactNode | null
-  setPrimaryNoteView: (view: ReactNode | null) => void
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | null
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub') => void
 }) {
   const { hideRecommendedRelaysPanel } = useUserPreferences()
   
@@ -197,7 +236,10 @@ function MainContentArea({
                   onClick={() => setPrimaryNoteView(null)}
                 >
                   <ChevronLeft />
-                  <div className="truncate text-lg font-semibold">Note</div>
+                  <div className="truncate text-lg font-semibold">
+                    {primaryViewType === 'settings' ? 'Settings' : 
+                     primaryViewType === 'settings-sub' ? 'Settings' : 'Note'}
+                  </div>
                 </Button>
               </div>
             </div>
@@ -256,7 +298,13 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     }
   ])
   const [secondaryStack, setSecondaryStack] = useState<TStackItem[]>([])
-  const [primaryNoteView, setPrimaryNoteView] = useState<ReactNode | null>(null)
+  const [primaryNoteView, setPrimaryNoteViewState] = useState<ReactNode | null>(null)
+  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | null>(null)
+  
+  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub') => {
+    setPrimaryNoteViewState(view)
+    setPrimaryViewType(type || null)
+  }
   const ignorePopStateRef = useRef(false)
 
   useEffect(() => {
@@ -529,11 +577,11 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
                   currentPrimaryPage={currentPrimaryPage}
                   secondaryStack={secondaryStack}
                   primaryNoteView={primaryNoteView}
+                  primaryViewType={primaryViewType}
                   setPrimaryNoteView={setPrimaryNoteView}
                 />
               </div>
             </div>
-            <BottomNavigationBar />
             <TooManyRelaysAlertDialog />
             <CreateWalletGuideToast />
               </PrimaryNoteViewContext.Provider>

@@ -8,7 +8,7 @@ import {
   toWallet
 } from '@/lib/link'
 import { cn } from '@/lib/utils'
-import { useSecondaryPage } from '@/PageManager'
+import { useSmartSettingsNavigation } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import {
   Check,
@@ -25,23 +25,23 @@ import {
 import { forwardRef, HTMLProps, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const SettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
+const SettingsPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
   const { pubkey, nsec, ncryptsec } = useNostr()
-  const { push } = useSecondaryPage()
+  const { navigateToSettings } = useSmartSettingsNavigation()
   const [copiedNsec, setCopiedNsec] = useState(false)
   const [copiedNcryptsec, setCopiedNcryptsec] = useState(false)
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={t('Settings')}>
-      <SettingItem className="clickable" onClick={() => push(toGeneralSettings())}>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Settings')}>
+      <SettingItem className="clickable" onClick={() => navigateToSettings(toGeneralSettings())}>
         <div className="flex items-center gap-4">
           <Settings2 />
           <div>{t('General')}</div>
         </div>
         <ChevronRight />
       </SettingItem>
-      <SettingItem className="clickable" onClick={() => push(toRelaySettings())}>
+      <SettingItem className="clickable" onClick={() => navigateToSettings(toRelaySettings())}>
         <div className="flex items-center gap-4">
           <Server />
           <div>{t('Relays')}</div>
@@ -49,7 +49,7 @@ const SettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
         <ChevronRight />
       </SettingItem>
       {!!pubkey && (
-        <SettingItem className="clickable" onClick={() => push(toTranslation())}>
+        <SettingItem className="clickable" onClick={() => navigateToSettings(toTranslation())}>
           <div className="flex items-center gap-4">
             <Languages />
             <div>{t('Translation')}</div>
@@ -58,7 +58,7 @@ const SettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
         </SettingItem>
       )}
       {!!pubkey && (
-        <SettingItem className="clickable" onClick={() => push(toWallet())}>
+        <SettingItem className="clickable" onClick={() => navigateToSettings(toWallet())}>
           <div className="flex items-center gap-4">
             <Wallet />
             <div>{t('Wallet')}</div>
@@ -67,7 +67,7 @@ const SettingsPage = forwardRef(({ index }: { index?: number }, ref) => {
         </SettingItem>
       )}
       {!!pubkey && (
-        <SettingItem className="clickable" onClick={() => push(toPostSettings())}>
+        <SettingItem className="clickable" onClick={() => navigateToSettings(toPostSettings())}>
           <div className="flex items-center gap-4">
             <PencilLine />
             <div>{t('Post settings')}</div>
