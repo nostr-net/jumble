@@ -53,6 +53,12 @@ class MediaManagerService {
     }
 
     play(this.currentMedia).catch((error) => {
+      // Don't log expected AbortError when media is interrupted
+      if (error instanceof Error && error.name === 'AbortError') {
+        // This is expected when media is interrupted by pause() or other media
+        return
+      }
+      // Log other unexpected errors
       console.error('Error playing media:', error)
       this.currentMedia = null
     })

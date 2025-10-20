@@ -5,6 +5,7 @@ import mediaManager from '@/services/media-manager.service'
 import { Pause, Play } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import ExternalLink from '../ExternalLink'
+import { MediaErrorBoundary } from '../MediaErrorBoundary'
 
 interface AudioPlayerProps {
   src: string
@@ -85,36 +86,47 @@ export default function AudioPlayer({ src, className }: AudioPlayerProps) {
   }
 
   return (
-    <div
-      className={cn(
-        'flex items-center gap-3 py-2 pl-2 pr-4 border rounded-full max-w-md',
-        className
-      )}
-      onClick={(e) => e.stopPropagation()}
+    <MediaErrorBoundary
+      fallback={<ExternalLink url={src} />}
+      onError={(error) => {
+        // Don't log expected media errors
+        if (error.name !== 'AbortError' && !error.message.includes('play() request was interrupted')) {
+          console.warn('Audio player error:', error)
+        }
+        setError(true)
+      }}
     >
-      <audio ref={audioRef} src={src} preload="metadata" onError={() => setError(false)} />
+      <div
+        className={cn(
+          'flex items-center gap-3 py-2 pl-2 pr-4 border rounded-full max-w-md',
+          className
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <audio ref={audioRef} src={src} preload="metadata" onError={() => setError(false)} />
 
-      {/* Play/Pause Button */}
-      <Button size="icon" className="rounded-full shrink-0" onClick={togglePlay}>
-        {isPlaying ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
-      </Button>
+        {/* Play/Pause Button */}
+        <Button size="icon" className="rounded-full shrink-0" onClick={togglePlay}>
+          {isPlaying ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
+        </Button>
 
-      {/* Progress Section */}
-      <div className="flex-1 relative">
-        <Slider
-          value={[currentTime]}
-          max={duration || 100}
-          step={1}
-          onValueChange={handleSeek}
-          hideThumb
-          enableHoverAnimation
-        />
+        {/* Progress Section */}
+        <div className="flex-1 relative">
+          <Slider
+            value={[currentTime]}
+            max={duration || 100}
+            step={1}
+            onValueChange={handleSeek}
+            hideThumb
+            enableHoverAnimation
+          />
+        </div>
+
+        <div className="text-sm font-mono text-muted-foreground">
+          {formatTime(Math.max(duration - currentTime, 0))}
+        </div>
       </div>
-
-      <div className="text-sm font-mono text-muted-foreground">
-        {formatTime(Math.max(duration - currentTime, 0))}
-      </div>
-    </div>
+    </MediaErrorBoundary>
   )
 }
 
