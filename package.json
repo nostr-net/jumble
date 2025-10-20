@@ -1,6 +1,6 @@
 {
   "name": "jumble",
-  "version": "10.9.0",
+  "version": "10.10.0",
   "description": "A user-friendly Nostr client focused on relay feed browsing and relay discovery",
   "private": true,
   "type": "module",
