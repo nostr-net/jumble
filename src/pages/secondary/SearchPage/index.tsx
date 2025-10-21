@@ -49,6 +49,7 @@ const SearchPage = forwardRef(({ index, hideTitlebar = false }: { index?: number
     <SecondaryPageLayout
       ref={ref}
       index={index}
+      title={hideTitlebar ? undefined : "Search"}
       titlebar={hideTitlebar ? undefined : (
         <div className="flex items-center gap-1 h-full">
           <Button variant="ghost" size="titlebar-icon" onClick={() => pop()}>
