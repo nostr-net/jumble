@@ -21,7 +21,7 @@ export default function ReplySort({ selectedSort, onSortChange }: { selectedSort
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="flex items-center gap-2 h-8">
+        <Button variant="outline" className="flex items-center gap-1 h-8 px-2">
           <selectedOption.icon className="w-4 h-4" />
           <span className="text-sm">{selectedOption.label}</span>
           <ChevronDown className="w-4 h-4" />
