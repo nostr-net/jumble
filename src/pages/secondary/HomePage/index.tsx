@@ -15,7 +15,7 @@ const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
   const { t } = useTranslation()
   const { navigate } = usePrimaryPage()
   const { navigateToRelay } = useSmartRelayNavigation()
-  const { updateHideRecommendedRelaysPanel } = useUserPreferences()
+  const { updateShowRecommendedRelaysPanel } = useUserPreferences()
   const [recommendedRelayInfos, setRecommendedRelayInfos] = useState<TRelayInfo[]>([])
 
   useEffect(() => {
@@ -55,7 +55,7 @@ const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
           variant="ghost"
           size="icon"
           className="h-6 w-6"
-          onClick={() => updateHideRecommendedRelaysPanel(true)}
+          onClick={() => updateShowRecommendedRelaysPanel(false)}
           title={t('Close')}
         >
           <X className="h-4 w-4" />
