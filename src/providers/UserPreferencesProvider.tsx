@@ -5,8 +5,8 @@ import { createContext, useContext, useState } from 'react'
 type TUserPreferencesContext = {
   notificationListStyle: TNotificationStyle
   updateNotificationListStyle: (style: TNotificationStyle) => void
-  hideRecommendedRelaysPanel: boolean
-  updateHideRecommendedRelaysPanel: (hide: boolean) => void
+  showRecommendedRelaysPanel: boolean
+  updateShowRecommendedRelaysPanel: (show: boolean) => void
 }
 
 const UserPreferencesContext = createContext<TUserPreferencesContext | undefined>(undefined)
@@ -23,8 +23,8 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
   const [notificationListStyle, setNotificationListStyle] = useState(
     storage.getNotificationListStyle()
   )
-  const [hideRecommendedRelaysPanel, setHideRecommendedRelaysPanel] = useState(
-    storage.getHideRecommendedRelaysPanel()
+  const [showRecommendedRelaysPanel, setShowRecommendedRelaysPanel] = useState(
+    storage.getShowRecommendedRelaysPanel()
   )
 
   const updateNotificationListStyle = (style: TNotificationStyle) => {
@@ -32,9 +32,9 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
     storage.setNotificationListStyle(style)
   }
 
-  const updateHideRecommendedRelaysPanel = (hide: boolean) => {
-    setHideRecommendedRelaysPanel(hide)
-    storage.setHideRecommendedRelaysPanel(hide)
+  const updateShowRecommendedRelaysPanel = (show: boolean) => {
+    setShowRecommendedRelaysPanel(show)
+    storage.setShowRecommendedRelaysPanel(show)
   }
 
   return (
@@ -42,8 +42,8 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
       value={{
         notificationListStyle,
         updateNotificationListStyle,
-        hideRecommendedRelaysPanel,
-        updateHideRecommendedRelaysPanel
+        showRecommendedRelaysPanel,
+        updateShowRecommendedRelaysPanel
       }}
     >
       {children}

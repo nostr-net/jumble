@@ -30,7 +30,7 @@ const GeneralSettingsPage = forwardRef(({ index, hideTitlebar = false }: { index
     setMediaAutoLoadPolicy
   } = useContentPolicy()
   const { hideUntrustedNotes, updateHideUntrustedNotes } = useUserTrust()
-  const { notificationListStyle, updateNotificationListStyle } = useUserPreferences()
+  const { notificationListStyle, updateNotificationListStyle, showRecommendedRelaysPanel, updateShowRecommendedRelaysPanel } = useUserPreferences()
 
   const handleLanguageChange = (value: TLanguage) => {
     i18n.changeLanguage(value)
@@ -150,6 +150,19 @@ const GeneralSettingsPage = forwardRef(({ index, hideTitlebar = false }: { index
             {t('Show NSFW content by default')}
           </Label>
           <Switch id="show-nsfw" checked={defaultShowNsfw} onCheckedChange={setDefaultShowNsfw} />
+        </SettingItem>
+        <SettingItem>
+          <Label htmlFor="show-recommended-relays" className="text-base font-normal">
+            <div>{t('Show recommended relays panel')}</div>
+            <div className="text-muted-foreground">
+              {t('Display the right-side panel with recommended relays on desktop')}
+            </div>
+          </Label>
+          <Switch 
+            id="show-recommended-relays" 
+            checked={showRecommendedRelaysPanel} 
+            onCheckedChange={updateShowRecommendedRelaysPanel} 
+          />
         </SettingItem>
         <SettingItem>
           <div>

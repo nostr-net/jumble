@@ -296,6 +296,8 @@ export default {
     Article: 'Artikel',
     Unfavorite: 'Nicht mehr favorisieren',
     'Recommended relays': 'Empfohlene Relays',
+    'Show recommended relays panel': 'Empfohlene Relays-Panel anzeigen',
+    'Display the right-side panel with recommended relays on desktop': 'Das rechte Panel mit empfohlenen Relays auf dem Desktop anzeigen',
     'Blossom server URLs': 'Blossom-Server-URLs',
     'You need to add at least one blossom server in order to upload media files.':
       'Du musst mindestens einen Blossom-Server hinzufügen, um Mediendateien hochladen zu können.',

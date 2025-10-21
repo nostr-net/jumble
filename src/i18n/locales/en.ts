@@ -301,6 +301,8 @@ export default {
     Article: 'Article',
     Unfavorite: 'Unfavorite',
     'Recommended relays': 'Recommended relays',
+    'Show recommended relays panel': 'Show recommended relays panel',
+    'Display the right-side panel with recommended relays on desktop': 'Display the right-side panel with recommended relays on desktop',
     'Blossom server URLs': 'Blossom server URLs',
     'You need to add at least one blossom server in order to upload media files.':
       'You need to add at least one blossom server in order to upload media files.',

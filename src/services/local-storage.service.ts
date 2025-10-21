@@ -49,7 +49,7 @@ class LocalStorageService {
   private hideContentMentioningMutedUsers: boolean = false
   private notificationListStyle: TNotificationStyle = NOTIFICATION_LIST_STYLE.DETAILED
   private mediaAutoLoadPolicy: TMediaAutoLoadPolicy = MEDIA_AUTO_LOAD_POLICY.ALWAYS
-  private hideRecommendedRelaysPanel: boolean = false
+  private showRecommendedRelaysPanel: boolean = true
   private shownCreateWalletGuideToastPubkeys: Set<string> = new Set()
 
   constructor() {
@@ -165,8 +165,8 @@ class LocalStorageService {
     this.dismissedTooManyRelaysAlert =
       window.localStorage.getItem(StorageKey.DISMISSED_TOO_MANY_RELAYS_ALERT) === 'true'
 
-    this.hideRecommendedRelaysPanel =
-      window.localStorage.getItem(StorageKey.HIDE_RECOMMENDED_RELAYS_PANEL) === 'true'
+    const storedValue = window.localStorage.getItem(StorageKey.SHOW_RECOMMENDED_RELAYS_PANEL)
+    this.showRecommendedRelaysPanel = storedValue !== 'false' // Default to true if not explicitly set to false
 
     const showKindsStr = window.localStorage.getItem(StorageKey.SHOW_KINDS)
     if (!showKindsStr) {
@@ -460,13 +460,13 @@ class LocalStorageService {
     window.localStorage.setItem(StorageKey.DISMISSED_TOO_MANY_RELAYS_ALERT, dismissed.toString())
   }
 
-  getHideRecommendedRelaysPanel() {
-    return this.hideRecommendedRelaysPanel
+  getShowRecommendedRelaysPanel() {
+    return this.showRecommendedRelaysPanel
   }
 
-  setHideRecommendedRelaysPanel(hide: boolean) {
-    this.hideRecommendedRelaysPanel = hide
-    window.localStorage.setItem(StorageKey.HIDE_RECOMMENDED_RELAYS_PANEL, hide.toString())
+  setShowRecommendedRelaysPanel(show: boolean) {
+    this.showRecommendedRelaysPanel = show
+    window.localStorage.setItem(StorageKey.SHOW_RECOMMENDED_RELAYS_PANEL, show.toString())
   }
 
   getShowKinds() {

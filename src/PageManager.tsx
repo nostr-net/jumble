@@ -13,7 +13,7 @@ import GeneralSettingsPage from '@/pages/secondary/GeneralSettingsPage'
 import TranslationPage from '@/pages/secondary/TranslationPage'
 import { CurrentRelaysProvider } from '@/providers/CurrentRelaysProvider'
 import { NotificationProvider } from '@/providers/NotificationProvider'
-import { UserPreferencesProvider, useUserPreferences } from '@/providers/UserPreferencesProvider'
+import { useUserPreferences } from '@/providers/UserPreferencesProvider'
 import { TPageRef } from '@/types'
 import {
   cloneElement,
@@ -118,12 +118,12 @@ export function usePrimaryNoteView() {
 
 // Custom hook for intelligent note navigation
 export function useSmartNoteNavigation() {
-  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  const { showRecommendedRelaysPanel } = useUserPreferences()
   const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToNote = (url: string) => {
-    if (hideRecommendedRelaysPanel) {
+    if (!showRecommendedRelaysPanel) {
       // When right panel is hidden, show note in primary area
       // Extract note ID from URL (e.g., "/notes/note1..." -> "note1...")
       const noteId = url.replace('/notes/', '')
@@ -139,12 +139,12 @@ export function useSmartNoteNavigation() {
 
 // Custom hook for intelligent relay navigation
 export function useSmartRelayNavigation() {
-  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  const { showRecommendedRelaysPanel } = useUserPreferences()
   const { push: pushSecondary } = useSecondaryPage()
   const { navigate: navigatePrimary } = usePrimaryPage()
   
   const navigateToRelay = (url: string) => {
-    if (hideRecommendedRelaysPanel) {
+    if (!showRecommendedRelaysPanel) {
       // When right panel is hidden, navigate to relay page in primary area
       // Extract relay URL from the path (e.g., "/relays/wss%3A%2F%2F..." -> "wss://...")
       const relayUrl = url.startsWith('/relays/') ? decodeURIComponent(url.replace('/relays/', '')) : url
@@ -160,12 +160,12 @@ export function useSmartRelayNavigation() {
 
 // Custom hook for intelligent settings navigation
 export function useSmartSettingsNavigation() {
-  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  const { showRecommendedRelaysPanel } = useUserPreferences()
   const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToSettings = (url: string) => {
-    if (hideRecommendedRelaysPanel) {
+    if (!showRecommendedRelaysPanel) {
       // When right panel is hidden, show settings page in primary area
       if (url === '/settings') {
         setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
@@ -190,9 +190,9 @@ export function useSmartSettingsNavigation() {
 }
 
 function ConditionalHomePage() {
-  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  const { showRecommendedRelaysPanel } = useUserPreferences()
   
-  if (hideRecommendedRelaysPanel) {
+  if (!showRecommendedRelaysPanel) {
     return null
   }
   
@@ -214,16 +214,16 @@ function MainContentArea({
   primaryViewType: 'note' | 'settings' | 'settings-sub' | null
   setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub') => void
 }) {
-  const { hideRecommendedRelaysPanel } = useUserPreferences()
+  const { showRecommendedRelaysPanel } = useUserPreferences()
   
-  // If recommended relays panel is hidden, use single column layout
-  // Otherwise use two-column grid layout
-  const gridClass = hideRecommendedRelaysPanel ? "grid-cols-1" : "grid-cols-2"
+  // If recommended relays panel is shown, use two-column layout
+  // Otherwise use single column layout
+  const gridClass = showRecommendedRelaysPanel ? "grid-cols-2" : "grid-cols-1"
   
   return (
     <div className={`grid ${gridClass} gap-2 w-full pr-2 py-2`}>
       <div className="rounded-lg shadow-lg bg-background overflow-hidden">
-        {hideRecommendedRelaysPanel && primaryNoteView ? (
+        {!showRecommendedRelaysPanel && primaryNoteView ? (
           // Show note view with back button when right panel is hidden
           <div className="flex flex-col h-full w-full">
             <div className="flex gap-1 p-1 items-center justify-between font-semibold border-b">
@@ -262,7 +262,7 @@ function MainContentArea({
           ))
         )}
       </div>
-      {!hideRecommendedRelaysPanel && (
+      {showRecommendedRelaysPanel && (
         <div className="rounded-lg shadow-lg bg-background overflow-hidden">
           {secondaryStack.map((item, index) => (
             <div
@@ -507,39 +507,37 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
               : 0
           }}
         >
-          <CurrentRelaysProvider>
-            <NotificationProvider>
-              <UserPreferencesProvider>
-                <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView }}>
-              {!!secondaryStack.length &&
-                secondaryStack.map((item, index) => (
-                  <div
-                    key={item.index}
-                    style={{
-                      display: index === secondaryStack.length - 1 ? 'block' : 'none'
-                    }}
-                  >
-                    {item.component}
-                  </div>
-                ))}
-              {primaryPages.map(({ name, element, props }) => (
+        <CurrentRelaysProvider>
+          <NotificationProvider>
+            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView }}>
+            {!!secondaryStack.length &&
+              secondaryStack.map((item, index) => (
                 <div
-                  key={name}
+                  key={item.index}
                   style={{
-                    display:
-                      secondaryStack.length === 0 && currentPrimaryPage === name ? 'block' : 'none'
+                    display: index === secondaryStack.length - 1 ? 'block' : 'none'
                   }}
                 >
-                  {props ? cloneElement(element as React.ReactElement, props) : element}
+                  {item.component}
                 </div>
               ))}
-              <BottomNavigationBar />
-              <TooManyRelaysAlertDialog />
-              <CreateWalletGuideToast />
-                </PrimaryNoteViewContext.Provider>
-              </UserPreferencesProvider>
-            </NotificationProvider>
-          </CurrentRelaysProvider>
+            {primaryPages.map(({ name, element, props }) => (
+              <div
+                key={name}
+                style={{
+                  display:
+                    secondaryStack.length === 0 && currentPrimaryPage === name ? 'block' : 'none'
+                }}
+              >
+                {props ? cloneElement(element as React.ReactElement, props) : element}
+              </div>
+            ))}
+            <BottomNavigationBar />
+            <TooManyRelaysAlertDialog />
+            <CreateWalletGuideToast />
+            </PrimaryNoteViewContext.Provider>
+          </NotificationProvider>
+        </CurrentRelaysProvider>
         </SecondaryPageContext.Provider>
       </PrimaryPageContext.Provider>
     )
@@ -562,8 +560,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
       >
         <CurrentRelaysProvider>
           <NotificationProvider>
-            <UserPreferencesProvider>
-              <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView }}>
+            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView }}>
             <div className="flex flex-col items-center bg-surface-background">
               <div
                 className="flex h-[var(--vh)] w-full bg-surface-background"
@@ -584,8 +581,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
             </div>
             <TooManyRelaysAlertDialog />
             <CreateWalletGuideToast />
-              </PrimaryNoteViewContext.Provider>
-            </UserPreferencesProvider>
+            </PrimaryNoteViewContext.Provider>
           </NotificationProvider>
         </CurrentRelaysProvider>
       </SecondaryPageContext.Provider>

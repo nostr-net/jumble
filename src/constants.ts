@@ -45,7 +45,7 @@ export const StorageKey = {
   NOTIFICATION_LIST_STYLE: 'notificationListStyle',
   MEDIA_AUTO_LOAD_POLICY: 'mediaAutoLoadPolicy',
   SHOWN_CREATE_WALLET_GUIDE_TOAST_PUBKEYS: 'shownCreateWalletGuideToastPubkeys',
-  HIDE_RECOMMENDED_RELAYS_PANEL: 'hideRecommendedRelaysPanel',
+  SHOW_RECOMMENDED_RELAYS_PANEL: 'showRecommendedRelaysPanel',
   MEDIA_UPLOAD_SERVICE: 'mediaUploadService', // deprecated
   HIDE_UNTRUSTED_EVENTS: 'hideUntrustedEvents', // deprecated
   ACCOUNT_RELAY_LIST_EVENT_MAP: 'accountRelayListEventMap', // deprecated
@@ -65,10 +65,7 @@ export const BIG_RELAY_URLS = [
   'wss://theforest.nostr1.com',
   'wss://orly-relay.imwald.eu',
   'wss://nostr.land',
-  'wss://nostr.wine',
-  'wss://nostr.sovbit.host',
-  'wss://nostr21.com',
-  'wss://thecitadel.nostr1.com'
+  'wss://thecitadel.nostr1.com',
 ]
 
 // Optimized relay list for read operations (includes aggregator)

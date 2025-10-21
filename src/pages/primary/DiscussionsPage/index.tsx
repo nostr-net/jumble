@@ -145,10 +145,11 @@ const DiscussionsPage = forwardRef((_, ref) => {
         }
       }
       
-      // Use favorite relays from provider (includes stored relay sets) + user's read relays or fast read relays
+      // Use favorite relays from provider (includes stored relay sets) + user's read relays + fast read relays
       const allRawRelays = [
         ...favoriteRelays,
-        ...(userReadRelays.length > 0 ? userReadRelays : FAST_READ_RELAY_URLS)
+        ...userReadRelays,
+        ...FAST_READ_RELAY_URLS
       ]
       
       // Normalize and deduplicate all relays
