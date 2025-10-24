@@ -129,10 +129,12 @@ export default function Image({
           alt={finalAlt}
           decoding="async"
           loading="lazy"
+          draggable={false}
           onLoad={handleLoad}
           onError={handleError}
           className={cn(
-            'object-cover rounded-lg w-full h-full transition-opacity duration-500',
+            'object-cover rounded-lg w-full h-full transition-opacity duration-500 pointer-events-none',
+            isLoading ? 'opacity-0' : 'opacity-100',
             className
           )}
           width={dim?.width}
