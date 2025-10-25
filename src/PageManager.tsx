@@ -2,7 +2,7 @@ import Sidebar from '@/components/Sidebar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ChevronLeft } from 'lucide-react'
-import NoteListPage from '@/pages/primary/NoteListPage'
+import NoteListPage from '@/pages/secondary/NoteListPage'
 import HomePage from '@/pages/secondary/HomePage'
 import NotePage from '@/pages/secondary/NotePage'
 import SettingsPage from '@/pages/secondary/SettingsPage'
@@ -90,8 +90,8 @@ const PrimaryPageContext = createContext<TPrimaryPageContext | undefined>(undefi
 const SecondaryPageContext = createContext<TSecondaryPageContext | undefined>(undefined)
 
 const PrimaryNoteViewContext = createContext<{
-  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile') => void
-  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | null
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag') => void
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | null
 } | undefined>(undefined)
 
 export function usePrimaryPage() {
@@ -183,6 +183,31 @@ export function useSmartProfileNavigation() {
   return { navigateToProfile }
 }
 
+// Custom hook for intelligent hashtag navigation
+export function useSmartHashtagNavigation() {
+  const { showRecommendedRelaysPanel } = useUserPreferences()
+  const { push: pushSecondary } = useSecondaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
+  
+  const navigateToHashtag = (url: string) => {
+    if (!showRecommendedRelaysPanel) {
+      // When right panel is hidden, show hashtag feed in primary area
+      // Extract hashtag from URL (e.g., "/notes?t=hashtag" -> "hashtag")
+      const urlObj = new URL(url, window.location.origin)
+      const hashtag = urlObj.searchParams.get('t')
+      if (hashtag) {
+        window.history.replaceState(null, '', url)
+        setPrimaryNoteView(<NoteListPage index={0} hideTitlebar={true} />, 'hashtag')
+      }
+    } else {
+      // Normal behavior - use secondary navigation
+      pushSecondary(url)
+    }
+  }
+  
+  return { navigateToHashtag }
+}
+
 // Custom hook for intelligent settings navigation
 export function useSmartSettingsNavigation() {
   const { showRecommendedRelaysPanel } = useUserPreferences()
@@ -242,8 +267,8 @@ function MainContentArea({
   currentPrimaryPage: TPrimaryPageName
   secondaryStack: { index: number; component: ReactNode }[]
   primaryNoteView: ReactNode | null
-  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | null
-  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile') => void
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | null
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag') => void
 }) {
   const { showRecommendedRelaysPanel } = useUserPreferences()
   
@@ -270,7 +295,8 @@ function MainContentArea({
                   <div className="truncate text-lg font-semibold">
                     {primaryViewType === 'settings' ? 'Settings' : 
                      primaryViewType === 'settings-sub' ? 'Settings' : 
-                     primaryViewType === 'profile' ? 'Back' : 'Note'}
+                     primaryViewType === 'profile' ? 'Back' : 
+                     primaryViewType === 'hashtag' ? 'Hashtag' : 'Note'}
                   </div>
                 </Button>
               </div>
@@ -332,10 +358,10 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   ])
   const [secondaryStack, setSecondaryStack] = useState<TStackItem[]>([])
   const [primaryNoteView, setPrimaryNoteViewState] = useState<ReactNode | null>(null)
-  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | null>(null)
+  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | null>(null)
   const [savedPrimaryPage, setSavedPrimaryPage] = useState<TPrimaryPageName | null>(null)
   
-  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile') => {
+  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag') => {
     if (view && !primaryNoteView) {
       // Saving current primary page before showing overlay
       setSavedPrimaryPage(currentPrimaryPage)

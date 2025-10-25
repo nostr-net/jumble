@@ -1,14 +1,22 @@
 import { toNoteList } from '@/lib/link'
-import { SecondaryPageLink } from '@/PageManager'
+import { useSmartHashtagNavigation } from '@/PageManager'
 
 export function EmbeddedHashtag({ hashtag }: { hashtag: string }) {
+  const { navigateToHashtag } = useSmartHashtagNavigation()
+  
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const url = toNoteList({ hashtag: hashtag.replace('#', '') })
+    navigateToHashtag(url)
+  }
+  
   return (
-    <SecondaryPageLink
-      className="text-primary hover:underline"
-      to={toNoteList({ hashtag: hashtag.replace('#', '') })}
-      onClick={(e) => e.stopPropagation()}
+    <button
+      className="text-primary hover:underline cursor-pointer"
+      onClick={handleClick}
     >
       {hashtag}
-    </SecondaryPageLink>
+    </button>
   )
 }
