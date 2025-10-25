@@ -233,7 +233,7 @@ export default function TrendingNotes() {
       }
 
       isInitializing = true
-      const relays = getRelays
+      const relays = getRelays // This is already a value from useMemo
       
       // Prevent running if we have no relays
       if (relays.length === 0) {
@@ -423,10 +423,16 @@ export default function TrendingNotes() {
     const idSet = new Set<string>()
     
     // Use appropriate data source based on tab and filter
-    let sourceEvents = trendingNotes
+    let sourceEvents: NostrEvent[] = []
     
-    if (activeTab === 'hashtags') {
-      // Use cache events for hashtags tab, fallback to trending notes if cache is empty
+    if (activeTab === 'band') {
+      // "on Band" tab: use trending notes from nostr.band API
+      sourceEvents = trendingNotes
+    } else if (activeTab === 'relays') {
+      // "on your relays" tab: use cache events from user's relays
+      sourceEvents = cacheEvents
+    } else if (activeTab === 'hashtags') {
+      // Hashtags tab: use cache events for hashtag analysis
       sourceEvents = cacheEvents.length > 0 ? cacheEvents : trendingNotes
       console.log('[TrendingNotes] Hashtags tab - using ALL events from cache')
       console.log('[TrendingNotes] Hashtags tab - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
@@ -517,7 +523,7 @@ export default function TrendingNotes() {
     })
 
     return filtered.slice(0, showCount)
-  }, [trendingNotes, hideUntrustedNotes, showCount, isEventDeleted, activeTab, listEventIds, bookmarkFilter, followsBookmarkEventIds, hashtagFilter, selectedHashtag, sortOrder, zapReplyThreshold, cacheEvents])
+  }, [trendingNotes, hideUntrustedNotes, showCount, isEventDeleted, isUserTrusted, activeTab, listEventIds, bookmarkFilter, followsBookmarkEventIds, hashtagFilter, selectedHashtag, sortOrder, zapReplyThreshold, cacheEvents])
 
 
   useEffect(() => {
@@ -744,13 +750,21 @@ export default function TrendingNotes() {
       {filteredEvents.map((event) => (
         <NoteCard key={event.id} className="w-full" event={event} />
       ))}
-      {showCount < trendingNotes.length || loading ? (
-        <div ref={bottomRef}>
-          <NoteCardLoadingSkeleton />
-        </div>
-      ) : (
-        <div className="text-center text-sm text-muted-foreground mt-2">{t('no more notes')}</div>
-      )}
+      {(() => {
+        // Determine the current data source length based on active tab
+        const currentDataLength = activeTab === 'band' ? trendingNotes.length : 
+                                   activeTab === 'relays' || activeTab === 'hashtags' ? cacheEvents.length : 
+                                   trendingNotes.length
+        
+        if (showCount < currentDataLength || loading) {
+          return (
+            <div ref={bottomRef}>
+              <NoteCardLoadingSkeleton />
+            </div>
+          )
+        }
+        return <div className="text-center text-sm text-muted-foreground mt-2">{t('no more notes')}</div>
+      })()}
     </div>
   )
 }
