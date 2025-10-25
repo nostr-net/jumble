@@ -90,7 +90,7 @@ const PrimaryPageContext = createContext<TPrimaryPageContext | undefined>(undefi
 const SecondaryPageContext = createContext<TSecondaryPageContext | undefined>(undefined)
 
 const PrimaryNoteViewContext = createContext<{
-  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub') => void
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile') => void
 } | undefined>(undefined)
 
 export function usePrimaryPage() {
@@ -170,7 +170,7 @@ export function useSmartProfileNavigation() {
       // When right panel is hidden, show profile in primary area
       // Extract profile ID from URL (e.g., "/users/npub1..." -> "npub1...")
       const profileId = url.replace('/users/', '')
-      setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'settings')
+      setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
     } else {
       // Normal behavior - use secondary navigation
       pushSecondary(url)
@@ -233,8 +233,8 @@ function MainContentArea({
   currentPrimaryPage: TPrimaryPageName
   secondaryStack: { index: number; component: ReactNode }[]
   primaryNoteView: ReactNode | null
-  primaryViewType: 'note' | 'settings' | 'settings-sub' | null
-  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub') => void
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | null
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile') => void
 }) {
   const { showRecommendedRelaysPanel } = useUserPreferences()
   
@@ -260,7 +260,8 @@ function MainContentArea({
                   <ChevronLeft />
                   <div className="truncate text-lg font-semibold">
                     {primaryViewType === 'settings' ? 'Settings' : 
-                     primaryViewType === 'settings-sub' ? 'Settings' : 'Note'}
+                     primaryViewType === 'settings-sub' ? 'Settings' : 
+                     primaryViewType === 'profile' ? 'Back' : 'Note'}
                   </div>
                 </Button>
               </div>
@@ -321,9 +322,9 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   ])
   const [secondaryStack, setSecondaryStack] = useState<TStackItem[]>([])
   const [primaryNoteView, setPrimaryNoteViewState] = useState<ReactNode | null>(null)
-  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | null>(null)
+  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | null>(null)
   
-  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub') => {
+  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile') => {
     setPrimaryNoteViewState(view)
     setPrimaryViewType(type || null)
   }
