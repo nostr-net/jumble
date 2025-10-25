@@ -5,9 +5,17 @@ import relayInfoService from '@/services/relay-info.service'
 import { useEffect, useState } from 'react'
 
 export default function RelaysFeed() {
+  console.log('RelaysFeed component rendering')
   const { feedInfo, relayUrls } = useFeed()
   const [isReady, setIsReady] = useState(false)
   const [areAlgoRelays, setAreAlgoRelays] = useState(false)
+
+  // Debug logging
+  console.log('RelaysFeed debug:', {
+    feedInfo,
+    relayUrls,
+    isReady
+  })
 
   useEffect(() => {
     const init = async () => {
@@ -26,9 +34,12 @@ export default function RelaysFeed() {
     return null
   }
 
+  const subRequests = [{ urls: relayUrls, filter: {} }]
+  console.log('RelaysFeed rendering NormalFeed with:', { subRequests, relayUrls, areAlgoRelays })
+
   return (
     <NormalFeed
-      subRequests={[{ urls: relayUrls, filter: {} }]}
+      subRequests={subRequests}
       areAlgoRelays={areAlgoRelays}
       isMainFeed
       showRelayCloseReason

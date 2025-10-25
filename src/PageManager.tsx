@@ -2,7 +2,7 @@ import Sidebar from '@/components/Sidebar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ChevronLeft } from 'lucide-react'
-import NoteListPage from '@/pages/secondary/NoteListPage'
+import NoteListPage from '@/pages/primary/NoteListPage'
 import HomePage from '@/pages/secondary/HomePage'
 import NotePage from '@/pages/secondary/NotePage'
 import SettingsPage from '@/pages/secondary/SettingsPage'
@@ -197,7 +197,7 @@ export function useSmartHashtagNavigation() {
       const hashtag = urlObj.searchParams.get('t')
       if (hashtag) {
         window.history.replaceState(null, '', url)
-        setPrimaryNoteView(<NoteListPage index={0} hideTitlebar={true} />, 'hashtag')
+        setPrimaryNoteView(<NoteListPage />, 'hashtag')
       }
     } else {
       // Normal behavior - use secondary navigation
@@ -272,6 +272,13 @@ function MainContentArea({
 }) {
   const { showRecommendedRelaysPanel } = useUserPreferences()
   
+  console.log('MainContentArea rendering:', { 
+    currentPrimaryPage, 
+    primaryPages: primaryPages.map(p => p.name), 
+    showRecommendedRelaysPanel,
+    primaryNoteView: !!primaryNoteView
+  })
+  
   // If recommended relays panel is shown, use two-column layout
   // Otherwise use single column layout
   const gridClass = showRecommendedRelaysPanel ? "grid-cols-2" : "grid-cols-1"
@@ -307,17 +314,29 @@ function MainContentArea({
           </div>
         ) : (
           // Show normal primary pages
-          primaryPages.map(({ name, element, props }) => (
-            <div
-              key={name}
-              className="flex flex-col h-full w-full"
-              style={{
-                display: currentPrimaryPage === name ? 'block' : 'none'
-              }}
-            >
-              {props ? cloneElement(element as React.ReactElement, props) : element}
-            </div>
-          ))
+          primaryPages.map(({ name, element, props }) => {
+            const isCurrentPage = currentPrimaryPage === name
+            console.log(`Primary page ${name}:`, { isCurrentPage, currentPrimaryPage })
+            return (
+              <div
+                key={name}
+                className="flex flex-col h-full w-full"
+                style={{
+                  display: isCurrentPage ? 'block' : 'none'
+                }}
+              >
+                {(() => {
+                  try {
+                    console.log(`Rendering ${name} component`)
+                    return props ? cloneElement(element as React.ReactElement, props) : element
+                  } catch (error) {
+                    console.error(`Error rendering ${name} component:`, error)
+                    return <div>Error rendering {name}: {error instanceof Error ? error.message : String(error)}</div>
+                  }
+                })()}
+              </div>
+            )
+          })
         )}
       </div>
       {showRecommendedRelaysPanel && (

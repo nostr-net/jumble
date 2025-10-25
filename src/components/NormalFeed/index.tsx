@@ -20,6 +20,7 @@ const NormalFeed = forwardRef<TNoteListRef, {
   isMainFeed = false,
   showRelayCloseReason = false
 }, ref) {
+  console.log('NormalFeed component rendering with:', { subRequests, areAlgoRelays, isMainFeed })
   const { hideUntrustedNotes } = useUserTrust()
   const { showKinds } = useKindFilter()
   const [temporaryShowKinds, setTemporaryShowKinds] = useState(showKinds)

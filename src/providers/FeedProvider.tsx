@@ -42,6 +42,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
+      console.log('FeedProvider init:', { isInitialized, pubkey })
       if (!isInitialized) {
         return
       }
@@ -52,8 +53,11 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
         feedType: 'relay',
         id: visibleRelays[0] ?? DEFAULT_FAVORITE_RELAYS[0]
       }
+      console.log('Initial feedInfo setup:', { visibleRelays, favoriteRelays, blockedRelays, feedInfo })
+      
       if (pubkey) {
         const storedFeedInfo = storage.getFeedInfo(pubkey)
+        console.log('Stored feed info:', storedFeedInfo)
         if (storedFeedInfo) {
           feedInfo = storedFeedInfo
         }
@@ -108,10 +112,14 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       relay?: string | null
     } = {}
   ) => {
+    console.log('switchFeed called:', { feedType, options })
     setIsReady(false)
     if (feedType === 'relay') {
       const normalizedUrl = normalizeUrl(options.relay ?? '')
+      console.log('Relay switchFeed:', { normalizedUrl, isWebsocketUrl: isWebsocketUrl(normalizedUrl), blockedRelays })
+      
       if (!normalizedUrl || !isWebsocketUrl(normalizedUrl)) {
+        console.log('Invalid relay URL, setting isReady to true')
         setIsReady(true)
         return
       }
@@ -124,11 +132,13 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       }
 
       const newFeedInfo = { feedType, id: normalizedUrl }
+      console.log('Setting relay feed info:', newFeedInfo)
       setFeedInfo(newFeedInfo)
       feedInfoRef.current = newFeedInfo
       setRelayUrls([normalizedUrl])
       storage.setFeedInfo(newFeedInfo, pubkey)
       setIsReady(true)
+      console.log('Relay feed setup complete, isReady set to true')
       return
     }
     if (feedType === 'relays') {

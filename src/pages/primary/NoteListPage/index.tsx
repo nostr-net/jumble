@@ -28,6 +28,7 @@ import FollowingFeed from './FollowingFeed'
 import RelaysFeed from './RelaysFeed'
 
 const NoteListPage = forwardRef((_, ref) => {
+  console.log('NoteListPage component rendering')
   const { t } = useTranslation()
   const { addRelayUrls, removeRelayUrls } = useCurrentRelays()
   const layoutRef = useRef<TPageRef>(null)
@@ -50,6 +51,14 @@ const NoteListPage = forwardRef((_, ref) => {
       }
     }
   }, [relayUrls])
+
+  // Debug logging
+  console.log('NoteListPage debug:', {
+    isReady,
+    feedInfo,
+    relayUrls,
+    pubkey: !!pubkey
+  })
 
   let content: React.ReactNode = null
   if (!isReady) {

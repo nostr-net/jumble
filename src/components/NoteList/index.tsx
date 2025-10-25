@@ -156,6 +156,7 @@ const NoteList = forwardRef(
     useImperativeHandle(ref, () => ({ scrollToTop, refresh }), [])
 
   useEffect(() => {
+    console.log('NoteList useEffect:', { subRequests, subRequestsLength: subRequests.length })
     if (!subRequests.length) return
 
     async function init() {
@@ -171,6 +172,15 @@ const NoteList = forwardRef(
           return () => {}
         }
 
+        console.log('NoteList subscribing to timeline with:', subRequests.map(({ urls, filter }) => ({
+            urls,
+            filter: {
+              kinds: showKinds,
+              ...filter,
+              limit: areAlgoRelays ? ALGO_LIMIT : LIMIT
+            }
+          })))
+        
         const { closer, timelineKey } = await client.subscribeTimeline(
           subRequests.map(({ urls, filter }) => ({
             urls,
@@ -182,6 +192,7 @@ const NoteList = forwardRef(
           })),
           {
             onEvents: (events, eosed) => {
+              console.log('NoteList received events:', { eventsCount: events.length, eosed })
               if (events.length > 0) {
                 setEvents(events)
                 // Stop loading as soon as we have events, don't wait for all relays
@@ -209,6 +220,7 @@ const NoteList = forwardRef(
               }
             },
             onClose: (url, reason) => {
+              console.log('Relay connection closed:', { url, reason })
               if (!showRelayCloseReason) return
               // ignore reasons from nostr-tools
               if (
