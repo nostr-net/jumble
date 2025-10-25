@@ -91,6 +91,7 @@ const SecondaryPageContext = createContext<TSecondaryPageContext | undefined>(un
 
 const PrimaryNoteViewContext = createContext<{
   setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile') => void
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | null
 } | undefined>(undefined)
 
 export function usePrimaryPage() {
@@ -128,7 +129,8 @@ export function useSmartNoteNavigation() {
       // When right panel is hidden, show note in primary area
       // Extract note ID from URL (e.g., "/notes/note1..." -> "note1...")
       const noteId = url.replace('/notes/', '')
-        setPrimaryNoteView(<NotePage id={noteId} index={0} hideTitlebar={true} />, 'note')
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<NotePage id={noteId} index={0} hideTitlebar={true} />, 'note')
     } else {
       // Normal behavior - use secondary navigation
       pushSecondary(url)
@@ -170,6 +172,7 @@ export function useSmartProfileNavigation() {
       // When right panel is hidden, show profile in primary area
       // Extract profile ID from URL (e.g., "/users/npub1..." -> "npub1...")
       const profileId = url.replace('/users/', '')
+      window.history.replaceState(null, '', url)
       setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
     } else {
       // Normal behavior - use secondary navigation
@@ -190,16 +193,22 @@ export function useSmartSettingsNavigation() {
     if (!showRecommendedRelaysPanel) {
       // When right panel is hidden, show settings page in primary area
       if (url === '/settings') {
+        window.history.replaceState(null, '', url)
         setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
       } else if (url === '/settings/relays') {
+        window.history.replaceState(null, '', url)
         setPrimaryNoteView(<RelaySettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
       } else if (url === '/settings/wallet') {
+        window.history.replaceState(null, '', url)
         setPrimaryNoteView(<WalletPage index={0} hideTitlebar={true} />, 'settings-sub')
       } else if (url === '/settings/posts') {
+        window.history.replaceState(null, '', url)
         setPrimaryNoteView(<PostSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
       } else if (url === '/settings/general') {
+        window.history.replaceState(null, '', url)
         setPrimaryNoteView(<GeneralSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
       } else if (url === '/settings/translation') {
+        window.history.replaceState(null, '', url)
         setPrimaryNoteView(<TranslationPage index={0} hideTitlebar={true} />, 'settings-sub')
       }
     } else {
@@ -311,6 +320,7 @@ function MainContentArea({
 
 export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   const { isSmallScreen } = useScreenSize()
+  const { showRecommendedRelaysPanel } = useUserPreferences()
   const [currentPrimaryPage, setCurrentPrimaryPage] = useState<TPrimaryPageName>('home')
   const [primaryPages, setPrimaryPages] = useState<
     { name: TPrimaryPageName; element: ReactNode; props?: any }[]
@@ -323,10 +333,22 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   const [secondaryStack, setSecondaryStack] = useState<TStackItem[]>([])
   const [primaryNoteView, setPrimaryNoteViewState] = useState<ReactNode | null>(null)
   const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | null>(null)
+  const [savedPrimaryPage, setSavedPrimaryPage] = useState<TPrimaryPageName | null>(null)
   
   const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile') => {
+    if (view && !primaryNoteView) {
+      // Saving current primary page before showing overlay
+      setSavedPrimaryPage(currentPrimaryPage)
+    }
+    
     setPrimaryNoteViewState(view)
     setPrimaryViewType(type || null)
+    
+    // If clearing the view, restore to the saved primary page
+    if (!view && savedPrimaryPage) {
+      const newUrl = savedPrimaryPage === 'home' ? '/' : `/?page=${savedPrimaryPage}`
+      window.history.replaceState(null, '', newUrl)
+    }
   }
   const ignorePopStateRef = useRef(false)
 
@@ -351,20 +373,27 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     window.history.pushState(null, '', window.location.href)
     if (window.location.pathname !== '/') {
       const url = window.location.pathname + window.location.search + window.location.hash
-      setSecondaryStack((prevStack) => {
-        if (isCurrentPage(prevStack, url)) return prevStack
+      
+      // If the side panel is off and we're on a settings page, don't add to secondary stack
+      // The settings navigation will handle it via primary view
+      if (!showRecommendedRelaysPanel && window.location.pathname.startsWith('/settings')) {
+        // Skip secondary stack handling for settings when side panel is off
+      } else {
+        setSecondaryStack((prevStack) => {
+          if (isCurrentPage(prevStack, url)) return prevStack
 
-        const { newStack, newItem } = pushNewPageToStack(
-          prevStack,
-          url,
-          maxStackSize,
-          window.history.state?.index
-        )
-        if (newItem) {
-          window.history.replaceState({ index: newItem.index, url }, '', url)
-        }
-        return newStack
-      })
+          const { newStack, newItem } = pushNewPageToStack(
+            prevStack,
+            url,
+            maxStackSize,
+            window.history.state?.index
+          )
+          if (newItem) {
+            window.history.replaceState({ index: newItem.index, url }, '', url)
+          }
+          return newStack
+        })
+      }
     } else {
       const searchParams = new URLSearchParams(window.location.search)
       const r = searchParams.get('r')
@@ -467,6 +496,9 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     })
     setCurrentPrimaryPage(page)
     
+    // Clear any primary note view when navigating to a new primary page
+    setPrimaryNoteView(null)
+    
     // Update URL for primary pages (except home)
     const newUrl = page === 'home' ? '/' : `/?page=${page}`
     window.history.pushState(null, '', newUrl)
@@ -532,7 +564,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
         >
         <CurrentRelaysProvider>
           <NotificationProvider>
-            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView }}>
+            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView, primaryViewType }}>
             {!!secondaryStack.length &&
               secondaryStack.map((item, index) => (
                 <div
@@ -583,7 +615,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
       >
         <CurrentRelaysProvider>
           <NotificationProvider>
-            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView }}>
+            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView, primaryViewType }}>
             <div className="flex flex-col items-center bg-surface-background">
               <div
                 className="flex h-[var(--vh)] w-full bg-surface-background"
