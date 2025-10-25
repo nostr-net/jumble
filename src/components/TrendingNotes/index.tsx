@@ -126,15 +126,17 @@ export default function TrendingNotes() {
 
   // Calculate popular hashtags from cache events (all events from relays)
   const calculatePopularHashtags = useMemo(() => {
-    console.log('[TrendingNotes] calculatePopularHashtags - cacheEvents.length:', cacheEvents.length)
-    if (cacheEvents.length === 0) {
+    console.log('[TrendingNotes] calculatePopularHashtags - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
+    
+    // Use cache events if available, otherwise fallback to trending notes
+    let eventsToAnalyze = cacheEvents.length > 0 ? cacheEvents : trendingNotes
+    
+    if (eventsToAnalyze.length === 0) {
       return []
     }
+    
     const hashtagCounts = new Map<string, number>()
     let eventsWithHashtags = 0
-    
-    // For hashtag analysis, use all cache events
-    let eventsToAnalyze = cacheEvents
     
     eventsToAnalyze.forEach((event) => {
       let hasAnyHashtag = false
@@ -171,7 +173,7 @@ export default function TrendingNotes() {
     console.log('[TrendingNotes] calculatePopularHashtags - eventsWithHashtags:', eventsWithHashtags)
     
     return result
-  }, [cacheEvents, activeTab, hashtagFilter, pubkey]) // Use cacheEvents as dependency
+  }, [cacheEvents, trendingNotes, activeTab, hashtagFilter, pubkey]) // Use cacheEvents and trendingNotes as dependencies
 
   // Get relays based on user login status
   const getRelays = useMemo(() => {
@@ -203,6 +205,14 @@ export default function TrendingNotes() {
     setPopularHashtags(calculatePopularHashtags)
   }, [calculatePopularHashtags])
 
+  // Fallback: populate cacheEvents from trendingNotes if cache is empty
+  useEffect(() => {
+    if (activeTab === 'hashtags' && cacheEvents.length === 0 && trendingNotes.length > 0) {
+      console.log('[TrendingNotes] Fallback: populating cacheEvents from trendingNotes')
+      setCacheEvents(trendingNotes)
+    }
+  }, [activeTab, cacheEvents.length, trendingNotes])
+
 
   // Initialize cache only once on mount
   useEffect(() => {
@@ -216,6 +226,9 @@ export default function TrendingNotes() {
       
       // Check if cache is still valid
       if (cachedCustomEvents && (now - cachedCustomEvents.timestamp) < CACHE_DURATION) {
+        // If cache is valid, set cacheEvents to ALL events from cache
+        const allEvents = cachedCustomEvents.events.map(item => item.event)
+        setCacheEvents(allEvents)
         return
       }
 
@@ -224,6 +237,7 @@ export default function TrendingNotes() {
       
       // Prevent running if we have no relays
       if (relays.length === 0) {
+        isInitializing = false
         return
       }
 
@@ -391,18 +405,9 @@ export default function TrendingNotes() {
           listEventIds: listEventIds.slice()
         }
 
-        
-        // For hashtag analysis, we want ALL events with hashtags, not just trending ones
-        // So we'll store the unfiltered events that have hashtags
-        const eventsWithHashtags = filteredEvents.filter(event => {
-          const eventHashtags = event.tags
-            .filter(tag => tag[0] === 't' && tag[1])
-            .map(tag => tag[1].toLowerCase())
-          const contentHashtags = event.content.match(/#[a-zA-Z0-9_]+/g)?.map(h => h.slice(1).toLowerCase()) || []
-          return eventHashtags.length > 0 || contentHashtags.length > 0
-        })
-        
-        setCacheEvents(eventsWithHashtags)
+        // Store ALL events from the cache for hashtag analysis
+        // This includes all events from relays, not just the trending ones
+        setCacheEvents(filteredEvents)
       } catch (error) {
         console.error('[TrendingNotes] Error initializing cache:', error)
       } finally {
@@ -412,7 +417,6 @@ export default function TrendingNotes() {
 
     initializeCache()
     // Only run when getRelays changes (which happens when login status changes)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getRelays])
 
   const filteredEvents = useMemo(() => {
@@ -422,8 +426,10 @@ export default function TrendingNotes() {
     let sourceEvents = trendingNotes
     
     if (activeTab === 'hashtags') {
-      // Always use cache events for hashtags tab - this contains ALL events with hashtags
-      sourceEvents = cacheEvents
+      // Use cache events for hashtags tab, fallback to trending notes if cache is empty
+      sourceEvents = cacheEvents.length > 0 ? cacheEvents : trendingNotes
+      console.log('[TrendingNotes] Hashtags tab - using ALL events from cache')
+      console.log('[TrendingNotes] Hashtags tab - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
     }
     
     
