@@ -250,6 +250,20 @@ class NoteStatsService {
     return targetEventId
   }
 
+  removeLike(eventId: string, reactionEventId: string) {
+    const old = this.noteStatsMap.get(eventId) || {}
+    const likeIdSet = old.likeIdSet || new Set()
+    const likes = old.likes || []
+    
+    if (!likeIdSet.has(reactionEventId)) return eventId
+
+    likeIdSet.delete(reactionEventId)
+    const newLikes = likes.filter(like => like.id !== reactionEventId)
+    this.noteStatsMap.set(eventId, { ...old, likeIdSet, likes: newLikes })
+    this.notifyNoteStats(eventId)
+    return eventId
+  }
+
   private addRepostByEvent(evt: Event) {
     const eventId = evt.tags.find(tagNameEquals('e'))?.[1]
     if (!eventId) return

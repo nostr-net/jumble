@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ExtendedKind } from '@/constants'
 import { useNoteStatsById } from '@/hooks/useNoteStatsById'
-import { createReactionDraftEvent } from '@/lib/draft-event'
+import { createDeletionRequestDraftEvent, createReactionDraftEvent } from '@/lib/draft-event'
 import { getRootEventHexId } from '@/lib/event'
 import { useNostr } from '@/providers/NostrProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
@@ -79,9 +79,41 @@ export default function LikeButton({ event }: { event: Event }) {
           await noteStatsService.fetchNoteStats(event, pubkey)
         }
 
-        const reaction = createReactionDraftEvent(event, emoji)
-        const evt = await publish(reaction)
-        noteStatsService.updateNoteStatsByEvents([evt])
+        // Check if user is clicking the same emoji they already reacted with
+        const emojiString = typeof emoji === 'string' ? emoji : emoji.shortcode
+        
+        // Normalize myLastEmoji for comparison
+        const myLastEmojiString = typeof myLastEmoji === 'string' ? myLastEmoji : typeof myLastEmoji === 'object' ? myLastEmoji.shortcode : undefined
+        const isTogglingOff = myLastEmojiString === emojiString
+
+        console.log('Toggle check:', { myLastEmoji, myLastEmojiString, emojiString, isTogglingOff, myLikes: noteStats?.likes?.filter(l => l.pubkey === pubkey) })
+
+        if (isTogglingOff) {
+          // User wants to toggle off - find their previous reaction and delete it
+          const myReaction = noteStats?.likes?.find((like) => {
+            if (like.pubkey !== pubkey) return false
+            const likeEmojiString = typeof like.emoji === 'string' ? like.emoji : like.emoji.shortcode
+            return likeEmojiString === emojiString
+          })
+          
+          if (myReaction) {
+            // Optimistically update the UI immediately
+            noteStatsService.removeLike(event.id, myReaction.id)
+            
+            // Fetch the actual reaction event
+            const reactionEvent = await client.fetchEvent(myReaction.id)
+            if (reactionEvent) {
+              // Create and publish a deletion request (kind 5)
+              const deletionRequest = createDeletionRequestDraftEvent(reactionEvent)
+              await publish(deletionRequest)
+            }
+          }
+        } else {
+          // User is adding a new reaction
+          const reaction = createReactionDraftEvent(event, emoji)
+          const evt = await publish(reaction)
+          noteStatsService.updateNoteStatsByEvents([evt])
+        }
       } catch (error) {
         console.error('like failed', error)
       } finally {
@@ -97,9 +129,14 @@ export default function LikeButton({ event }: { event: Event }) {
       title={t('Like')}
       disabled={liking || ((isDiscussion || isReplyToDiscussion) && hasVoted)}
       onClick={() => {
-        if (isSmallScreen && !((isDiscussion || isReplyToDiscussion) && hasVoted)) {
-          setIsEmojiReactionsOpen(true)
+        // If user has already reacted, clicking the button again should toggle it off
+        if (myLastEmoji && !isEmojiReactionsOpen) {
+          like(myLastEmoji)
+          return
         }
+        
+        // Otherwise, open the emoji picker
+        setIsEmojiReactionsOpen(true)
       }}
     >
       {liking ? (
