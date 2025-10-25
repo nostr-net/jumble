@@ -694,19 +694,20 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
   const signEvent = async (draftEvent: TDraftEvent) => {
     // Add timeout to prevent hanging
-    const signEventWithTimeout = new Promise(async (resolve, reject) => {
+    const signEventWithTimeout = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Signing request timed out. Your Nostr extension may be waiting for authorization. Try closing this tab and restarting your browser to surface any pending authorization requests from your extension.'))
       }, 30000) // 30 second timeout
       
-      try {
-        const event = await signer?.signEvent(draftEvent)
-        clearTimeout(timeout)
-        resolve(event)
-      } catch (error) {
-        clearTimeout(timeout)
-        reject(error)
-      }
+      signer?.signEvent(draftEvent)
+        .then((event) => {
+          clearTimeout(timeout)
+          resolve(event)
+        })
+        .catch((error) => {
+          clearTimeout(timeout)
+          reject(error)
+        })
     })
     
     const event = await signEventWithTimeout as VerifiedEvent

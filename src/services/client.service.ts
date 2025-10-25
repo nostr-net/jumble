@@ -1108,7 +1108,7 @@ class ClientService extends EventTarget {
   /**
    * Get list of relays that were already tried in tiers 1-3
    */
-  async getAlreadyTriedRelays(_id: string): Promise<string[]> {
+  async getAlreadyTriedRelays(): Promise<string[]> {
     const userRelayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { read: [], write: [] }
     
     // Get favorite relays from storage (includes user's configured relay sets)
@@ -1225,7 +1225,7 @@ class ClientService extends EventTarget {
               filter['#d'] = [data.identifier]
             }
         }
-      } catch (err) {
+      } catch {
         console.error('Failed to decode bech32 ID - likely malformed:', id)
         // Malformed naddr/nevent from broken clients - can't fetch it
         return undefined

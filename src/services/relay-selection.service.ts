@@ -50,7 +50,7 @@ class RelaySelectionService {
     const selectableRelays = await this.buildSelectableRelays(context)
     
     // Step 2: Determine which relays should be selected (checked)
-    const selectedRelays = await this.determineSelectedRelays(context, selectableRelays)
+    const selectedRelays = await this.determineSelectedRelays(context)
     
     // Step 3: Generate description
     const description = this.generateDescription(selectedRelays)
@@ -195,8 +195,7 @@ class RelaySelectionService {
    * Determine which relays should be selected (checked) based on the context
    */
   private async determineSelectedRelays(
-    context: RelaySelectionContext,
-    _selectableRelays: string[]
+    context: RelaySelectionContext
   ): Promise<string[]> {
     const {
       userWriteRelays,

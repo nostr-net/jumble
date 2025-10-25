@@ -467,8 +467,6 @@ class IndexedDbService {
         return StoreNames.FAVORITE_RELAYS
       case ExtendedKind.BLOCKED_RELAYS:
         return StoreNames.BLOCKED_RELAYS_EVENTS
-      case kinds.BookmarkList:
-        return StoreNames.BOOKMARK_LIST_EVENTS
       case kinds.UserEmojiList:
         return StoreNames.USER_EMOJI_LIST_EVENTS
       case kinds.Emojisets:

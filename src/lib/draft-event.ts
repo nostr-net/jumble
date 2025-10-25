@@ -1009,7 +1009,7 @@ export async function createHighlightDraftEvent(
           const { pubkey } = decoded.data
           tags.push(['p', pubkey])
         }
-      } catch (err) {
+      } catch {
         // Already logged above
       }
     } else if (sourceValue.startsWith('nevent')) {
@@ -1018,7 +1018,7 @@ export async function createHighlightDraftEvent(
         if (decoded.type === 'nevent' && decoded.data.author) {
           tags.push(['p', decoded.data.author])
         }
-      } catch (err) {
+      } catch {
         // Already logged above
       }
     }

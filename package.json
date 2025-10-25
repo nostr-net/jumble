@@ -1,16 +1,16 @@
 {
   "name": "jumble",
-  "version": "10.10.0",
-  "description": "A user-friendly Nostr client focused on relay feed browsing and relay discovery",
+  "version": "10.11.0",
+  "description": "A user-friendly Nostr client focused on relay feed browsing and relay discovery, forked from Jumble",
   "private": true,
   "type": "module",
-  "author": "codytseng",
+  "author": "Silberengel",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CodyTseng/jumble"
+    "url": "git+https://github.com/Silberengel/jumble"
   },
-  "homepage": "https://github.com/CodyTseng/jumble",
+  "homepage": "https://github.com/Silberengel/jumble",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc -b && vite build",

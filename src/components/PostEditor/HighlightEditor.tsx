@@ -102,7 +102,7 @@ export default function HighlightEditor({
         setError(t('Invalid source. Please enter a note ID, nevent, naddr, hex ID, or URL.'))
         return
       }
-    } catch (err) {
+    } catch {
       setError(t('Invalid source. Please enter a note ID, nevent, naddr, hex ID, or URL.'))
     }
   }, [sourceInput, context, setHighlightData, t])

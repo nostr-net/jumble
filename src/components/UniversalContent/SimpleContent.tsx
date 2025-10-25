@@ -26,7 +26,7 @@ export default function SimpleContent({
     const rawContent = content || event?.content || ''
     
     // Clean URLs
-    let cleaned = rawContent.replace(
+    const cleaned = rawContent.replace(
       /(https?:\/\/[^\s]+)/g,
       (url) => {
         try {
@@ -44,7 +44,7 @@ export default function SimpleContent({
   const { markdownContent, mediaElements } = useMemo(() => {
     const lines = processedContent.split('\n')
     const elements: JSX.Element[] = []
-    let markdownLines: string[] = []
+    const markdownLines: string[] = []
     let key = 0
 
     lines.forEach((line) => {

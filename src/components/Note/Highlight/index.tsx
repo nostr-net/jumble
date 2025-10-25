@@ -12,8 +12,9 @@ export default function Highlight({
   event: Event
   className?: string
 }) {
+  const { t } = useTranslation()
+  
   try {
-    const { t } = useTranslation()
 
     // Extract the source (e-tag, a-tag, or r-tag) - simplified without useMemo
     let source = null

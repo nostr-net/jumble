@@ -31,7 +31,7 @@ export function prefixNostrAddresses(content: string): string {
     
     // Check if the match is within a URL by looking for common URL patterns before it
     // This includes http://, https://, and common URL characters like /, ?, #
-    const urlPattern = /(https?:\/\/|www\.|\/[^\/]*|\?[^=]*=|#[^\/]*\/)$/
+    const urlPattern = /(https?:\/\/|www\.|\/[^/]*|\?[^=]*=|#[^/]*\/)$/
     if (urlPattern.test(beforeMatch)) {
       return match
     }

@@ -18,6 +18,22 @@ export default function Zap({ event, className }: { event: Event; className?: st
   const zapInfo = useMemo(() => getZapInfoFromEvent(event), [event])
   const { event: targetEvent } = useFetchEvent(zapInfo?.eventId)
 
+  // Determine if this is an event zap or profile zap
+  const isEventZap = targetEvent || zapInfo?.eventId
+  const isProfileZap = !isEventZap && zapInfo?.recipientPubkey
+  
+  // For event zaps, we need to determine the recipient from the zapped event
+  const actualRecipientPubkey = useMemo(() => {
+    if (isEventZap && targetEvent) {
+      // Event zap - recipient is the author of the zapped event
+      return targetEvent.pubkey
+    } else if (isProfileZap) {
+      // Profile zap - recipient is directly specified
+      return zapInfo?.recipientPubkey
+    }
+    return undefined
+  }, [isEventZap, isProfileZap, targetEvent, zapInfo?.recipientPubkey])
+
   if (!zapInfo || !zapInfo.senderPubkey || !zapInfo.amount) {
     return (
       <div className={cn('text-sm text-muted-foreground p-4 border rounded-lg', className)}>
@@ -27,22 +43,6 @@ export default function Zap({ event, className }: { event: Event; className?: st
   }
 
   const { senderPubkey, recipientPubkey, amount, comment } = zapInfo
-  
-  // Determine if this is an event zap or profile zap
-  const isEventZap = targetEvent || zapInfo.eventId
-  const isProfileZap = !isEventZap && recipientPubkey
-  
-  // For event zaps, we need to determine the recipient from the zapped event
-  const actualRecipientPubkey = useMemo(() => {
-    if (isEventZap && targetEvent) {
-      // Event zap - recipient is the author of the zapped event
-      return targetEvent.pubkey
-    } else if (isProfileZap) {
-      // Profile zap - recipient is directly specified
-      return recipientPubkey
-    }
-    return undefined
-  }, [isEventZap, isProfileZap, targetEvent, recipientPubkey])
 
   return (
     <div className={cn('relative border rounded-lg p-4 bg-gradient-to-br from-yellow-50/50 to-amber-50/50 dark:from-yellow-950/20 dark:to-amber-950/20', className)}>

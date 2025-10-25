@@ -246,7 +246,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       const eventIds = Array.from(newEventMap.keys())
       
       // Fetch deletion events for these specific event IDs
-      let deletedEventIds = new Set<string>()
+      const deletedEventIds = new Set<string>()
       if (eventIds.length > 0) {
         try {
           const deletionEvents = await client.fetchEvents(allRelays, [
