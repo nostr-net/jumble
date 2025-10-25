@@ -8,7 +8,7 @@ import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
-import { Bell, BellOff, Code, Copy, Link, SatelliteDish, Trash2, TriangleAlert } from 'lucide-react'
+import { Bell, BellOff, Code, Copy, Link, SatelliteDish, Trash2, TriangleAlert, Pin } from 'lucide-react'
 import { Event } from 'nostr-tools'
 import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -49,7 +49,7 @@ export function useMenuActions({
   isSmallScreen
 }: UseMenuActionsProps) {
   const { t } = useTranslation()
-  const { pubkey, attemptDelete } = useNostr()
+  const { pubkey, attemptDelete, publish } = useNostr()
   const { relayUrls: currentBrowsingRelayUrls } = useCurrentRelays()
   const { relaySets, favoriteRelays } = useFavoriteRelays()
   const relayUrls = useMemo(() => {
@@ -60,6 +60,72 @@ export function useMenuActions({
   }, [currentBrowsingRelayUrls, favoriteRelays])
   const { mutePubkeyPublicly, mutePubkeyPrivately, unmutePubkey, mutePubkeySet } = useMuteList()
   const isMuted = useMemo(() => mutePubkeySet.has(event.pubkey), [mutePubkeySet, event])
+  
+  // Check if event is pinned
+  const [isPinned, setIsPinned] = useState(false)
+  
+  useEffect(() => {
+    const checkIfPinned = async () => {
+      if (!pubkey) {
+        setIsPinned(false)
+        return
+      }
+      try {
+        const pinListEvent = await client.fetchPinListEvent(pubkey)
+        if (pinListEvent) {
+          const isEventPinned = pinListEvent.tags.some(tag => tag[0] === 'e' && tag[1] === event.id)
+          setIsPinned(isEventPinned)
+        }
+      } catch (error) {
+        console.error('Error checking pin status:', error)
+      }
+    }
+    checkIfPinned()
+  }, [pubkey, event.id])
+  
+  const handlePinNote = async () => {
+    if (!pubkey) return
+    
+    try {
+      // Fetch existing pin list
+      let pinListEvent = await client.fetchPinListEvent(pubkey)
+      
+      // Get existing event IDs, excluding the one we're toggling
+      const existingEventIds = (pinListEvent?.tags || [])
+        .filter(tag => tag[0] === 'e' && tag[1])
+        .map(tag => tag[1])
+        .filter(id => id !== event.id)
+      
+      let newTags: string[][]
+      let successMessage: string
+      
+      if (isPinned) {
+        // Unpin: just keep the existing tags without this event
+        newTags = existingEventIds.map(id => ['e', id])
+        successMessage = t('Note unpinned')
+      } else {
+        // Pin: add this event to the existing list
+        newTags = [...existingEventIds.map(id => ['e', id]), ['e', event.id]]
+        successMessage = t('Note pinned')
+      }
+      
+      // Create and publish the new pin list event
+      await publish({
+        kind: 10001,
+        tags: newTags,
+        content: '',
+        created_at: Math.floor(Date.now() / 1000)
+      })
+      
+      // Update local state - the publish will update the cache automatically
+      setIsPinned(!isPinned)
+      toast.success(successMessage)
+      closeDrawer()
+    } catch (error) {
+      console.error('Error pinning/unpinning note:', error)
+      toast.error(t('Failed to pin note'))
+    }
+  }
   
   // Check if this is a reply to a discussion event
   const [isReplyToDiscussion, setIsReplyToDiscussion] = useState(false)
@@ -273,14 +339,21 @@ export function useMenuActions({
 
     if (pubkey && event.pubkey === pubkey) {
       actions.push({
+        icon: Pin,
+        label: isPinned ? t('Unpin note') : t('Pin note'),
+        onClick: () => {
+          handlePinNote()
+        },
+        separator: true
+      })
+      actions.push({
         icon: Trash2,
         label: t('Try deleting this note'),
         onClick: () => {
           closeDrawer()
           attemptDelete(event)
         },
-        className: 'text-destructive focus:text-destructive',
-        separator: true
+        className: 'text-destructive focus:text-destructive'
       })
     }
 
@@ -295,9 +368,13 @@ export function useMenuActions({
     closeDrawer,
     showSubMenuActions,
     setIsRawEventDialogOpen,
+    setIsReportDialogOpen,
     mutePubkeyPrivately,
     mutePubkeyPublicly,
-    unmutePubkey
+    unmutePubkey,
+    attemptDelete,
+    isPinned,
+    handlePinNote
   ])
 
   return menuActions

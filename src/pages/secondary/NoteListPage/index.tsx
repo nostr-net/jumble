@@ -8,16 +8,18 @@ import { toProfileList } from '@/lib/link'
 import { fetchPubkeysFromDomain, getWellKnownNip05Url } from '@/lib/nip05'
 import { useSecondaryPage } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
+import { useInterestList } from '@/providers/InterestListProvider'
 import client from '@/services/client.service'
 import { TFeedSubRequest } from '@/types'
-import { UserRound } from 'lucide-react'
-import React, { forwardRef, useEffect, useState } from 'react'
+import { UserRound, Plus } from 'lucide-react'
+import React, { forwardRef, useEffect, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 const NoteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
   const { push } = useSecondaryPage()
   const { relayList, pubkey } = useNostr()
+  const { isSubscribed, subscribe } = useInterestList()
   const [title, setTitle] = useState<React.ReactNode>(null)
   const [controls, setControls] = useState<React.ReactNode>(null)
   const [data, setData] = useState<
@@ -33,6 +35,27 @@ const NoteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: numb
     | null
   >(null)
   const [subRequests, setSubRequests] = useState<TFeedSubRequest[]>([])
+
+  // Get hashtag from URL if this is a hashtag page
+  const hashtag = useMemo(() => {
+    if (data?.type === 'hashtag') {
+      const searchParams = new URLSearchParams(window.location.search)
+      return searchParams.get('t')
+    }
+    return null
+  }, [data])
+
+  // Check if the hashtag is already in the user's interest list
+  const isHashtagSubscribed = useMemo(() => {
+    if (!hashtag) return false
+    return isSubscribed(hashtag)
+  }, [hashtag, isSubscribed])
+
+  // Add hashtag to interest list
+  const handleSubscribeHashtag = async () => {
+    if (!hashtag) return
+    await subscribe(hashtag)
+  }
 
   useEffect(() => {
     const init = async () => {
@@ -51,6 +74,19 @@ const NoteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: numb
             urls: BIG_RELAY_URLS
           }
         ])
+        // Set controls for hashtag subscribe button
+        if (pubkey) {
+          setControls(
+            <Button
+              variant="ghost"
+              className="h-10 [&_svg]:size-3"
+              onClick={handleSubscribeHashtag}
+              disabled={isHashtagSubscribed}
+            >
+              {isHashtagSubscribed ? t('Subscribed') : t('Subscribe')} <Plus />
+            </Button>
+          )
+        }
         return
       }
       const search = searchParams.get('s')
@@ -112,6 +148,22 @@ const NoteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: numb
     }
     init()
   }, [])
+
+  // Update controls when subscription status changes
+  useEffect(() => {
+    if (data?.type === 'hashtag' && pubkey) {
+      setControls(
+        <Button
+          variant="ghost"
+          className="h-10 [&_svg]:size-3"
+          onClick={handleSubscribeHashtag}
+          disabled={isHashtagSubscribed}
+        >
+          {isHashtagSubscribed ? t('Subscribed') : t('Subscribe')} <Plus />
+        </Button>
+      )
+    }
+  }, [data, pubkey, isHashtagSubscribed, handleSubscribeHashtag, t])
 
   let content: React.ReactNode = null
   if (data?.type === 'domain' && subRequests.length === 0) {

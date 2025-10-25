@@ -16,6 +16,10 @@ export type TNoteStats = {
   zaps: { pr: string; pubkey: string; amount: number; created_at: number; comment?: string }[]
   replyIdSet: Set<string>
   replies: { id: string; pubkey: string; created_at: number }[]
+  quoteIdSet: Set<string>
+  quotes: { id: string; pubkey: string; created_at: number }[]
+  highlightIdSet: Set<string>
+  highlights: { id: string; pubkey: string; created_at: number }[]
   updatedAt?: number
 }
 
@@ -62,6 +66,16 @@ class NoteStatsService {
         '#e': [event.id],
         kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
         limit: 500
+      },
+      {
+        '#q': [event.id],
+        kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
+        limit: 500
+      },
+      {
+        '#e': [event.id],
+        kinds: [kinds.Highlights],
+        limit: 500
       }
     ]
 
@@ -80,6 +94,16 @@ class NoteStatsService {
         {
           '#a': [replaceableCoordinate],
           kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
+          limit: 500
+        },
+        {
+          '#q': [replaceableCoordinate],
+          kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
+          limit: 500
+        },
+        {
+          '#a': [replaceableCoordinate],
+          kinds: [kinds.Highlights],
           limit: 500
         }
       )
@@ -210,7 +234,15 @@ class NoteStatsService {
       } else if (evt.kind === kinds.Zap) {
         updatedEventId = this.addZapByEvent(evt)
       } else if (evt.kind === kinds.ShortTextNote || evt.kind === ExtendedKind.COMMENT || evt.kind === ExtendedKind.VOICE_COMMENT) {
-        updatedEventId = this.addReplyByEvent(evt)
+        // Check if it's a reply or quote
+        const isQuote = this.isQuoteByEvent(evt)
+        if (isQuote) {
+          updatedEventId = this.addQuoteByEvent(evt)
+        } else {
+          updatedEventId = this.addReplyByEvent(evt)
+        }
+      } else if (evt.kind === kinds.Highlights) {
+        updatedEventId = this.addHighlightByEvent(evt)
       }
       if (updatedEventId) {
         updatedEventIdSet.add(updatedEventId)
@@ -345,6 +377,45 @@ class NoteStatsService {
     replies.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
     this.noteStatsMap.set(originalEventId, { ...old, replyIdSet, replies })
     return originalEventId
+  }
+
+  private isQuoteByEvent(evt: Event): boolean {
+    // A quote has a 'q' tag (quoted event)
+    return evt.tags.some(tag => tag[0] === 'q' && tag[1])
+  }
+
+  private addQuoteByEvent(evt: Event) {
+    // Find the quoted event ID from 'q' tag
+    const quotedEventId = evt.tags.find(tag => tag[0] === 'q')?.[1]
+    if (!quotedEventId) return
+
+    const old = this.noteStatsMap.get(quotedEventId) || {}
+    const quoteIdSet = old.quoteIdSet || new Set()
+    const quotes = old.quotes || []
+
+    if (quoteIdSet.has(evt.id)) return
+
+    quoteIdSet.add(evt.id)
+    quotes.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
+    this.noteStatsMap.set(quotedEventId, { ...old, quoteIdSet, quotes })
+    return quotedEventId
+  }
+
+  private addHighlightByEvent(evt: Event) {
+    // Find the event ID from 'e' tag
+    const highlightedEventId = evt.tags.find(tag => tag[0] === 'e')?.[1]
+    if (!highlightedEventId) return
+
+    const old = this.noteStatsMap.get(highlightedEventId) || {}
+    const highlightIdSet = old.highlightIdSet || new Set()
+    const highlights = old.highlights || []
+
+    if (highlightIdSet.has(evt.id)) return
+
+    highlightIdSet.add(evt.id)
+    highlights.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
+    this.noteStatsMap.set(highlightedEventId, { ...old, highlightIdSet, highlights })
+    return highlightedEventId
   }
 
   private getEmbeddedNoteBech32Ids(event: Event): string[] {

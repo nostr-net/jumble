@@ -10,6 +10,8 @@ import storage from '@/services/local-storage.service'
 import { TFeedSubRequest, TNoteListMode } from '@/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshButton } from '../RefreshButton'
+import { Event } from 'nostr-tools'
+import NoteCard from '../NoteCard'
 
 export default function ProfileFeed({
   pubkey,
@@ -24,6 +26,9 @@ export default function ProfileFeed({
   const [listMode, setListMode] = useState<TNoteListMode>(() => storage.getNoteListMode())
   const noteListRef = useRef<TNoteListRef>(null)
   const [subRequests, setSubRequests] = useState<TFeedSubRequest[]>([])
+  const [pinnedEvents, setPinnedEvents] = useState<Event[]>([])
+  const [loadingPinned, setLoadingPinned] = useState(true)
+  
   const tabs = useMemo(() => {
     const _tabs = [
       { value: 'posts', label: 'Notes' },
@@ -81,6 +86,42 @@ export default function ProfileFeed({
     init()
   }, [pubkey, listMode, myPubkey])
 
+  // Fetch pinned notes
+  useEffect(() => {
+    const fetchPinnedNotes = async () => {
+      setLoadingPinned(true)
+      try {
+        const pinListEvent = await client.fetchPinListEvent(pubkey)
+        if (pinListEvent && pinListEvent.tags.length > 0) {
+          // Extract event IDs from pin list
+          const eventIds = pinListEvent.tags
+            .filter(tag => tag[0] === 'e' && tag[1])
+            .map(tag => tag[1])
+            .reverse() // Reverse to show newest first
+          
+          // Fetch the actual events
+          const events = await client.fetchEvents(
+            [...BIG_RELAY_URLS],
+            { ids: eventIds }
+          )
+          
+          // Sort by created_at desc (newest first)
+          const sortedEvents = events.sort((a, b) => b.created_at - a.created_at)
+          setPinnedEvents(sortedEvents)
+        } else {
+          setPinnedEvents([])
+        }
+      } catch (error) {
+        console.error('Error fetching pinned notes:', error)
+        setPinnedEvents([])
+      } finally {
+        setLoadingPinned(false)
+      }
+    }
+    
+    fetchPinnedNotes()
+  }, [pubkey])
+
   const handleListModeChange = (mode: TNoteListMode) => {
     setListMode(mode)
     noteListRef.current?.scrollToTop('smooth')
@@ -90,6 +131,27 @@ export default function ProfileFeed({
     setTemporaryShowKinds(newShowKinds)
     noteListRef.current?.scrollToTop()
   }
+
+  // Create pinned notes header
+  const pinnedHeader = useMemo(() => {
+    if (loadingPinned || pinnedEvents.length === 0) return null
+    
+    return (
+      <div className="border-b border-border">
+        <div className="px-4 py-2 bg-muted/30 text-sm font-semibold text-muted-foreground">
+          Pinned
+        </div>
+        {pinnedEvents.map((event) => (
+          <NoteCard
+            key={event.id}
+            className="w-full border-b border-border"
+            event={event}
+            filterMutedNotes={false}
+          />
+        ))}
+      </div>
+    )
+  }, [pinnedEvents, loadingPinned])
 
   return (
     <>
@@ -113,6 +175,7 @@ export default function ProfileFeed({
         showKinds={temporaryShowKinds}
         hideReplies={listMode === 'posts'}
         filterMutedNotes={false}
+        customHeader={pinnedHeader}
       />
     </>
   )

@@ -45,7 +45,8 @@ const NoteList = forwardRef(
       hideReplies = false,
       hideUntrustedNotes = false,
       areAlgoRelays = false,
-      showRelayCloseReason = false
+      showRelayCloseReason = false,
+      customHeader
     }: {
       subRequests: TFeedSubRequest[]
       showKinds: number[]
@@ -54,6 +55,7 @@ const NoteList = forwardRef(
       hideUntrustedNotes?: boolean
       areAlgoRelays?: boolean
       showRelayCloseReason?: boolean
+      customHeader?: React.ReactNode
     },
     ref
   ) => {
@@ -299,6 +301,7 @@ const NoteList = forwardRef(
 
     const list = (
       <div className="min-h-screen">
+        {customHeader}
         {filteredEvents.map((event) => (
           <NoteCard
             key={event.id}

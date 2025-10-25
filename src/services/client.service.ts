@@ -1782,6 +1782,10 @@ class ClientService extends EventTarget {
     return this.fetchReplaceableEvent(pubkey, 10015)
   }
 
+  async fetchPinListEvent(pubkey: string) {
+    return this.fetchReplaceableEvent(pubkey, 10001)
+  }
+
   async fetchBlossomServerListEvent(pubkey: string) {
     return await this.fetchReplaceableEvent(pubkey, ExtendedKind.BLOSSOM_SERVER_LIST)
   }

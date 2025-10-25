@@ -1,5 +1,5 @@
 import LoginDialog from '@/components/LoginDialog'
-import { ApplicationDataKey, BIG_RELAY_URLS, ExtendedKind } from '@/constants'
+import { ApplicationDataKey, BIG_RELAY_URLS, ExtendedKind, PROFILE_FETCH_RELAY_URLS } from '@/constants'
 import {
   createDeletionRequestDraftEvent,
   createFollowListDraftEvent,
@@ -298,10 +298,10 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       // for better performance and accuracy
 
       const normalizedRelays = [
-        ...relayList.write.map(url => normalizeUrl(url) || url),
-        ...BIG_RELAY_URLS.map(url => normalizeUrl(url) || url)
+        ...relayList.write.map((url: string) => normalizeUrl(url) || url),
+        ...PROFILE_FETCH_RELAY_URLS.map((url: string) => normalizeUrl(url) || url)
       ]
-      const fetchRelays = Array.from(new Set(normalizedRelays)).slice(0, 4)
+      const fetchRelays = Array.from(new Set(normalizedRelays)).slice(0, 8)
       const events = await client.fetchEvents(fetchRelays, [
         {
           kinds: [

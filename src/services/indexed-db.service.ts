@@ -15,6 +15,7 @@ const StoreNames = {
   FOLLOW_LIST_EVENTS: 'followListEvents',
   MUTE_LIST_EVENTS: 'muteListEvents',
   BOOKMARK_LIST_EVENTS: 'bookmarkListEvents',
+  PIN_LIST_EVENTS: 'pinListEvents',
   BLOSSOM_SERVER_LIST_EVENTS: 'blossomServerListEvents',
   INTEREST_LIST_EVENTS: 'interestListEvents',
   MUTE_DECRYPTED_TAGS: 'muteDecryptedTags',
@@ -44,7 +45,7 @@ class IndexedDbService {
   init(): Promise<void> {
     if (!this.initPromise) {
       this.initPromise = new Promise((resolve, reject) => {
-        const request = window.indexedDB.open('jumble', 10)
+        const request = window.indexedDB.open('jumble', 11)
 
         request.onerror = (event) => {
           reject(event)
@@ -71,6 +72,9 @@ class IndexedDbService {
           }
           if (!db.objectStoreNames.contains(StoreNames.BOOKMARK_LIST_EVENTS)) {
             db.createObjectStore(StoreNames.BOOKMARK_LIST_EVENTS, { keyPath: 'key' })
+          }
+          if (!db.objectStoreNames.contains(StoreNames.PIN_LIST_EVENTS)) {
+            db.createObjectStore(StoreNames.PIN_LIST_EVENTS, { keyPath: 'key' })
           }
           if (!db.objectStoreNames.contains(StoreNames.INTEREST_LIST_EVENTS)) {
             db.createObjectStore(StoreNames.INTEREST_LIST_EVENTS, { keyPath: 'key' })
@@ -457,6 +461,8 @@ class IndexedDbService {
         return StoreNames.MUTE_LIST_EVENTS
       case kinds.BookmarkList:
         return StoreNames.BOOKMARK_LIST_EVENTS
+      case 10001: // Pin list
+        return StoreNames.PIN_LIST_EVENTS
       case 10015: // Interest list
         return StoreNames.INTEREST_LIST_EVENTS
       case ExtendedKind.BLOSSOM_SERVER_LIST:
