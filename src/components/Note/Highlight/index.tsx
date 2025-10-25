@@ -16,24 +16,55 @@ export default function Highlight({
   
   try {
 
-    // Extract the source (e-tag, a-tag, or r-tag) - simplified without useMemo
+    // Extract the source (e-tag, a-tag, or r-tag) with improved priority handling
     let source = null
-    const eTag = event.tags.find(tag => tag[0] === 'e')
-    if (eTag) {
-      const eventId = eTag[1]
-      source = {
-        type: 'event' as const,
-        value: eventId,
-        bech32: nip19.noteEncode(eventId)
+    let sourceTag: string[] | undefined
+    
+    // Check for 'source' marker first (highest priority)
+    for (const tag of event.tags) {
+      if (tag[2] === 'source' || tag[3] === 'source') {
+        sourceTag = tag
+        break
       }
-    } else {
-      const aTag = event.tags.find(tag => tag[0] === 'a')
-      if (aTag) {
-        const [kind, pubkey, identifier] = aTag[1].split(':')
-        const relay = aTag[2]
+    }
+    
+    // If no 'source' marker found, process tags in priority order: e > a > r
+    if (!sourceTag) {
+      for (const tag of event.tags) {
+        // Give 'e' tags highest priority
+        if (tag[0] === 'e') {
+          sourceTag = tag
+          continue
+        }
+        
+        // Give 'a' tags second priority (but don't override 'e' tags)
+        if (tag[0] === 'a' && (!sourceTag || sourceTag[0] !== 'e')) {
+          sourceTag = tag
+          continue
+        }
+        
+        // Give 'r' tags lowest priority
+        if (tag[0] === 'r' && (!sourceTag || sourceTag[0] === 'r')) {
+          sourceTag = tag
+          continue
+        }
+      }
+    }
+    
+    // Process the selected source tag
+    if (sourceTag) {
+      if (sourceTag[0] === 'e') {
+        source = {
+          type: 'event' as const,
+          value: sourceTag[1],
+          bech32: nip19.noteEncode(sourceTag[1])
+        }
+      } else if (sourceTag[0] === 'a') {
+        const [kind, pubkey, identifier] = sourceTag[1].split(':')
+        const relay = sourceTag[2]
         source = {
           type: 'addressable' as const,
-          value: aTag[1],
+          value: sourceTag[1],
           bech32: nip19.naddrEncode({
             kind: parseInt(kind),
             pubkey,
@@ -41,24 +72,11 @@ export default function Highlight({
             relays: relay ? [relay] : []
           })
         }
-      } else {
-        // First try to find r-tag with 'source' marker
-        let rTag = event.tags.find(tag => tag[0] === 'r' && tag[2] === 'source')
-        
-        // If no r-tag with 'source' marker found, check if there's only one r-tag
-        if (!rTag) {
-          const rTags = event.tags.filter(tag => tag[0] === 'r')
-          if (rTags.length === 1) {
-            rTag = rTags[0]
-          }
-        }
-        
-        if (rTag) {
-          source = {
-            type: 'url' as const,
-            value: rTag[1],
-            bech32: rTag[1]
-          }
+      } else if (sourceTag[0] === 'r') {
+        source = {
+          type: 'url' as const,
+          value: sourceTag[1],
+          bech32: sourceTag[1]
         }
       }
     }
