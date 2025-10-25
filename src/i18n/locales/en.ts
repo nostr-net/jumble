@@ -45,6 +45,7 @@ export default {
     'Copy event ID': 'Copy event ID',
     'Copy user ID': 'Copy user ID',
     'View raw event': 'View raw event',
+    'View full profile': 'View full profile',
     Like: 'Like',
     'switch to light theme': 'switch to light theme',
     'switch to dark theme': 'switch to dark theme',

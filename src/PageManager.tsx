@@ -11,6 +11,7 @@ import WalletPage from '@/pages/secondary/WalletPage'
 import PostSettingsPage from '@/pages/secondary/PostSettingsPage'
 import GeneralSettingsPage from '@/pages/secondary/GeneralSettingsPage'
 import TranslationPage from '@/pages/secondary/TranslationPage'
+import SecondaryProfilePage from '@/pages/secondary/ProfilePage'
 import { CurrentRelaysProvider } from '@/providers/CurrentRelaysProvider'
 import { NotificationProvider } from '@/providers/NotificationProvider'
 import { useUserPreferences } from '@/providers/UserPreferencesProvider'
@@ -156,6 +157,27 @@ export function useSmartRelayNavigation() {
   }
   
   return { navigateToRelay }
+}
+
+// Custom hook for intelligent profile navigation
+export function useSmartProfileNavigation() {
+  const { showRecommendedRelaysPanel } = useUserPreferences()
+  const { push: pushSecondary } = useSecondaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
+  
+  const navigateToProfile = (url: string) => {
+    if (!showRecommendedRelaysPanel) {
+      // When right panel is hidden, show profile in primary area
+      // Extract profile ID from URL (e.g., "/users/npub1..." -> "npub1...")
+      const profileId = url.replace('/users/', '')
+      setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'settings')
+    } else {
+      // Normal behavior - use secondary navigation
+      pushSecondary(url)
+    }
+  }
+  
+  return { navigateToProfile }
 }
 
 // Custom hook for intelligent settings navigation

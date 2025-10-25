@@ -86,9 +86,8 @@ class RelaySelectionService {
       if (normalized) {
         selectableRelays.add(normalized)
       } else {
-        // If normalization fails, add the original URL but log a warning
-        console.warn('Failed to normalize relay URL:', url)
-        selectableRelays.add(url)
+        // If normalization fails or returns empty (invalid URL), skip it
+        console.warn('Skipping invalid relay URL:', url)
       }
     }
 

@@ -2,10 +2,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFetchProfile } from '@/hooks'
-import { toProfile } from '@/lib/link'
 import { generateImageByPubkey } from '@/lib/pubkey'
 import { cn } from '@/lib/utils'
-import { SecondaryPageLink } from '@/PageManager'
 import { useMemo } from 'react'
 import ProfileCard from '../ProfileCard'
 
@@ -44,15 +42,13 @@ export default function UserAvatar({
 
   return (
     <HoverCard>
-      <HoverCardTrigger>
-        <SecondaryPageLink to={toProfile(pubkey)} onClick={(e) => e.stopPropagation()}>
-          <Avatar className={cn('shrink-0', UserAvatarSizeCnMap[size], className)}>
-            <AvatarImage src={avatar} className="object-cover object-center" />
-            <AvatarFallback>
-              <img src={defaultAvatar} alt={pubkey} />
-            </AvatarFallback>
-          </Avatar>
-        </SecondaryPageLink>
+      <HoverCardTrigger asChild>
+        <Avatar className={cn('shrink-0 cursor-pointer', UserAvatarSizeCnMap[size], className)}>
+          <AvatarImage src={avatar} className="object-cover object-center" />
+          <AvatarFallback>
+            <img src={defaultAvatar} alt={pubkey} />
+          </AvatarFallback>
+        </Avatar>
       </HoverCardTrigger>
       <HoverCardContent className="w-72">
         <ProfileCard pubkey={pubkey} />

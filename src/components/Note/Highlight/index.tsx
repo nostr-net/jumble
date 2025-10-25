@@ -1,4 +1,4 @@
-import { SecondaryPageLink } from '@/PageManager'
+import { useSmartNoteNavigation } from '@/PageManager'
 import { Event } from 'nostr-tools'
 import { ExternalLink, Highlighter } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -13,6 +13,7 @@ export default function Highlight({
   className?: string
 }) {
   const { t } = useTranslation()
+  const { navigateToNote } = useSmartNoteNavigation()
   
   try {
 
@@ -132,15 +133,18 @@ export default function Highlight({
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 ) : (
-                  <SecondaryPageLink
-                    to={toNote(source.bech32)}
-                    className="text-blue-500 hover:underline font-mono"
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigateToNote(toNote(source.bech32))
+                    }}
+                    className="text-blue-500 hover:underline font-mono cursor-pointer"
                   >
                     {source.type === 'event' 
                       ? `note1${source.bech32.substring(5, 13)}...` 
                       : `naddr1${source.bech32.substring(6, 14)}...`
                     }
-                  </SecondaryPageLink>
+                  </span>
                 )}
               </div>
             )}

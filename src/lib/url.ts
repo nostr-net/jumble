@@ -12,13 +12,33 @@ export function normalizeUrl(url: string): string {
         url = 'wss://' + url
       }
     }
+    
+    // Parse the URL first to validate it
     const p = new URL(url)
+    
+    // Check if URL has query parameters or hash fragments that suggest it's not a relay
+    // Relay URLs shouldn't have query params like ?token= or hash fragments
+    const hasQueryParams = url.includes('?')
+    const hasHashFragment = url.includes('#')
+    
+    // Block URLs with query params or hash fragments (these are likely not relays)
+    if (hasQueryParams || hasHashFragment) {
+      console.warn('Skipping URL with query/hash (not a relay):', url)
+      return ''
+    }
+    
     p.pathname = p.pathname.replace(/\/+/g, '/')
     if (p.pathname.endsWith('/')) p.pathname = p.pathname.slice(0, -1)
     if (p.protocol === 'https:') {
       p.protocol = 'wss:'
     } else if (p.protocol === 'http:') {
       p.protocol = 'ws:'
+    }
+    
+    // After protocol normalization, validate it's actually a websocket URL
+    if (!isWebsocketUrl(p.toString())) {
+      console.warn('Skipping non-websocket URL:', url)
+      return ''
     }
     
     // Normalize localhost and local network addresses to always use ws:// instead of wss://
@@ -32,7 +52,15 @@ export function normalizeUrl(url: string): string {
     }
     p.searchParams.sort()
     p.hash = ''
-    return p.toString()
+    
+    // Final validation: ensure we have a proper websocket URL
+    const finalUrl = p.toString()
+    if (!isWebsocketUrl(finalUrl)) {
+      console.warn('Normalization resulted in invalid websocket URL:', finalUrl)
+      return ''
+    }
+    
+    return finalUrl
   } catch {
     console.error('Invalid URL:', url)
     return ''
