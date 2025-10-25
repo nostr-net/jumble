@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
+import { useZap } from '@/providers/ZapProvider'
 import noteStatsService from '@/services/note-stats.service'
 import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS } from '@/constants'
 import { normalizeUrl } from '@/lib/url'
@@ -23,16 +24,51 @@ let cachedCustomEvents: {
   listEventIds: string[]
 } | null = null
 
+// Flag to prevent concurrent initialization
+let isInitializing = false
+
 export default function TrendingNotes() {
   const { t } = useTranslation()
   const { isEventDeleted } = useDeletedEvent()
   const { hideUntrustedNotes, isUserTrusted } = useUserTrust()
-  const { pubkey, relayList } = useNostr()
+  const { pubkey, relayList, bookmarkListEvent, interestListEvent } = useNostr()
   const { favoriteRelays } = useFavoriteRelays()
+  const { zapReplyThreshold } = useZap()
   const [trendingNotes, setTrendingNotes] = useState<NostrEvent[]>([])
   const [showCount, setShowCount] = useState(10)
   const [loading, setLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Extract hashtags from interest list (kind 10015)
+  const hashtags = useMemo(() => {
+    if (!interestListEvent) return []
+    const tags: string[] = []
+    interestListEvent.tags.forEach((tag) => {
+      if (tag[0] === 't' && tag[1]) {
+        tags.push(tag[1])
+      }
+    })
+    return tags
+  }, [interestListEvent])
+
+  // Extract event IDs from bookmark and pin lists (kinds 10003 and 10001)
+  const listEventIds = useMemo(() => {
+    const eventIds: string[] = []
+    
+    // Add bookmarks (kind 10003)
+    if (bookmarkListEvent) {
+      bookmarkListEvent.tags.forEach((tag) => {
+        if (tag[0] === 'e' && tag[1]) {
+          eventIds.push(tag[1])
+        }
+      })
+    }
+    
+    // Add pins (kind 10001) - fetch from client
+    // Note: We'll fetch pin list event separately since it's not in NostrProvider
+    
+    return eventIds
+  }, [bookmarkListEvent])
 
   // Get relays based on user login status
   const getRelays = useMemo(() => {
@@ -58,9 +94,15 @@ export default function TrendingNotes() {
     return Array.from(new Set(normalized))
   }, [pubkey, favoriteRelays, relayList])
 
-  // Initialize or update cache on mount
+  // Initialize cache only once on mount
   useEffect(() => {
     const initializeCache = async () => {
+      // Prevent concurrent initialization
+      if (isInitializing) {
+        console.log('[TrendingNotes] Already initializing, skipping')
+        return
+      }
+      
       const now = Date.now()
       
       // Check if cache is still valid
@@ -69,25 +111,74 @@ export default function TrendingNotes() {
         return
       }
 
+      isInitializing = true
       console.log('[TrendingNotes] Initializing cache from relays')
       const relays = getRelays
+      console.log('[TrendingNotes] Using', relays.length, 'relays:', relays)
+      
+      // Prevent running if we have no relays
+      if (relays.length === 0) {
+        console.log('[TrendingNotes] No relays available, skipping cache initialization')
+        return
+      }
 
       try {
-        // Fetch all events for custom feeds
+        const allEvents: NostrEvent[] = []
         const twentyFourHoursAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60
         
-        // 1. Fetch top-level posts from last 24 hours
-        const recentEvents = await client.fetchEvents(relays, {
-          kinds: [1, 11, 30023, 9802, 20, 21, 22],
-          since: twentyFourHoursAgo,
-          limit: 500
+        // 1. Fetch top-level posts from last 24 hours - query each relay individually
+        const recentEventsPromises = relays.map(async (relay) => {
+          const events = await client.fetchEvents([relay], {
+            kinds: [1, 11, 30023, 9802, 20, 21, 22],
+            since: twentyFourHoursAgo,
+            limit: 500
+          })
+          return events
         })
+        const recentEventsArrays = await Promise.all(recentEventsPromises)
+        const recentEvents = recentEventsArrays.flat()
+        console.log('[TrendingNotes] Fetched', recentEvents.length, 'recent events from', relays.length, 'relays')
+        allEvents.push(...recentEvents)
 
-        // Filter for top-level posts only
-        const topLevelEvents = recentEvents.filter(event => {
+        // 2. Fetch events from bookmark/pin lists
+        if (listEventIds.length > 0) {
+          const bookmarkPinEvents = await client.fetchEvents(relays, {
+            ids: listEventIds,
+            limit: 500
+          })
+          console.log('[TrendingNotes] Fetched', bookmarkPinEvents.length, 'events from bookmark/pin lists')
+          allEvents.push(...bookmarkPinEvents)
+        }
+
+        // 3. Fetch pin list if user is logged in
+        if (pubkey) {
+          try {
+            const pinListEvent = await client.fetchPinListEvent(pubkey)
+            if (pinListEvent) {
+              const pinEventIds = pinListEvent.tags
+                .filter(tag => tag[0] === 'e' && tag[1])
+                .map(tag => tag[1])
+              
+              if (pinEventIds.length > 0) {
+                const pinEvents = await client.fetchEvents(relays, {
+                  ids: pinEventIds,
+                  limit: 500
+                })
+                console.log('[TrendingNotes] Fetched', pinEvents.length, 'events from pin list')
+                allEvents.push(...pinEvents)
+              }
+            }
+          } catch (error) {
+            console.error('[TrendingNotes] Error fetching pin list:', error)
+          }
+        }
+
+        // Filter for top-level posts only (no replies or quotes)
+        const topLevelEvents = allEvents.filter(event => {
           const eTags = event.tags.filter(t => t[0] === 'e')
           return eTags.length === 0
         })
+        console.log('[TrendingNotes] After filtering for top-level posts:', topLevelEvents.length, 'events')
 
         // Fetch stats for events in batches
         const eventsNeedingStats = topLevelEvents.filter(event => !noteStatsService.getNoteStats(event.id))
@@ -111,7 +202,17 @@ export default function TrendingNotes() {
           let score = 0
 
           if (stats?.likes) score += stats.likes.length
-          if (stats?.zaps) score += stats.zaps.length
+          if (stats?.zaps) {
+            // Superzaps (above threshold) count as quotes (8 points)
+            // Regular zaps count as reactions (1 point)
+            stats.zaps.forEach(zap => {
+              if (zap.amount >= zapReplyThreshold) {
+                score += 8 // Superzap
+              } else {
+                score += 1 // Regular zap
+              }
+            })
+          }
           if (stats?.replies) score += stats.replies.length * 3
           if (stats?.reposts) score += stats.reposts.length * 5
           if (stats?.quotes) score += stats.quotes.length * 8
@@ -124,17 +225,21 @@ export default function TrendingNotes() {
         cachedCustomEvents = {
           events: scoredEvents,
           timestamp: now,
-          hashtags: [], // Will be populated when we add hashtags support
-          listEventIds: [] // Will be populated when we add bookmarks/pins support
+          hashtags: hashtags.slice(),
+          listEventIds: listEventIds.slice()
         }
 
         console.log('[TrendingNotes] Cache initialized with', scoredEvents.length, 'events')
       } catch (error) {
         console.error('[TrendingNotes] Error initializing cache:', error)
+      } finally {
+        isInitializing = false
       }
     }
 
     initializeCache()
+    // Only run when getRelays changes (which happens when login status changes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getRelays])
 
   const filteredEvents = useMemo(() => {
