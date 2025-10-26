@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book, Network, Car, Eye, Edit3 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
@@ -45,11 +45,25 @@ function buildClientTag(): string[] {
 }
 
 
+interface DynamicTopic {
+  id: string
+  label: string
+  count: number
+  isMainTopic: boolean
+  isSubtopic: boolean
+  parentTopic?: string
+}
+
 interface CreateThreadDialogProps {
   topic: string
   availableRelays: string[]
   relaySets: TRelaySet[]
   selectedRelay?: string | null  // null = "All relays", relay set ID, or single relay URL
+  dynamicTopics?: {
+    mainTopics: DynamicTopic[]
+    subtopics: DynamicTopic[]
+    allTopics: DynamicTopic[]
+  }
   onClose: () => void
   onThreadCreated: (publishedEvent?: NostrEvent) => void
 }
@@ -80,7 +94,8 @@ export default function CreateThreadDialog({
   topic: initialTopic, 
   availableRelays, 
   relaySets,
-  selectedRelay: initialRelay, 
+  selectedRelay: initialRelay,
+  dynamicTopics,
   onClose, 
   onThreadCreated 
 }: CreateThreadDialogProps) {
@@ -89,7 +104,7 @@ export default function CreateThreadDialog({
   const { favoriteRelays, blockedRelays } = useFavoriteRelays()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [selectedTopic] = useState(initialTopic)
+  const [selectedTopic, setSelectedTopic] = useState(initialTopic)
   const [selectedRelayUrls, setSelectedRelayUrls] = useState<string[]>([])
   const [selectableRelays, setSelectableRelays] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -105,6 +120,33 @@ export default function CreateThreadDialog({
   const [author, setAuthor] = useState('')
   const [subject, setSubject] = useState('')
   const [showReadingsPanel, setShowReadingsPanel] = useState(false)
+
+  // Create combined topics list (predefined + dynamic)
+  const allAvailableTopics = useMemo(() => {
+    const combined = [...DISCUSSION_TOPICS]
+    
+    if (dynamicTopics) {
+      // Add dynamic main topics
+      dynamicTopics.mainTopics.forEach(dynamicTopic => {
+        combined.push({
+          id: dynamicTopic.id,
+          label: `${dynamicTopic.label} (${dynamicTopic.count}) 🔥`,
+          icon: Hash // Use Hash icon for dynamic topics
+        })
+      })
+      
+      // Add dynamic subtopics
+      dynamicTopics.subtopics.forEach(dynamicTopic => {
+        combined.push({
+          id: dynamicTopic.id,
+          label: `${dynamicTopic.label} (${dynamicTopic.count}) 📌`,
+          icon: Hash // Use Hash icon for dynamic topics
+        })
+      })
+    }
+    
+    return combined
+  }, [dynamicTopics])
 
   // Initialize selected relays using the centralized relay selection service
   useEffect(() => {
@@ -331,7 +373,7 @@ export default function CreateThreadDialog({
     }
   }
 
-  const selectedTopicInfo = DISCUSSION_TOPICS.find(t => t.id === selectedTopic) || DISCUSSION_TOPICS[0]
+  const selectedTopicInfo = allAvailableTopics.find(t => t.id === selectedTopic) || allAvailableTopics[0]
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
@@ -353,14 +395,20 @@ export default function CreateThreadDialog({
             {/* Topic Selection */}
             <div className="space-y-2">
               <Label htmlFor="topic">{t('Topic')}</Label>
-              <div className="flex items-center gap-2">
-                <selectedTopicInfo.icon className="w-4 h-4" />
-                <Badge variant="secondary" className="text-sm">
-                  {selectedTopicInfo.label}
-                </Badge>
-              </div>
+              <select
+                id="topic"
+                value={selectedTopic}
+                onChange={(e) => setSelectedTopic(e.target.value)}
+                className="w-full px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {allAvailableTopics.map((topic) => (
+                  <option key={topic.id} value={topic.id}>
+                    {topic.label}
+                  </option>
+                ))}
+              </select>
               <p className="text-sm text-muted-foreground">
-                {t('Threads are organized by topics. You can change this after creation.')}
+                {t('Threads are organized by topics. Choose a topic that best fits your discussion.')}
               </p>
             </div>
 

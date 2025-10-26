@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Search } from 'lucide-react'
 import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useSmartNoteNavigation } from '@/PageManager'
@@ -130,6 +130,145 @@ function normalizeTopic(topic: string): string {
   return topic.toLowerCase().replace(/\s+/g, '-')
 }
 
+// Search function for threads
+async function searchThreads(entries: EventMapEntry[], query: string): Promise<EventMapEntry[]> {
+  if (!query.trim()) return entries
+  
+  const searchTerm = query.toLowerCase().trim()
+  
+  // Search for profiles that match the query
+  let matchingPubkeys = new Set<string>()
+  try {
+    const profiles = await client.searchProfilesFromLocal(searchTerm, 50)
+    profiles.forEach(profile => {
+      matchingPubkeys.add(profile.pubkey)
+    })
+  } catch (error) {
+    logger.debug('[DiscussionsPage] Profile search failed:', error)
+  }
+  
+  return entries.filter(entry => {
+    const thread = entry.event
+    
+    // Search in title (from tags)
+    const titleTag = thread.tags.find(tag => tag[0] === 'title')
+    const title = titleTag ? titleTag[1].toLowerCase() : ''
+    
+    // Search in content
+    const content = thread.content.toLowerCase()
+    
+    // Search in tags (t-tags and hashtags)
+    const allTags = [...entry.tTags, ...entry.hashtags].join(' ').toLowerCase()
+    
+    // Search in full author npub
+    const authorNpub = thread.pubkey.toLowerCase()
+    
+    // Search in author tag (for readings)
+    const authorTag = thread.tags.find(tag => tag[0] === 'author')
+    const author = authorTag ? authorTag[1].toLowerCase() : ''
+    
+    // Search in subject tag (for readings)
+    const subjectTag = thread.tags.find(tag => tag[0] === 'subject')
+    const subject = subjectTag ? subjectTag[1].toLowerCase() : ''
+    
+    // Check if author matches profile search
+    const authorMatchesProfile = matchingPubkeys.has(thread.pubkey)
+    
+    return title.includes(searchTerm) ||
+           content.includes(searchTerm) ||
+           allTags.includes(searchTerm) ||
+           authorNpub.includes(searchTerm) ||
+           author.includes(searchTerm) ||
+           subject.includes(searchTerm) ||
+           authorMatchesProfile
+  })
+}
+
+// Dynamic topic analysis
+interface DynamicTopic {
+  id: string
+  label: string
+  count: number
+  isMainTopic: boolean
+  isSubtopic: boolean
+  parentTopic?: string
+}
+
+function analyzeDynamicTopics(entries: EventMapEntry[]): {
+  mainTopics: DynamicTopic[]
+  subtopics: DynamicTopic[]
+  allTopics: DynamicTopic[]
+} {
+  const hashtagCounts = new Map<string, number>()
+  const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
+  
+  // Count hashtag frequency
+  entries.forEach(entry => {
+    const allTopics = [...entry.tTags, ...entry.hashtags]
+    allTopics.forEach(topic => {
+      if (topic && topic !== 'general' && !predefinedTopicIds.includes(topic)) {
+        hashtagCounts.set(topic, (hashtagCounts.get(topic) || 0) + 1)
+      }
+    })
+  })
+  
+  const mainTopics: DynamicTopic[] = []
+  const subtopics: DynamicTopic[] = []
+  
+  // Create dynamic topics based on frequency
+  hashtagCounts.forEach((count, hashtag) => {
+    const topic: DynamicTopic = {
+      id: hashtag,
+      label: hashtag.charAt(0).toUpperCase() + hashtag.slice(1).replace(/-/g, ' '),
+      count,
+      isMainTopic: count >= 10,
+      isSubtopic: count >= 3 && count < 10
+    }
+    
+    if (topic.isMainTopic) {
+      mainTopics.push(topic)
+    } else if (topic.isSubtopic) {
+      subtopics.push(topic)
+    }
+  })
+  
+  // Sort by count (most popular first)
+  mainTopics.sort((a, b) => b.count - a.count)
+  subtopics.sort((a, b) => b.count - a.count)
+  
+  const allTopics = [...mainTopics, ...subtopics]
+  
+  return { mainTopics, subtopics, allTopics }
+}
+
+// Enhanced topic categorization with dynamic topics
+function getEnhancedTopicFromTags(allTopics: string[], predefinedTopicIds: string[], dynamicTopics: DynamicTopic[]): string {
+  // First check predefined topics
+  for (const topic of allTopics) {
+    if (predefinedTopicIds.includes(topic)) {
+      return topic
+    }
+  }
+  
+  // Then check dynamic main topics
+  for (const topic of allTopics) {
+    const dynamicTopic = dynamicTopics.find(dt => dt.id === topic && dt.isMainTopic)
+    if (dynamicTopic) {
+      return topic
+    }
+  }
+  
+  // Finally check dynamic subtopics
+  for (const topic of allTopics) {
+    const dynamicTopic = dynamicTopics.find(dt => dt.id === topic && dt.isSubtopic)
+    if (dynamicTopic) {
+      return topic
+    }
+  }
+  
+  return 'general'
+}
+
 const DiscussionsPage = forwardRef(() => {
   const { t } = useTranslation()
   const { favoriteRelays, blockedRelays } = useFavoriteRelays()
@@ -145,6 +284,12 @@ const DiscussionsPage = forwardRef(() => {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [selectedTopic, setSelectedTopic] = useState<string>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [dynamicTopics, setDynamicTopics] = useState<{
+    mainTopics: DynamicTopic[]
+    subtopics: DynamicTopic[]
+    allTopics: DynamicTopic[]
+  }>({ mainTopics: [], subtopics: [], allTopics: [] })
   
   // Build comprehensive relay list (same as pins)
   const buildComprehensiveRelayList = useCallback(async () => {
@@ -247,7 +392,7 @@ const DiscussionsPage = forwardRef(() => {
         const hashtagsRaw = (thread.content.match(/#\w+/g) || []).map((tag: string) => tag.slice(1).toLowerCase())
         const allTopicsRaw = [...new Set([...tTagsRaw, ...hashtagsRaw])]
         
-        // Categorize topic
+        // Categorize topic (will be updated after dynamic topics are analyzed)
         const predefinedTopicIds = DISCUSSION_TOPICS.map((t: any) => t.id)
         const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds)
         
@@ -284,7 +429,23 @@ const DiscussionsPage = forwardRef(() => {
         }
       })
       
-      setAllEventMap(newEventMap)
+      // Analyze dynamic topics
+      const dynamicTopicsAnalysis = analyzeDynamicTopics(Array.from(newEventMap.values()))
+      setDynamicTopics(dynamicTopicsAnalysis)
+      
+      // Update event map with enhanced topic categorization
+      const updatedEventMap = new Map<string, EventMapEntry>()
+      newEventMap.forEach((entry, threadId) => {
+        const predefinedTopicIds = DISCUSSION_TOPICS.map((t: any) => t.id)
+        const enhancedTopic = getEnhancedTopicFromTags(entry.allTopics, predefinedTopicIds, dynamicTopicsAnalysis.allTopics)
+        
+        updatedEventMap.set(threadId, {
+          ...entry,
+          categorizedTopic: enhancedTopic
+        })
+      })
+      
+      setAllEventMap(updatedEventMap)
       
     } catch (error) {
       logger.error('[DiscussionsPage] Error fetching events:', error)
@@ -360,7 +521,7 @@ const DiscussionsPage = forwardRef(() => {
     })
     
     setEventMap(filteredMap)
-  }, [allEventMap, timeSpan, selectedTopic])
+  }, [allEventMap, timeSpan, selectedTopic, searchQuery])
   
   // Effects
   useEffect(() => {
@@ -379,9 +540,9 @@ const DiscussionsPage = forwardRef(() => {
     }
   }, [allEventMap, timeSpan, selectedTopic]) // Run when allEventMap, timeSpan, or selectedTopic changes
   
-  // Get available topics sorted by most recent activity
+  // Get available topics sorted by most recent activity (including dynamic topics)
   const availableTopics = useMemo(() => {
-    const topicMap = new Map<string, { count: number, lastActivity: number }>()
+    const topicMap = new Map<string, { count: number, lastActivity: number, isDynamic: boolean, isMainTopic: boolean, isSubtopic: boolean }>()
     
     allEventMap.forEach((entry) => {
       const topic = entry.categorizedTopic
@@ -392,7 +553,14 @@ const DiscussionsPage = forwardRef(() => {
       )
       
       if (!topicMap.has(topic)) {
-        topicMap.set(topic, { count: 0, lastActivity: 0 })
+        const dynamicTopic = dynamicTopics.allTopics.find(dt => dt.id === topic)
+        topicMap.set(topic, { 
+          count: 0, 
+          lastActivity: 0, 
+          isDynamic: !!dynamicTopic,
+          isMainTopic: dynamicTopic?.isMainTopic || false,
+          isSubtopic: dynamicTopic?.isSubtopic || false
+        })
       }
       
       const current = topicMap.get(topic)!
@@ -404,13 +572,42 @@ const DiscussionsPage = forwardRef(() => {
     return Array.from(topicMap.entries())
       .map(([topic, data]) => ({ topic, ...data }))
       .sort((a, b) => b.lastActivity - a.lastActivity)
-  }, [allEventMap])
+  }, [allEventMap, dynamicTopics])
   
+  // State for search results
+  const [searchedEntries, setSearchedEntries] = useState<EventMapEntry[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+
+  // Handle search with debouncing
+  useEffect(() => {
+    const performSearch = async () => {
+      if (!searchQuery.trim()) {
+        setSearchedEntries(Array.from(eventMap.values()))
+        return
+      }
+
+      setIsSearching(true)
+      try {
+        const allEntries = Array.from(eventMap.values())
+        const results = await searchThreads(allEntries, searchQuery)
+        setSearchedEntries(results)
+      } catch (error) {
+        logger.error('[DiscussionsPage] Search failed:', error)
+        setSearchedEntries(Array.from(eventMap.values()))
+      } finally {
+        setIsSearching(false)
+      }
+    }
+
+    const timeoutId = setTimeout(performSearch, 300) // 300ms debounce
+    return () => clearTimeout(timeoutId)
+  }, [eventMap, searchQuery])
+
   // Group events by topic
   const groupedEvents = useMemo(() => {
     const groups = new Map<string, EventMapEntry[]>()
     
-    eventMap.forEach((entry) => {
+    searchedEntries.forEach((entry) => {
       const topic = entry.categorizedTopic
       if (!groups.has(topic)) {
         groups.set(topic, [])
@@ -418,18 +615,45 @@ const DiscussionsPage = forwardRef(() => {
       groups.get(topic)!.push(entry)
     })
     
-    // Sort groups by predefined order
-    const sortedGroups = Array.from(groups.entries()).sort(([a], [b]) => {
-      const aIndex = DISCUSSION_TOPICS.findIndex(t => t.id === a)
-      const bIndex = DISCUSSION_TOPICS.findIndex(t => t.id === b)
-      if (aIndex === -1 && bIndex === -1) return a.localeCompare(b)
-      if (aIndex === -1) return 1
-      if (bIndex === -1) return -1
-      return aIndex - bIndex
+    // Sort threads within each group by newest-first (most recent activity)
+    groups.forEach((entries) => {
+      entries.sort((a, b) => {
+        const aActivity = Math.max(
+          a.event.created_at * 1000,
+          a.lastCommentTime > 0 ? a.lastCommentTime * 1000 : 0,
+          a.lastVoteTime > 0 ? a.lastVoteTime * 1000 : 0
+        )
+        const bActivity = Math.max(
+          b.event.created_at * 1000,
+          b.lastCommentTime > 0 ? b.lastCommentTime * 1000 : 0,
+          b.lastVoteTime > 0 ? b.lastVoteTime * 1000 : 0
+        )
+        return bActivity - aActivity // Newest first
+      })
+    })
+    
+    // Sort groups by most recent activity (newest first)
+    const sortedGroups = Array.from(groups.entries()).sort(([, aEntries], [, bEntries]) => {
+      if (aEntries.length === 0 && bEntries.length === 0) return 0
+      if (aEntries.length === 0) return 1
+      if (bEntries.length === 0) return -1
+      
+      const aMostRecent = Math.max(
+        aEntries[0].event.created_at * 1000,
+        aEntries[0].lastCommentTime > 0 ? aEntries[0].lastCommentTime * 1000 : 0,
+        aEntries[0].lastVoteTime > 0 ? aEntries[0].lastVoteTime * 1000 : 0
+      )
+      const bMostRecent = Math.max(
+        bEntries[0].event.created_at * 1000,
+        bEntries[0].lastCommentTime > 0 ? bEntries[0].lastCommentTime * 1000 : 0,
+        bEntries[0].lastVoteTime > 0 ? bEntries[0].lastVoteTime * 1000 : 0
+      )
+      
+      return bMostRecent - aMostRecent // Newest first
     })
     
     return sortedGroups
-  }, [eventMap])
+  }, [searchedEntries])
   
   // Handle refresh
   const handleRefresh = () => {
@@ -486,9 +710,10 @@ const DiscussionsPage = forwardRef(() => {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <h1 className="text-2xl font-bold">{t('Discussions')}</h1>
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-4 p-4 border-b">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">{t('Discussions')}</h1>
+          <div className="flex items-center gap-3">
           <button
             onClick={() => setShowCreateDialog(true)}
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
@@ -503,9 +728,13 @@ const DiscussionsPage = forwardRef(() => {
             className="px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="all">All Topics ({allEventMap.size})</option>
-            {availableTopics.map(({ topic, count }) => (
+            {availableTopics.map(({ topic, count, isDynamic, isMainTopic, isSubtopic }) => (
               <option key={topic} value={topic}>
+                {isDynamic && isMainTopic ? '🔥 ' : ''}
+                {isDynamic && isSubtopic ? '📌 ' : ''}
                 {topic} ({count})
+                {isDynamic && isMainTopic ? ' [Main Topic]' : ''}
+                {isDynamic && isSubtopic ? ' [Subtopic]' : ''}
               </option>
             ))}
           </select>
@@ -530,34 +759,63 @@ const DiscussionsPage = forwardRef(() => {
                 </button>
           </div>
         </div>
+        
+        {/* Search Bar */}
+        <div className="relative">
+          {isSearching ? (
+            <RefreshCw className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 animate-spin" />
+          ) : (
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          )}
+          <input
+            type="text"
+            placeholder={t('Search threads by title, content, tags, npub, author...')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-black dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+      </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {loading ? (
           <div className="text-center py-8">{t('Loading...')}</div>
+        ) : isSearching ? (
+          <div className="text-center py-8">{t('Searching...')}</div>
         ) : (
           <div className="space-y-6">
-            {groupedEvents.map(([topic, events]) => (
-              <div key={topic}>
-                <h2 className="text-lg font-semibold mb-3 capitalize">
-                  {topic} ({events.length} {events.length === 1 ? t('thread') : t('threads')})
-                    </h2>
+            {groupedEvents.map(([topic, events]) => {
+              const topicInfo = availableTopics.find(t => t.topic === topic)
+              const isDynamicMain = topicInfo?.isDynamic && topicInfo?.isMainTopic
+              const isDynamicSubtopic = topicInfo?.isDynamic && topicInfo?.isSubtopic
+              
+              return (
+                <div key={topic}>
+                  <h2 className="text-lg font-semibold mb-3 capitalize flex items-center gap-2">
+                    {isDynamicMain && <span className="text-orange-500">🔥</span>}
+                    {isDynamicSubtopic && <span className="text-blue-500">📌</span>}
+                    {topic} ({events.length} {events.length === 1 ? t('thread') : t('threads')})
+                    {isDynamicMain && <span className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 px-2 py-1 rounded">Main Topic</span>}
+                    {isDynamicSubtopic && <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">Subtopic</span>}
+                  </h2>
                   <div className="space-y-3">
-                  {events.map((entry) => (
+                    {events.map((entry) => (
                       <ThreadCard
-                      key={entry.event.id}
-                      thread={entry.event}
-                      commentCount={entry.commentCount}
-                      lastCommentTime={entry.lastCommentTime}
-                      lastVoteTime={entry.lastVoteTime}
-                      upVotes={entry.upVotes}
-                      downVotes={entry.downVotes}
-                      onThreadClick={() => handleThreadClick(entry.event.id)}
+                        key={entry.event.id}
+                        thread={entry.event}
+                        commentCount={entry.commentCount}
+                        lastCommentTime={entry.lastCommentTime}
+                        lastVoteTime={entry.lastVoteTime}
+                        upVotes={entry.upVotes}
+                        downVotes={entry.downVotes}
+                        onThreadClick={() => handleThreadClick(entry.event.id)}
                       />
                     ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -568,6 +826,7 @@ const DiscussionsPage = forwardRef(() => {
           topic="general"
           availableRelays={[]}
           relaySets={[]}
+          dynamicTopics={dynamicTopics}
           onClose={handleCloseDialog}
           onThreadCreated={handleCreateThread} 
         />
