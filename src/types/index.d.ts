@@ -131,7 +131,7 @@ export type TPublishOptions = {
   disableFallbacks?: boolean // If true, don't use fallback relays when publishing fails
 }
 
-export type TNoteListMode = 'posts' | 'postsAndReplies' | 'you'
+export type TNoteListMode = 'posts' | 'postsAndReplies' | 'you' | 'bookmarksAndHashtags'
 
 export type TNotificationType = 'all' | 'mentions' | 'reactions' | 'zaps'
 
