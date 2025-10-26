@@ -238,6 +238,14 @@ function analyzeDynamicTopics(entries: EventMapEntry[]): {
   
   const allTopics = [...mainTopics, ...subtopics]
   
+  // Debug logging
+  console.log('Dynamic topics analysis:', {
+    hashtagCounts: Object.fromEntries(hashtagCounts),
+    mainTopics: mainTopics.map(t => ({ id: t.id, count: t.count })),
+    subtopics: subtopics.map(t => ({ id: t.id, count: t.count })),
+    allTopics: allTopics.map(t => ({ id: t.id, count: t.count, isMainTopic: t.isMainTopic, isSubtopic: t.isSubtopic }))
+  })
+  
   return { mainTopics, subtopics, allTopics }
 }
 
@@ -631,6 +639,16 @@ const DiscussionsPage = forwardRef(() => {
         const dynamicTopic = dynamicTopics.allTopics.find(dt => dt.id === topic && dt.isSubtopic)
         return !!dynamicTopic
       })
+      
+      // Debug logging for subtopic detection
+      if (entrySubtopics.length > 0) {
+        console.log('Found subtopics for entry:', {
+          threadId: entry.event.id.substring(0, 8),
+          allTopics: entry.allTopics,
+          entrySubtopics,
+          dynamicTopics: dynamicTopics.allTopics.map(dt => ({ id: dt.id, isSubtopic: dt.isSubtopic }))
+        })
+      }
       
       if (entrySubtopics.length > 0) {
         // Group under the first subtopic found

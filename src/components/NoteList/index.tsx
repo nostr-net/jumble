@@ -168,6 +168,7 @@ const NoteList = forwardRef(
         setHasMore(true)
 
         if (showKinds.length === 0) {
+          logger.warn('NoteList: showKinds is empty, no events will be displayed')
           setLoading(false)
           setHasMore(false)
           return () => {}
