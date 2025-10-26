@@ -1,15 +1,15 @@
 import { toMuteList } from '@/lib/link'
-import { useSmartSettingsNavigation } from '@/PageManager'
+import { useSmartMuteListNavigation } from '@/PageManager'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useTranslation } from 'react-i18next'
 
 export default function SmartMuteLink() {
   const { t } = useTranslation()
   const { mutePubkeySet } = useMuteList()
-  const { navigateToSettings } = useSmartSettingsNavigation()
+  const { navigateToMuteList } = useSmartMuteListNavigation()
 
   const handleClick = () => {
-    navigateToSettings(toMuteList())
+    navigateToMuteList(toMuteList())
   }
 
   return (

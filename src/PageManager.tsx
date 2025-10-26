@@ -12,6 +12,9 @@ import PostSettingsPage from '@/pages/secondary/PostSettingsPage'
 import GeneralSettingsPage from '@/pages/secondary/GeneralSettingsPage'
 import TranslationPage from '@/pages/secondary/TranslationPage'
 import SecondaryProfilePage from '@/pages/secondary/ProfilePage'
+import FollowingListPage from '@/pages/secondary/FollowingListPage'
+import MuteListPage from '@/pages/secondary/MuteListPage'
+import OthersRelaySettingsPage from '@/pages/secondary/OthersRelaySettingsPage'
 import { CurrentRelaysProvider } from '@/providers/CurrentRelaysProvider'
 import { NotificationProvider } from '@/providers/NotificationProvider'
 import { useUserPreferences } from '@/providers/UserPreferencesProvider'
@@ -206,6 +209,70 @@ export function useSmartHashtagNavigation() {
   }
   
   return { navigateToHashtag }
+}
+
+// Custom hook for intelligent following list navigation
+export function useSmartFollowingListNavigation() {
+  const { showRecommendedRelaysPanel } = useUserPreferences()
+  const { push: pushSecondary } = useSecondaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
+  
+  const navigateToFollowingList = (url: string) => {
+    if (!showRecommendedRelaysPanel) {
+      // When right panel is hidden, show following list in primary area
+      // Extract profile ID from URL (e.g., "/users/npub1.../following" -> "npub1...")
+      const profileId = url.replace('/users/', '').replace('/following', '')
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<FollowingListPage id={profileId} index={0} />, 'profile')
+    } else {
+      // Normal behavior - use secondary navigation
+      pushSecondary(url)
+    }
+  }
+  
+  return { navigateToFollowingList }
+}
+
+// Custom hook for intelligent mute list navigation
+export function useSmartMuteListNavigation() {
+  const { showRecommendedRelaysPanel } = useUserPreferences()
+  const { push: pushSecondary } = useSecondaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
+  
+  const navigateToMuteList = (url: string) => {
+    if (!showRecommendedRelaysPanel) {
+      // When right panel is hidden, show mute list in primary area
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<MuteListPage index={0} />, 'settings')
+    } else {
+      // Normal behavior - use secondary navigation
+      pushSecondary(url)
+    }
+  }
+  
+  return { navigateToMuteList }
+}
+
+// Custom hook for intelligent others relay settings navigation
+export function useSmartOthersRelaySettingsNavigation() {
+  const { showRecommendedRelaysPanel } = useUserPreferences()
+  const { push: pushSecondary } = useSecondaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
+  
+  const navigateToOthersRelaySettings = (url: string) => {
+    if (!showRecommendedRelaysPanel) {
+      // When right panel is hidden, show others relay settings in primary area
+      // Extract profile ID from URL (e.g., "/users/npub1.../relays" -> "npub1...")
+      const profileId = url.replace('/users/', '').replace('/relays', '')
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<OthersRelaySettingsPage id={profileId} index={0} />, 'profile')
+    } else {
+      // Normal behavior - use secondary navigation
+      pushSecondary(url)
+    }
+  }
+  
+  return { navigateToOthersRelaySettings }
 }
 
 // Custom hook for intelligent settings navigation

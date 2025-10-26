@@ -1,19 +1,17 @@
 import { useFetchRelayList } from '@/hooks'
-import { toOthersRelaySettings, toRelaySettings } from '@/lib/link'
-import { useSmartSettingsNavigation } from '@/PageManager'
-import { useNostr } from '@/providers/NostrProvider'
+import { toOthersRelaySettings } from '@/lib/link'
+import { useSmartOthersRelaySettingsNavigation } from '@/PageManager'
 import { Loader } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 export default function SmartRelays({ pubkey }: { pubkey: string }) {
   const { t } = useTranslation()
-  const { pubkey: accountPubkey } = useNostr()
   const { relayList, isFetching } = useFetchRelayList(pubkey)
-  const { navigateToSettings } = useSmartSettingsNavigation()
+  const { navigateToOthersRelaySettings } = useSmartOthersRelaySettingsNavigation()
 
   const handleClick = () => {
-    const url = accountPubkey === pubkey ? toRelaySettings('mailbox') : toOthersRelaySettings(pubkey)
-    navigateToSettings(url)
+    // Navigate to the page showing this user's used relays
+    navigateToOthersRelaySettings(toOthersRelaySettings(pubkey))
   }
 
   return (

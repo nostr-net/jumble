@@ -1,6 +1,6 @@
 import { useFetchFollowings } from '@/hooks'
 import { toFollowingList } from '@/lib/link'
-import { useSmartProfileNavigation } from '@/PageManager'
+import { useSmartFollowingListNavigation } from '@/PageManager'
 import { useFollowList } from '@/providers/FollowListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { Loader } from 'lucide-react'
@@ -11,10 +11,10 @@ export default function SmartFollowings({ pubkey }: { pubkey: string }) {
   const { pubkey: accountPubkey } = useNostr()
   const { followings: selfFollowings } = useFollowList()
   const { followings, isFetching } = useFetchFollowings(pubkey)
-  const { navigateToProfile } = useSmartProfileNavigation()
+  const { navigateToFollowingList } = useSmartFollowingListNavigation()
 
   const handleClick = () => {
-    navigateToProfile(toFollowingList(pubkey))
+    navigateToFollowingList(toFollowingList(pubkey))
   }
 
   return (
