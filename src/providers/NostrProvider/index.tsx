@@ -13,6 +13,7 @@ import {
   minePow
 } from '@/lib/event'
 import { getProfileFromEvent, getRelayListFromEvent } from '@/lib/event-metadata'
+import logger from '@/lib/logger'
 import { normalizeUrl } from '@/lib/url'
 import { formatPubkey, pubkeyToNpub } from '@/lib/pubkey'
 import { showPublishingFeedback, showSimplePublishSuccess } from '@/lib/publishing-feedback'
@@ -125,7 +126,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         try {
           (signer as any).disconnect()
         } catch (error) {
-          console.warn('Failed to disconnect signer:', error)
+          logger.warn('Failed to disconnect signer:', error)
         }
       }
     }
@@ -141,7 +142,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } catch (error) {
-        console.warn('Extension cleanup failed:', error)
+        logger.warn('Extension cleanup failed:', error)
       }
     }
 
@@ -716,7 +717,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     }
     
     // Debug: Log the signed event
-    console.log('Signed event:', {
+    logger.debug('Signed event:', {
       id: event.id,
       pubkey: event.pubkey,
       sig: event.sig,
@@ -728,7 +729,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     // Validate the event before publishing
     const isValid = validateEvent(event)
     if (!isValid) {
-      console.error('Event validation failed:', event)
+      logger.error('Event validation failed:', event)
       throw new Error('Event validation failed - invalid signature or format. Please try logging in again.')
     }
     

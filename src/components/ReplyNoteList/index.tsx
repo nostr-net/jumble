@@ -9,6 +9,7 @@ import {
   isReplaceableEvent,
   isReplyNoteEvent
 } from '@/lib/event'
+import logger from '@/lib/logger'
 import { toNote } from '@/lib/link'
 import { generateBech32IdFromETag, tagNameEquals } from '@/lib/tag'
 import { normalizeUrl } from '@/lib/url'
@@ -98,7 +99,12 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     }
 
     
-    while (parentEventKeys.length > 0) {
+    const processedEventIds = new Set<string>() // Prevent infinite loops
+    let iterationCount = 0
+    const MAX_ITERATIONS = 10 // Prevent infinite loops
+    
+    while (parentEventKeys.length > 0 && iterationCount < MAX_ITERATIONS) {
+      iterationCount++
       const events = parentEventKeys.flatMap((id) => repliesMap.get(id)?.events || [])
       
       events.forEach((evt) => {
@@ -113,7 +119,18 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
         replyIdSet.add(evt.id)
         replyEvents.push(evt)
       })
-      parentEventKeys = events.map((evt) => evt.id)
+      
+      // Prevent infinite loops by tracking processed event IDs
+      const newParentEventKeys = events
+        .map((evt) => evt.id)
+        .filter((id) => !processedEventIds.has(id))
+      
+      newParentEventKeys.forEach((id) => processedEventIds.add(id))
+      parentEventKeys = newParentEventKeys
+    }
+    
+    if (iterationCount >= MAX_ITERATIONS) {
+      logger.warn('ReplyNoteList: Maximum iterations reached, possible circular reference in replies')
     }
     
 
@@ -335,10 +352,10 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
   }, [rootInfo, currentIndex, index, onNewReply])
 
   useEffect(() => {
-    if (replies.length === 0) {
+    if (replies.length === 0 && !loading && timelineKey) {
       loadMore()
     }
-  }, [replies])
+  }, [replies.length, loading, timelineKey]) // More specific dependencies to prevent infinite loops
 
   useEffect(() => {
     const options = {

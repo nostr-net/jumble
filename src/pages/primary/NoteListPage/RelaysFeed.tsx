@@ -1,17 +1,18 @@
 import NormalFeed from '@/components/NormalFeed'
 import { checkAlgoRelay } from '@/lib/relay'
+import logger from '@/lib/logger'
 import { useFeed } from '@/providers/FeedProvider'
 import relayInfoService from '@/services/relay-info.service'
 import { useEffect, useState } from 'react'
 
 export default function RelaysFeed() {
-  console.log('RelaysFeed component rendering')
+  logger.debug('RelaysFeed component rendering')
   const { feedInfo, relayUrls } = useFeed()
   const [isReady, setIsReady] = useState(false)
   const [areAlgoRelays, setAreAlgoRelays] = useState(false)
 
   // Debug logging
-  console.log('RelaysFeed debug:', {
+  logger.debug('RelaysFeed debug:', {
     feedInfo,
     relayUrls,
     isReady
@@ -35,7 +36,7 @@ export default function RelaysFeed() {
   }
 
   const subRequests = [{ urls: relayUrls, filter: {} }]
-  console.log('RelaysFeed rendering NormalFeed with:', { subRequests, relayUrls, areAlgoRelays })
+  logger.debug('RelaysFeed rendering NormalFeed with:', { subRequests, relayUrls, areAlgoRelays })
 
   return (
     <NormalFeed

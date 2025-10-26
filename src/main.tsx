@@ -3,6 +3,7 @@ import './index.css'
 import './polyfill'
 import './services/lightning.service'
 import './lib/error-suppression'
+import './lib/debug-utils'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'

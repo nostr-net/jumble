@@ -6,6 +6,7 @@ import {
   isReplaceableEvent
 } from '@/lib/event'
 import { getProfileFromEvent, getRelayListFromEvent } from '@/lib/event-metadata'
+import logger from '@/lib/logger'
 import { formatPubkey, isValidPubkey, pubkeyToNpub, userIdToPubkey } from '@/lib/pubkey'
 import { getPubkeysFromPTags, getServersFromServerTags } from '@/lib/tag'
 import { isWebsocketUrl, normalizeUrl } from '@/lib/url'
@@ -58,11 +59,13 @@ class ClientService extends EventTarget {
   )
   private trendingNotesCache: NEvent[] | null = null
   private requestThrottle = new Map<string, number>() // Track request timestamps per relay
-  private readonly REQUEST_COOLDOWN = 2000 // 2 second cooldown between requests to prevent "too many REQs"
+  private readonly REQUEST_COOLDOWN = 5000 // 5 second cooldown between requests to prevent "too many REQs"
   private failureCount = new Map<string, number>() // Track consecutive failures per relay
-  private readonly MAX_FAILURES = 3 // Max failures before exponential backoff
+  private readonly MAX_FAILURES = 2 // Max failures before exponential backoff (reduced from 3)
   private circuitBreaker = new Map<string, number>() // Track when relays are temporarily disabled
-  private readonly CIRCUIT_BREAKER_TIMEOUT = 60000 // 1 minute timeout for circuit breaker
+  private readonly CIRCUIT_BREAKER_TIMEOUT = 120000 // 2 minute timeout for circuit breaker (increased)
+  private concurrentRequests = new Map<string, number>() // Track concurrent requests per relay
+  private readonly MAX_CONCURRENT_REQUESTS = 2 // Max concurrent requests per relay
 
   private userIndex = new FlexSearch.Index({
     tokenize: 'forward'
@@ -199,7 +202,7 @@ class ClientService extends EventTarget {
         let fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
         fallbackRelays = this.filterBlockedRelays(fallbackRelays, blockedRelays)
         
-        console.log('Relay hint failed, trying fallback relays:', fallbackRelays)
+        logger.debug('Relay hint failed, trying fallback relays:', fallbackRelays)
         const fallbackResult = await this._publishToRelays(fallbackRelays, event)
         
         // Combine relay statuses from both attempts
@@ -214,7 +217,7 @@ class ClientService extends EventTarget {
         }
       } catch (error) {
         // If relay hint throws an error, try fallback relays
-        console.log('Relay hint threw error, trying fallback relays:', error)
+        logger.debug('Relay hint threw error, trying fallback relays:', error)
         
         // Extract relay statuses from the error if available
         let hintRelayStatuses: any[] = []
@@ -227,7 +230,7 @@ class ClientService extends EventTarget {
         let fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
         fallbackRelays = this.filterBlockedRelays(fallbackRelays, blockedRelays)
         
-        console.log('Trying fallback relays:', fallbackRelays)
+        logger.debug('Trying fallback relays:', fallbackRelays)
         const fallbackResult = await this._publishToRelays(fallbackRelays, event)
         
         // Combine relay statuses from both attempts
@@ -385,7 +388,7 @@ class ClientService extends EventTarget {
               error instanceof Error &&
               error.message.includes('too many concurrent REQs')
             ) {
-              console.log(`⚠ Relay ${url} is overloaded, skipping retry`)
+              logger.debug(`⚠ Relay ${url} is overloaded, skipping retry`)
               errors.push({ url, error: new Error('Relay overloaded - too many concurrent requests') })
               finishedCount++
               
@@ -1825,7 +1828,7 @@ class ClientService extends EventTarget {
         
         // Skip relays with open circuit breaker
         if (this.isCircuitBreakerOpen(url)) {
-          console.warn(`Skipping relay with open circuit breaker: ${url}`)
+          logger.debug(`Skipping relay with open circuit breaker: ${url}`)
           return false
         }
         
@@ -1838,14 +1841,14 @@ class ClientService extends EventTarget {
 
         return true
       } catch (error) {
-        console.warn(`Skipping invalid relay URL: ${url}`, error)
+        logger.debug(`Skipping invalid relay URL: ${url}`, error)
         return false
       }
     })
 
-    // Limit to 8 relays to prevent "too many concurrent REQs" errors
-    // Increased from 3 to 8 for discussions to include more relay sources
-    return validRelays.slice(0, 8)
+    // Limit to 4 relays to prevent "too many concurrent REQs" errors
+    // Reduced from 8 to 4 to reduce relay load
+    return validRelays.slice(0, 4)
   }
 
   // ================= Utils =================
@@ -1854,6 +1857,16 @@ class ClientService extends EventTarget {
     const now = Date.now()
     const lastRequest = this.requestThrottle.get(relayUrl) || 0
     const failures = this.failureCount.get(relayUrl) || 0
+    const concurrent = this.concurrentRequests.get(relayUrl) || 0
+    
+    // Check concurrent request limit
+    if (concurrent >= this.MAX_CONCURRENT_REQUESTS) {
+      logger.debug(`Relay ${relayUrl} has ${concurrent} concurrent requests, waiting...`)
+      // Wait for a concurrent request to complete
+      while (this.concurrentRequests.get(relayUrl) || 0 >= this.MAX_CONCURRENT_REQUESTS) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
     
     // Calculate delay based on failures (exponential backoff)
     let delay = this.REQUEST_COOLDOWN
@@ -1867,12 +1880,19 @@ class ClientService extends EventTarget {
       await new Promise(resolve => setTimeout(resolve, delay))
     }
     
+    // Increment concurrent request counter
+    this.concurrentRequests.set(relayUrl, (this.concurrentRequests.get(relayUrl) || 0) + 1)
     this.requestThrottle.set(relayUrl, Date.now())
   }
 
   private recordSuccess(relayUrl: string): void {
     // Reset failure count on success
     this.failureCount.delete(relayUrl)
+    // Decrement concurrent request counter
+    const current = this.concurrentRequests.get(relayUrl) || 0
+    if (current > 0) {
+      this.concurrentRequests.set(relayUrl, current - 1)
+    }
   }
 
   private recordFailure(relayUrl: string): void {
@@ -1880,10 +1900,16 @@ class ClientService extends EventTarget {
     const newFailures = currentFailures + 1
     this.failureCount.set(relayUrl, newFailures)
     
+    // Decrement concurrent request counter
+    const current = this.concurrentRequests.get(relayUrl) || 0
+    if (current > 0) {
+      this.concurrentRequests.set(relayUrl, current - 1)
+    }
+    
     // Activate circuit breaker if too many failures
-    if (newFailures >= 5) {
+    if (newFailures >= 3) {
       this.circuitBreaker.set(relayUrl, Date.now())
-      console.log(`🔴 Circuit breaker activated for ${relayUrl} (${newFailures} failures)`)
+      logger.debug(`🔴 Circuit breaker activated for ${relayUrl} (${newFailures} failures)`)
     }
   }
 
@@ -1896,12 +1922,14 @@ class ClientService extends EventTarget {
       // Circuit breaker timeout expired, reset it
       this.circuitBreaker.delete(relayUrl)
       this.failureCount.delete(relayUrl)
-      console.log(`🟢 Circuit breaker reset for ${relayUrl}`)
+      this.concurrentRequests.delete(relayUrl) // Clean up concurrent counter
+      logger.debug(`🟢 Circuit breaker reset for ${relayUrl}`)
       return false
     }
     
     return true
   }
+
 
   async generateSubRequestsForPubkeys(pubkeys: string[], myPubkey?: string | null) {
     // Privacy: Only use user's own relays + defaults, never fetch other users' relays

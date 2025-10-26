@@ -1,5 +1,6 @@
 import { DEFAULT_FAVORITE_RELAYS } from '@/constants'
 import { getRelaySetFromEvent } from '@/lib/event-metadata'
+import logger from '@/lib/logger'
 import { isWebsocketUrl, normalizeUrl } from '@/lib/url'
 import indexedDb from '@/services/indexed-db.service'
 import storage from '@/services/local-storage.service'
@@ -42,7 +43,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
-      console.log('FeedProvider init:', { isInitialized, pubkey })
+      logger.debug('FeedProvider init:', { isInitialized, pubkey })
       if (!isInitialized) {
         return
       }
@@ -53,11 +54,11 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
         feedType: 'relay',
         id: visibleRelays[0] ?? DEFAULT_FAVORITE_RELAYS[0]
       }
-      console.log('Initial feedInfo setup:', { visibleRelays, favoriteRelays, blockedRelays, feedInfo })
+      logger.debug('Initial feedInfo setup:', { visibleRelays, favoriteRelays, blockedRelays, feedInfo })
       
       if (pubkey) {
         const storedFeedInfo = storage.getFeedInfo(pubkey)
-        console.log('Stored feed info:', storedFeedInfo)
+        logger.debug('Stored feed info:', storedFeedInfo)
         if (storedFeedInfo) {
           feedInfo = storedFeedInfo
         }
@@ -70,7 +71,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       if (feedInfo.feedType === 'relay') {
         // Check if the stored relay is blocked, if so use first visible relay instead
         if (feedInfo.id && blockedRelays.includes(feedInfo.id)) {
-          console.log('Stored relay is blocked, using first visible relay instead')
+          logger.debug('Stored relay is blocked, using first visible relay instead')
           feedInfo.id = visibleRelays[0] ?? DEFAULT_FAVORITE_RELAYS[0]
         }
         return await switchFeed('relay', { relay: feedInfo.id })
@@ -86,7 +87,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (feedInfo.feedType === 'all-favorites') {
-        console.log('Initializing all-favorites feed')
+        logger.debug('Initializing all-favorites feed')
         return await switchFeed('all-favorites')
       }
     }
@@ -99,7 +100,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
     if (feedInfo.feedType === 'all-favorites') {
       // Filter out blocked relays
       const visibleRelays = favoriteRelays.filter(relay => !blockedRelays.includes(relay))
-      console.log('Updating relay URLs for all-favorites:', visibleRelays)
+      logger.debug('Updating relay URLs for all-favorites:', visibleRelays)
       setRelayUrls(visibleRelays)
     }
   }, [favoriteRelays, blockedRelays, feedInfo.feedType])
@@ -112,33 +113,33 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       relay?: string | null
     } = {}
   ) => {
-    console.log('switchFeed called:', { feedType, options })
+    logger.debug('switchFeed called:', { feedType, options })
     setIsReady(false)
     if (feedType === 'relay') {
       const normalizedUrl = normalizeUrl(options.relay ?? '')
-      console.log('Relay switchFeed:', { normalizedUrl, isWebsocketUrl: isWebsocketUrl(normalizedUrl), blockedRelays })
+      logger.debug('Relay switchFeed:', { normalizedUrl, isWebsocketUrl: isWebsocketUrl(normalizedUrl), blockedRelays })
       
       if (!normalizedUrl || !isWebsocketUrl(normalizedUrl)) {
-        console.log('Invalid relay URL, setting isReady to true')
+        logger.debug('Invalid relay URL, setting isReady to true')
         setIsReady(true)
         return
       }
       
       // Don't allow selecting a blocked relay as feed
       if (blockedRelays.includes(normalizedUrl)) {
-        console.warn('Cannot select blocked relay as feed:', normalizedUrl)
+        logger.warn('Cannot select blocked relay as feed:', normalizedUrl)
         setIsReady(true)
         return
       }
 
       const newFeedInfo = { feedType, id: normalizedUrl }
-      console.log('Setting relay feed info:', newFeedInfo)
+      logger.debug('Setting relay feed info:', newFeedInfo)
       setFeedInfo(newFeedInfo)
       feedInfoRef.current = newFeedInfo
       setRelayUrls([normalizedUrl])
       storage.setFeedInfo(newFeedInfo, pubkey)
       setIsReady(true)
-      console.log('Relay feed setup complete, isReady set to true')
+      logger.debug('Relay feed setup complete, isReady set to true')
       return
     }
     if (feedType === 'relays') {
@@ -189,7 +190,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
     if (feedType === 'all-favorites') {
       // Filter out blocked relays
       const visibleRelays = favoriteRelays.filter(relay => !blockedRelays.includes(relay))
-      console.log('Switching to all-favorites, favoriteRelays:', visibleRelays)
+      logger.debug('Switching to all-favorites, favoriteRelays:', visibleRelays)
       const newFeedInfo = { feedType }
       setFeedInfo(newFeedInfo)
       feedInfoRef.current = newFeedInfo

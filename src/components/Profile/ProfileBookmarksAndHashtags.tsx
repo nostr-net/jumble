@@ -5,6 +5,7 @@ import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
 import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
+import logger from '@/lib/logger'
 import { normalizeUrl } from '@/lib/url'
 import NoteCard from '../NoteCard'
 import { Skeleton } from '../ui/skeleton'
@@ -94,12 +95,12 @@ export default function ProfileBookmarksAndHashtags({
             // Use the same comprehensive relay list we built for the bookmark list event
             const events = await client.fetchEvents(comprehensiveRelays, {
               ids: eventIds,
-              limit: 500
+              limit: 100
             })
-            console.log('[ProfileBookmarksAndHashtags] Fetched', events.length, 'bookmark events')
+            logger.debug('[ProfileBookmarksAndHashtags] Fetched', events.length, 'bookmark events')
             setBookmarkEvents(events)
           } catch (error) {
-            console.warn('[ProfileBookmarksAndHashtags] Error fetching bookmark events:', error)
+            logger.warn('[ProfileBookmarksAndHashtags] Error fetching bookmark events:', error)
             setBookmarkEvents([])
           }
         } else {
@@ -212,12 +213,12 @@ export default function ProfileBookmarksAndHashtags({
             // Use the same comprehensive relay list we built for the pin list event
             const events = await client.fetchEvents(comprehensiveRelays, {
               ids: eventIds,
-              limit: 500
+              limit: 100
             })
-            console.log('[ProfileBookmarksAndHashtags] Fetched', events.length, 'pin events')
+            logger.debug('[ProfileBookmarksAndHashtags] Fetched', events.length, 'pin events')
             setPinEvents(events)
           } catch (error) {
-            console.warn('[ProfileBookmarksAndHashtags] Error fetching pin events:', error)
+            logger.warn('[ProfileBookmarksAndHashtags] Error fetching pin events:', error)
             setPinEvents([])
           }
         } else {

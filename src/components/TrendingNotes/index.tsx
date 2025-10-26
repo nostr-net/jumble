@@ -11,6 +11,7 @@ import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useZap } from '@/providers/ZapProvider'
 import noteStatsService from '@/services/note-stats.service'
 import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS } from '@/constants'
+import logger from '@/lib/logger'
 import { normalizeUrl } from '@/lib/url'
 
 const SHOW_COUNT = 10
@@ -54,12 +55,12 @@ export default function TrendingNotes() {
 
   // Debug: Track cacheEvents changes
   useEffect(() => {
-    console.log('[TrendingNotes] cacheEvents state changed:', cacheEvents.length, 'events')
+    logger.debug('[TrendingNotes] cacheEvents state changed:', cacheEvents.length, 'events')
   }, [cacheEvents])
 
   // Debug: Track cacheLoading changes
   useEffect(() => {
-    console.log('[TrendingNotes] cacheLoading state changed:', cacheLoading)
+    logger.debug('[TrendingNotes] cacheLoading state changed:', cacheLoading)
   }, [cacheLoading])
 
 
@@ -128,7 +129,7 @@ export default function TrendingNotes() {
         const flattenedIds = allEventIds.flat()
         setFollowsBookmarkEventIds(flattenedIds)
       } catch (error) {
-        console.error('Error fetching follows bookmarks:', error)
+        logger.error('Error fetching follows bookmarks:', error)
       }
     }
     
@@ -137,7 +138,7 @@ export default function TrendingNotes() {
 
   // Calculate popular hashtags from cache events (all events from relays)
   const calculatePopularHashtags = useMemo(() => {
-    console.log('[TrendingNotes] calculatePopularHashtags - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
+    logger.debug('[TrendingNotes] calculatePopularHashtags - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
     
     // Use cache events if available, otherwise fallback to trending notes
     let eventsToAnalyze = cacheEvents.length > 0 ? cacheEvents : trendingNotes
@@ -180,8 +181,8 @@ export default function TrendingNotes() {
       .slice(0, 10)
       .map(([hashtag]) => hashtag)
     
-    console.log('[TrendingNotes] calculatePopularHashtags - found hashtags:', result)
-    console.log('[TrendingNotes] calculatePopularHashtags - eventsWithHashtags:', eventsWithHashtags)
+    logger.debug('[TrendingNotes] calculatePopularHashtags - found hashtags:', result)
+    logger.debug('[TrendingNotes] calculatePopularHashtags - eventsWithHashtags:', eventsWithHashtags)
     
     return result
   }, [cacheEvents, trendingNotes, activeTab, hashtagFilter, pubkey]) // Use cacheEvents and trendingNotes as dependencies
@@ -212,14 +213,14 @@ export default function TrendingNotes() {
 
   // Update popular hashtags when trending notes change
   useEffect(() => {
-    console.log('[TrendingNotes] calculatePopularHashtags result:', calculatePopularHashtags)
+    logger.debug('[TrendingNotes] calculatePopularHashtags result:', calculatePopularHashtags)
     setPopularHashtags(calculatePopularHashtags)
   }, [calculatePopularHashtags])
 
   // Fallback: populate cacheEvents from trendingNotes if cache is empty
   useEffect(() => {
     if (activeTab === 'hashtags' && cacheEvents.length === 0 && trendingNotes.length > 0) {
-      console.log('[TrendingNotes] Fallback: populating cacheEvents from trendingNotes')
+      logger.debug('[TrendingNotes] Fallback: populating cacheEvents from trendingNotes')
       setCacheEvents(trendingNotes)
     }
   }, [activeTab, cacheEvents.length, trendingNotes])
@@ -233,13 +234,19 @@ export default function TrendingNotes() {
         return
       }
       
+      // Prevent re-initialization if cache is already populated
+      if (cacheEvents.length > 0) {
+        logger.debug('[TrendingNotes] Cache already populated, skipping initialization')
+        return
+      }
+      
       const now = Date.now()
       
       // Check if cache is still valid
       if (cachedCustomEvents && (now - cachedCustomEvents.timestamp) < CACHE_DURATION) {
         // If cache is valid, set cacheEvents to ALL events from cache
         const allEvents = cachedCustomEvents.events.map(item => item.event)
-        console.log('[TrendingNotes] Using existing cache - loading', allEvents.length, 'events')
+        logger.debug('[TrendingNotes] Using existing cache - loading', allEvents.length, 'events')
         setCacheEvents(allEvents)
         setCacheLoading(false) // Ensure loading state is cleared
         return
@@ -251,14 +258,14 @@ export default function TrendingNotes() {
       
       // Set a timeout to prevent infinite loading
       const timeoutId = setTimeout(() => {
-        console.log('[TrendingNotes] Cache initialization timeout - forcing completion')
+        logger.debug('[TrendingNotes] Cache initialization timeout - forcing completion')
         isInitializing = false
         setCacheLoading(false)
       }, 180000) // 3 minute timeout
       
       // Prevent running if we have no relays
       if (relays.length === 0) {
-        console.log('[TrendingNotes] No relays available, skipping cache initialization')
+        logger.debug('[TrendingNotes] No relays available, skipping cache initialization')
         clearTimeout(timeoutId)
         isInitializing = false
         setCacheLoading(false)
@@ -269,7 +276,7 @@ export default function TrendingNotes() {
         const allEvents: NostrEvent[] = []
         const twentyFourHoursAgo = Math.floor(Date.now() / 1000) - 24 * 60 * 60
         
-        console.log('[TrendingNotes] Starting cache initialization with', relays.length, 'relays:', relays)
+        logger.debug('[TrendingNotes] Starting cache initialization with', relays.length, 'relays:', relays)
         
         // 1. Fetch top-level posts from last 24 hours - batch requests to avoid overwhelming relays
         const batchSize = 3 // Process 3 relays at a time
@@ -277,18 +284,18 @@ export default function TrendingNotes() {
         
         for (let i = 0; i < relays.length; i += batchSize) {
           const batch = relays.slice(i, i + batchSize)
-          console.log('[TrendingNotes] Processing batch', Math.floor(i/batchSize) + 1, 'of', Math.ceil(relays.length/batchSize), 'relays:', batch)
+          logger.debug('[TrendingNotes] Processing batch', Math.floor(i/batchSize) + 1, 'of', Math.ceil(relays.length/batchSize), 'relays:', batch)
           const batchPromises = batch.map(async (relay) => {
             try {
               const events = await client.fetchEvents([relay], {
                 kinds: [1, 11, 30023, 9802, 20, 21, 22],
                 since: twentyFourHoursAgo,
-                limit: 500
+                limit: 100
               })
-              console.log('[TrendingNotes] Fetched', events.length, 'events from relay', relay)
+              logger.debug('[TrendingNotes] Fetched', events.length, 'events from relay', relay)
               return events
             } catch (error) {
-              console.warn(`[TrendingNotes] Error fetching from relay ${relay}:`, error)
+              logger.warn(`[TrendingNotes] Error fetching from relay ${relay}:`, error)
               return []
             }
           })
@@ -296,7 +303,7 @@ export default function TrendingNotes() {
           const batchResults = await Promise.all(batchPromises)
           const batchEvents = batchResults.flat()
           recentEvents.push(...batchEvents)
-          console.log('[TrendingNotes] Batch completed, total events so far:', recentEvents.length)
+          logger.debug('[TrendingNotes] Batch completed, total events so far:', recentEvents.length)
           
           // Add a small delay between batches to be respectful to relays
           if (i + batchSize < relays.length) {
@@ -332,7 +339,7 @@ export default function TrendingNotes() {
                 try {
                   const pinEvents = await client.fetchEvents(relays, {
                     ids: pinEventIds,
-                    limit: 500
+                    limit: 100
                   })
                   allEvents.push(...pinEvents)
                 } catch (error) {
@@ -388,17 +395,17 @@ export default function TrendingNotes() {
 
         // Fetch stats for events in batches with longer delays
         const eventsNeedingStats = filteredEvents.filter(event => !noteStatsService.getNoteStats(event.id))
-        console.log('[TrendingNotes] Need to fetch stats for', eventsNeedingStats.length, 'events')
+        logger.debug('[TrendingNotes] Need to fetch stats for', eventsNeedingStats.length, 'events')
         
         if (eventsNeedingStats.length > 0) {
           const batchSize = 10 // Increased batch size to speed up
           const totalBatches = Math.ceil(eventsNeedingStats.length / batchSize)
-          console.log('[TrendingNotes] Fetching stats in', totalBatches, 'batches')
+          logger.debug('[TrendingNotes] Fetching stats in', totalBatches, 'batches')
           
           for (let i = 0; i < eventsNeedingStats.length; i += batchSize) {
             const batch = eventsNeedingStats.slice(i, i + batchSize)
             const batchNum = Math.floor(i / batchSize) + 1
-            console.log('[TrendingNotes] Fetching stats batch', batchNum, 'of', totalBatches)
+            logger.debug('[TrendingNotes] Fetching stats batch', batchNum, 'of', totalBatches)
             
             await Promise.all(batch.map(event => 
               noteStatsService.fetchNoteStats(event, undefined, favoriteRelays).catch(() => {})
@@ -408,11 +415,11 @@ export default function TrendingNotes() {
               await new Promise(resolve => setTimeout(resolve, 200)) // Reduced delay
             }
           }
-          console.log('[TrendingNotes] Stats fetching completed')
+          logger.debug('[TrendingNotes] Stats fetching completed')
         }
 
         // Score events
-        console.log('[TrendingNotes] Scoring', filteredEvents.length, 'events')
+        logger.debug('[TrendingNotes] Scoring', filteredEvents.length, 'events')
         const scoredEvents = filteredEvents.map((event) => {
           const stats = noteStatsService.getNoteStats(event.id)
           let score = 0
@@ -438,7 +445,7 @@ export default function TrendingNotes() {
         })
 
         // Update cache
-        console.log('[TrendingNotes] Updating cache with', scoredEvents.length, 'scored events')
+        logger.debug('[TrendingNotes] Updating cache with', scoredEvents.length, 'scored events')
         cachedCustomEvents = {
           events: scoredEvents,
           timestamp: now,
@@ -448,10 +455,10 @@ export default function TrendingNotes() {
 
         // Store ALL events from the cache for hashtag analysis
         // This includes all events from relays, not just the trending ones
-        console.log('[TrendingNotes] Cache initialization complete - storing', filteredEvents.length, 'events')
+        logger.debug('[TrendingNotes] Cache initialization complete - storing', filteredEvents.length, 'events')
         setCacheEvents(filteredEvents)
       } catch (error) {
-        console.error('[TrendingNotes] Error initializing cache:', error)
+        logger.error('[TrendingNotes] Error initializing cache:', error)
       } finally {
         clearTimeout(timeoutId)
         isInitializing = false
@@ -475,12 +482,12 @@ export default function TrendingNotes() {
     } else if (activeTab === 'relays') {
       // "on your relays" tab: use cache events from user's relays
       sourceEvents = cacheEvents
-      console.log('[TrendingNotes] Relays tab - cacheEvents.length:', cacheEvents.length, 'cacheLoading:', cacheLoading)
+      logger.debug('[TrendingNotes] Relays tab - cacheEvents.length:', cacheEvents.length, 'cacheLoading:', cacheLoading)
     } else if (activeTab === 'hashtags') {
       // Hashtags tab: use cache events for hashtag analysis
       sourceEvents = cacheEvents.length > 0 ? cacheEvents : trendingNotes
-      console.log('[TrendingNotes] Hashtags tab - using ALL events from cache')
-      console.log('[TrendingNotes] Hashtags tab - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
+      logger.debug('[TrendingNotes] Hashtags tab - using ALL events from cache')
+      logger.debug('[TrendingNotes] Hashtags tab - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
     }
     
     
@@ -631,7 +638,7 @@ export default function TrendingNotes() {
       setSortOrder('most-popular')
       // If cache is empty and not loading, log the issue for debugging
       if (cacheEvents.length === 0 && !cacheLoading && !isInitializing) {
-        console.log('[TrendingNotes] Relays tab selected but cache is empty - this should not happen if cache initialization completed')
+        logger.debug('[TrendingNotes] Relays tab selected but cache is empty - this should not happen if cache initialization completed')
       }
     } else if (activeTab === 'hashtags') {
       setSortOrder('most-popular')

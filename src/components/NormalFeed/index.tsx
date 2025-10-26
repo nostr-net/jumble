@@ -1,5 +1,6 @@
 import NoteList, { TNoteListRef } from '@/components/NoteList'
 import Tabs from '@/components/Tabs'
+import logger from '@/lib/logger'
 import { isTouchDevice } from '@/lib/utils'
 import { useKindFilter } from '@/providers/KindFilterProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
@@ -20,7 +21,7 @@ const NormalFeed = forwardRef<TNoteListRef, {
   isMainFeed = false,
   showRelayCloseReason = false
 }, ref) {
-  console.log('NormalFeed component rendering with:', { subRequests, areAlgoRelays, isMainFeed })
+  logger.debug('NormalFeed component rendering with:', { subRequests, areAlgoRelays, isMainFeed })
   const { hideUntrustedNotes } = useUserTrust()
   const { showKinds } = useKindFilter()
   const [temporaryShowKinds, setTemporaryShowKinds] = useState(showKinds)

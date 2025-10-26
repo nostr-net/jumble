@@ -2,6 +2,7 @@ import { useSmartNoteNavigation } from '@/PageManager'
 import { ExtendedKind, SUPPORTED_KINDS } from '@/constants'
 import { getParentBech32Id, isNsfwEvent } from '@/lib/event'
 import { toNote } from '@/lib/link'
+import logger from '@/lib/logger'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
@@ -76,7 +77,7 @@ export default function Note({
   
   
   if (!supportedKindsList.includes(event.kind)) {
-    console.log('Note component - rendering UnknownNote for unsupported kind:', event.kind)
+    logger.debug('Note component - rendering UnknownNote for unsupported kind:', event.kind)
     content = <UnknownNote className="mt-2" event={event} />
   } else if (mutePubkeySet.has(event.pubkey) && !showMuted) {
     content = <MutedNote show={() => setShowMuted(true)} />
@@ -87,7 +88,7 @@ export default function Note({
     try {
       content = <Highlight className="mt-2" event={event} />
     } catch (error) {
-      console.error('Note component - Error rendering Highlight component:', error)
+      logger.error('Note component - Error rendering Highlight component:', error)
       content = <div className="mt-2 p-4 bg-red-100 border border-red-500 rounded">
         <div className="font-bold text-red-800">HIGHLIGHT ERROR:</div>
         <div className="text-red-700">Error: {String(error)}</div>

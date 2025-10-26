@@ -7,6 +7,7 @@ import {
   isReplyNoteEvent
 } from '@/lib/event'
 import { getZapInfoFromEvent } from '@/lib/event-metadata'
+import logger from '@/lib/logger'
 import { isTouchDevice } from '@/lib/utils'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useDeletedEvent } from '@/providers/DeletedEventProvider'
@@ -33,7 +34,7 @@ import { toast } from 'sonner'
 import NoteCard, { NoteCardLoadingSkeleton } from '../NoteCard'
 
 const LIMIT = 200
-const ALGO_LIMIT = 500
+const ALGO_LIMIT = 200
 const SHOW_COUNT = 10
 
 const NoteList = forwardRef(
@@ -156,7 +157,7 @@ const NoteList = forwardRef(
     useImperativeHandle(ref, () => ({ scrollToTop, refresh }), [])
 
   useEffect(() => {
-    console.log('NoteList useEffect:', { subRequests, subRequestsLength: subRequests.length })
+    logger.debug('NoteList useEffect:', { subRequests, subRequestsLength: subRequests.length })
     if (!subRequests.length) return
 
     async function init() {
@@ -172,7 +173,7 @@ const NoteList = forwardRef(
           return () => {}
         }
 
-        console.log('NoteList subscribing to timeline with:', subRequests.map(({ urls, filter }) => ({
+        logger.debug('NoteList subscribing to timeline with:', subRequests.map(({ urls, filter }) => ({
             urls,
             filter: {
               kinds: showKinds,
@@ -192,7 +193,7 @@ const NoteList = forwardRef(
           })),
           {
             onEvents: (events, eosed) => {
-              console.log('NoteList received events:', { eventsCount: events.length, eosed })
+              logger.debug('NoteList received events:', { eventsCount: events.length, eosed })
               if (events.length > 0) {
                 setEvents(events)
                 // Stop loading as soon as we have events, don't wait for all relays
@@ -220,7 +221,7 @@ const NoteList = forwardRef(
               }
             },
             onClose: (url, reason) => {
-              console.log('Relay connection closed:', { url, reason })
+              logger.debug('Relay connection closed:', { url, reason })
               if (!showRelayCloseReason) return
               // ignore reasons from nostr-tools
               if (

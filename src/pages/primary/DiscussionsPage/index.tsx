@@ -5,6 +5,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useSmartNoteNavigation } from '@/PageManager'
 import { toNote } from '@/lib/link'
+import logger from '@/lib/logger'
 import { NostrEvent, Event as NostrEventType } from 'nostr-tools'
 import { kinds } from 'nostr-tools'
 import { normalizeUrl } from '@/lib/url'
@@ -44,14 +45,14 @@ function countVotesForThread(threadId: string, reactions: NostrEvent[], threadAu
     return 'emoji'
   }
   
-  console.log('[DiscussionsPage] Counting votes for thread', threadId.substring(0, 8), 'with', reactions.length, 'reactions')
+  logger.debug('[DiscussionsPage] Counting votes for thread', threadId.substring(0, 8), 'with', reactions.length, 'reactions')
   
   // Process all reactions for this thread
   reactions.forEach(reaction => {
     const eTags = reaction.tags.filter(tag => tag[0] === 'e' && tag[1])
     eTags.forEach(tag => {
       if (tag[1] === threadId) {
-        console.log('[DiscussionsPage] Found reaction for thread', threadId.substring(0, 8), ':', {
+        logger.debug('[DiscussionsPage] Found reaction for thread', threadId.substring(0, 8), ':', {
           content: reaction.content,
           pubkey: reaction.pubkey.substring(0, 8),
           isSelf: reaction.pubkey === threadAuthor,
@@ -60,12 +61,12 @@ function countVotesForThread(threadId: string, reactions: NostrEvent[], threadAu
         
         // Skip self-votes
         if (reaction.pubkey === threadAuthor) {
-          console.log('[DiscussionsPage] Skipping self-vote')
+          logger.debug('[DiscussionsPage] Skipping self-vote')
           return
         }
         
         const normalizedReaction = normalizeReaction(reaction.content)
-        console.log('[DiscussionsPage] Normalized reaction:', normalizedReaction)
+        logger.debug('[DiscussionsPage] Normalized reaction:', normalizedReaction)
         
         if (normalizedReaction === '+' || normalizedReaction === '-') {
           const existingVote = userVotes.get(reaction.pubkey)
@@ -187,11 +188,11 @@ const DiscussionsPage = forwardRef(() => {
       const discussionThreads = await client.fetchEvents(allRelays, [
         {
           kinds: [11], // ExtendedKind.DISCUSSION
-          limit: 500
+          limit: 100
         }
       ])
       
-      console.log('[DiscussionsPage] Fetched', discussionThreads.length, 'discussion threads')
+      logger.debug('[DiscussionsPage] Fetched', discussionThreads.length, 'discussion threads')
       
       // Step 2: Get thread IDs and fetch related comments and reactions
       const threadIds = discussionThreads.map((thread: NostrEvent) => thread.id)
@@ -238,7 +239,7 @@ const DiscussionsPage = forwardRef(() => {
         
         // Debug: Log vote stats for threads with votes
         if (voteStats.upVotes > 0 || voteStats.downVotes > 0) {
-          console.log('[DiscussionsPage] Thread', threadId.substring(0, 8), 'has votes:', voteStats)
+          logger.debug('[DiscussionsPage] Thread', threadId.substring(0, 8), 'has votes:', voteStats)
         }
         
         // Extract topics
@@ -274,19 +275,19 @@ const DiscussionsPage = forwardRef(() => {
         })
       })
       
-      console.log('[DiscussionsPage] Built event map with', newEventMap.size, 'threads')
+      logger.debug('[DiscussionsPage] Built event map with', newEventMap.size, 'threads')
       
       // Log vote counts for debugging
       newEventMap.forEach((entry, threadId) => {
         if (entry.upVotes > 0 || entry.downVotes > 0) {
-          console.log('[DiscussionsPage] Thread', threadId.substring(0, 8) + '...', 'has', entry.upVotes, 'upvotes,', entry.downVotes, 'downvotes')
+          logger.debug('[DiscussionsPage] Thread', threadId.substring(0, 8) + '...', 'has', entry.upVotes, 'upvotes,', entry.downVotes, 'downvotes')
         }
       })
       
       setAllEventMap(newEventMap)
       
     } catch (error) {
-      console.error('[DiscussionsPage] Error fetching events:', error)
+      logger.error('[DiscussionsPage] Error fetching events:', error)
     } finally {
       setLoading(false)
       setIsRefreshing(false)

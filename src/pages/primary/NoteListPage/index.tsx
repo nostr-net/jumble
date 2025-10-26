@@ -26,9 +26,10 @@ import ExploreButton from '@/components/Titlebar/ExploreButton'
 import AccountButton from '@/components/Titlebar/AccountButton'
 import FollowingFeed from './FollowingFeed'
 import RelaysFeed from './RelaysFeed'
+import logger from '@/lib/logger'
 
 const NoteListPage = forwardRef((_, ref) => {
-  console.log('NoteListPage component rendering')
+  logger.debug('NoteListPage component rendering')
   const { t } = useTranslation()
   const { addRelayUrls, removeRelayUrls } = useCurrentRelays()
   const layoutRef = useRef<TPageRef>(null)
@@ -53,7 +54,7 @@ const NoteListPage = forwardRef((_, ref) => {
   }, [relayUrls])
 
   // Debug logging
-  console.log('NoteListPage debug:', {
+  logger.debug('NoteListPage debug:', {
     isReady,
     feedInfo,
     relayUrls,

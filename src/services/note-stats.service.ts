@@ -1,6 +1,7 @@
 import { BIG_RELAY_URLS, ExtendedKind, SEARCHABLE_RELAY_URLS, FAST_READ_RELAY_URLS } from '@/constants'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
 import { getZapInfoFromEvent } from '@/lib/event-metadata'
+import logger from '@/lib/logger'
 import { getEmojiInfosFromEmojiTags, tagNameEquals } from '@/lib/tag'
 import { normalizeUrl } from '@/lib/url'
 import client from '@/services/client.service'
@@ -28,6 +29,8 @@ class NoteStatsService {
   static instance: NoteStatsService
   private noteStatsMap: Map<string, Partial<TNoteStats>> = new Map()
   private noteStatsSubscribers = new Map<string, Set<() => void>>()
+  private processingCache = new Set<string>() // Prevent duplicate processing
+  private lastProcessedTime = new Map<string, number>() // Rate limiting
 
   constructor() {
     if (!NoteStatsService.instance) {
@@ -37,11 +40,31 @@ class NoteStatsService {
   }
 
   async fetchNoteStats(event: Event, pubkey?: string | null, favoriteRelays?: string[]) {
-    const oldStats = this.noteStatsMap.get(event.id)
-    let since: number | undefined
-    if (oldStats?.updatedAt) {
-      since = oldStats.updatedAt
+    const eventId = event.id
+    
+    // Rate limiting: Don't process the same event more than once per 5 seconds
+    const now = Date.now()
+    const lastProcessed = this.lastProcessedTime.get(eventId)
+    if (lastProcessed && now - lastProcessed < 5000) {
+      logger.debug('[NoteStats] Skipping duplicate fetch for event', eventId.substring(0, 8), 'too soon')
+      return
     }
+    
+    // Prevent concurrent processing of the same event
+    if (this.processingCache.has(eventId)) {
+      logger.debug('[NoteStats] Skipping concurrent fetch for event', eventId.substring(0, 8))
+      return
+    }
+    
+    this.processingCache.add(eventId)
+    this.lastProcessedTime.set(eventId, now)
+    
+    try {
+      const oldStats = this.noteStatsMap.get(eventId)
+      let since: number | undefined
+      if (oldStats?.updatedAt) {
+        since = oldStats.updatedAt
+      }
     // Privacy: Only use current user's relays + defaults, never connect to other users' relays
     const [relayList, authorProfile] = await Promise.all([
       pubkey ? client.fetchRelayList(pubkey) : Promise.resolve({ write: [], read: [] }),
@@ -66,7 +89,7 @@ class NoteStatsService {
     const relayTypes = pubkey 
       ? 'inboxes kind 10002 + favorites kind 10012 + big relays'
       : 'big relays + fast read relays + searchable relays (anonymous user)'
-    console.log('[NoteStats] Using', finalRelayUrls.length, 'relays for stats (' + relayTypes + '):', finalRelayUrls)
+    logger.debug('[NoteStats] Using', finalRelayUrls.length, 'relays for stats (' + relayTypes + '):', finalRelayUrls)
 
     const replaceableCoordinate = isReplaceableEvent(event.kind)
       ? getReplaceableCoordinateFromEvent(event)
@@ -76,7 +99,7 @@ class NoteStatsService {
       {
         '#e': [event.id],
         kinds: [kinds.Reaction],
-        limit: 500
+        limit: 100
       },
       {
         '#e': [event.id],
@@ -86,17 +109,17 @@ class NoteStatsService {
       {
         '#e': [event.id],
         kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-        limit: 500
+        limit: 100
       },
       {
         '#q': [event.id],
         kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-        limit: 500
+        limit: 100
       },
       {
         '#e': [event.id],
         kinds: [kinds.Highlights],
-        limit: 500
+        limit: 100
       }
     ]
 
@@ -105,7 +128,7 @@ class NoteStatsService {
         {
           '#a': [replaceableCoordinate],
           kinds: [kinds.Reaction],
-          limit: 500
+          limit: 100
         },
         {
           '#a': [replaceableCoordinate],
@@ -115,17 +138,17 @@ class NoteStatsService {
         {
           '#a': [replaceableCoordinate],
           kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-          limit: 500
+          limit: 100
         },
         {
           '#q': [replaceableCoordinate],
           kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-          limit: 500
+          limit: 100
         },
         {
           '#a': [replaceableCoordinate],
           kinds: [kinds.Highlights],
-          limit: 500
+          limit: 100
         }
       )
     }
@@ -134,14 +157,14 @@ class NoteStatsService {
       filters.push({
         '#e': [event.id],
         kinds: [kinds.Zap],
-        limit: 500
+        limit: 100
       })
 
       if (replaceableCoordinate) {
         filters.push({
           '#a': [replaceableCoordinate],
           kinds: [kinds.Zap],
-          limit: 500
+          limit: 100
         })
       }
     }
@@ -184,26 +207,30 @@ class NoteStatsService {
       })
     }
     const events: Event[] = []
-    console.log('[NoteStats] Fetching stats for event', event.id, 'from', finalRelayUrls.length, 'relays')
+    logger.debug('[NoteStats] Fetching stats for event', event.id.substring(0, 8), 'from', finalRelayUrls.length, 'relays')
     await client.fetchEvents(finalRelayUrls, filters, {
       onevent: (evt) => {
         this.updateNoteStatsByEvents([evt], event.pubkey)
         events.push(evt)
       }
     })
-    console.log('[NoteStats] Fetched', events.length, 'events for stats')
+    logger.debug('[NoteStats] Fetched', events.length, 'events for stats')
     
     // Debug: Count events by kind
     const eventsByKind = events.reduce((acc, evt) => {
       acc[evt.kind] = (acc[evt.kind] || 0) + 1
       return acc
     }, {} as Record<number, number>)
-    console.log('[NoteStats] Events by kind:', eventsByKind)
+    logger.debug('[NoteStats] Events by kind:', eventsByKind)
     this.noteStatsMap.set(event.id, {
       ...(this.noteStatsMap.get(event.id) ?? {}),
       updatedAt: dayjs().unix()
     })
     return this.noteStatsMap.get(event.id) ?? {}
+    } finally {
+      // Clean up processing cache
+      this.processingCache.delete(eventId)
+    }
   }
 
   subscribeNoteStats(noteId: string, callback: () => void) {
@@ -394,7 +421,7 @@ class NoteStatsService {
       })
       if (parentETag) {
         originalEventId = parentETag[1]
-        console.log('[NoteStats] Found reply with root/reply marker:', evt.id, '->', originalEventId)
+        logger.debug('[NoteStats] Found reply with root/reply marker:', evt.id, '->', originalEventId)
       } else {
         // Look for the last E tag that's not a mention
         const embeddedEventIds = this.getEmbeddedNoteBech32Ids(evt)
@@ -434,14 +461,14 @@ class NoteStatsService {
 
     // Skip self-interactions - don't count replies from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      console.log('[NoteStats] Skipping self-reply from', evt.pubkey, 'to event', originalEventId)
+      logger.debug('[NoteStats] Skipping self-reply from', evt.pubkey, 'to event', originalEventId)
       return
     }
 
     replyIdSet.add(evt.id)
     replies.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
     this.noteStatsMap.set(originalEventId, { ...old, replyIdSet, replies })
-    console.log('[NoteStats] Added reply:', evt.id, 'to event:', originalEventId, 'total replies:', replies.length)
+    logger.debug('[NoteStats] Added reply:', evt.id, 'to event:', originalEventId, 'total replies:', replies.length)
     return originalEventId
   }
 

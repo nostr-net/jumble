@@ -267,7 +267,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       const size = 64
       canvas.width = size
       canvas.height = size
-      const ctx = canvas.getContext('2d')
+      const ctx = canvas.getContext('2d', { willReadFrequently: true }) // Optimize for frequent readback operations
       if (!ctx) return
       
       // Draw tree emoji as text

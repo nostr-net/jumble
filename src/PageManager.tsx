@@ -1,6 +1,7 @@
 import Sidebar from '@/components/Sidebar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import logger from '@/lib/logger'
 import { ChevronLeft } from 'lucide-react'
 import NoteListPage from '@/pages/primary/NoteListPage'
 import HomePage from '@/pages/secondary/HomePage'
@@ -339,7 +340,7 @@ function MainContentArea({
 }) {
   const { showRecommendedRelaysPanel } = useUserPreferences()
   
-  console.log('MainContentArea rendering:', { 
+  logger.debug('MainContentArea rendering:', { 
     currentPrimaryPage, 
     primaryPages: primaryPages.map(p => p.name), 
     showRecommendedRelaysPanel,
@@ -383,7 +384,7 @@ function MainContentArea({
           // Show normal primary pages
           primaryPages.map(({ name, element, props }) => {
             const isCurrentPage = currentPrimaryPage === name
-            console.log(`Primary page ${name}:`, { isCurrentPage, currentPrimaryPage })
+            logger.debug(`Primary page ${name}:`, { isCurrentPage, currentPrimaryPage })
             return (
               <div
                 key={name}
@@ -394,10 +395,10 @@ function MainContentArea({
               >
                 {(() => {
                   try {
-                    console.log(`Rendering ${name} component`)
+                    logger.debug(`Rendering ${name} component`)
                     return props ? cloneElement(element as React.ReactElement, props) : element
                   } catch (error) {
-                    console.error(`Error rendering ${name} component:`, error)
+                    logger.error(`Error rendering ${name} component:`, error)
                     return <div>Error rendering {name}: {error instanceof Error ? error.message : String(error)}</div>
                   }
                 })()}
