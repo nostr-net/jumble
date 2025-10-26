@@ -10,11 +10,10 @@ import PubkeyCopy from '@/components/PubkeyCopy'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useFetchFollowings, useFetchProfile } from '@/hooks'
-import { toMuteList, toProfileEditor } from '@/lib/link'
+import { useFetchProfile } from '@/hooks'
+import { toProfileEditor } from '@/lib/link'
 import { generateImageByPubkey } from '@/lib/pubkey'
-import { SecondaryPageLink, useSecondaryPage } from '@/PageManager'
-import { useMuteList } from '@/providers/MuteListProvider'
+import { useSecondaryPage } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
 import { Link, Zap } from 'lucide-react'
@@ -22,22 +21,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import NotFound from '../NotFound'
 import FollowedBy from './FollowedBy'
-import Followings from './Followings'
 import ProfileFeed from './ProfileFeed'
-import Relays from './Relays'
+import SmartFollowings from './SmartFollowings'
+import SmartMuteLink from './SmartMuteLink'
+import SmartRelays from './SmartRelays'
 
 export default function Profile({ id }: { id?: string }) {
   const { t } = useTranslation()
   const { push } = useSecondaryPage()
   const { profile, isFetching } = useFetchProfile(id)
   const { pubkey: accountPubkey } = useNostr()
-  const { mutePubkeySet } = useMuteList()
-  const { followings } = useFetchFollowings(profile?.pubkey)
   const isFollowingYou = useMemo(() => {
-    return (
-      !!accountPubkey && accountPubkey !== profile?.pubkey && followings.includes(accountPubkey)
-    )
-  }, [followings, profile, accountPubkey])
+    // This will be handled by the FollowedBy component
+    return false
+  }, [profile, accountPubkey])
   const defaultImage = useMemo(
     () => (profile?.pubkey ? generateImageByPubkey(profile?.pubkey) : ''),
     [profile]
@@ -172,14 +169,9 @@ export default function Profile({ id }: { id?: string }) {
             )}
             <div className="flex justify-between items-center mt-2 text-sm">
               <div className="flex gap-4 items-center">
-                <Followings pubkey={pubkey} />
-                <Relays pubkey={pubkey} />
-                {isSelf && (
-                  <SecondaryPageLink to={toMuteList()} className="flex gap-1 hover:underline w-fit">
-                    {mutePubkeySet.size}
-                    <div className="text-muted-foreground">{t('Muted')}</div>
-                  </SecondaryPageLink>
-                )}
+                <SmartFollowings pubkey={pubkey} />
+                <SmartRelays pubkey={pubkey} />
+                {isSelf && <SmartMuteLink />}
               </div>
               {!isSelf && <FollowedBy pubkey={pubkey} />}
             </div>

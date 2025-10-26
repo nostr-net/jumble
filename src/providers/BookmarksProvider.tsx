@@ -1,9 +1,12 @@
 import { buildATag, buildETag, createBookmarkDraftEvent } from '@/lib/draft-event'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
+import { normalizeUrl } from '@/lib/url'
+import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
 import { Event } from 'nostr-tools'
-import { createContext, useContext } from 'react'
+import { createContext, useCallback, useContext } from 'react'
 import { useNostr } from './NostrProvider'
+import { useFavoriteRelays } from './FavoriteRelaysProvider'
 
 type TBookmarksContext = {
   addBookmark: (event: Event) => Promise<void>
@@ -22,6 +25,26 @@ export const useBookmarks = () => {
 
 export function BookmarksProvider({ children }: { children: React.ReactNode }) {
   const { pubkey: accountPubkey, publish, updateBookmarkListEvent } = useNostr()
+  const { favoriteRelays } = useFavoriteRelays()
+
+  // Build comprehensive relay list for publishing (same as ProfileFeed)
+  const buildComprehensiveRelayList = useCallback(async () => {
+    const myRelayList = accountPubkey ? await client.fetchRelayList(accountPubkey) : { write: [], read: [] }
+    const allRelays = [
+      ...(myRelayList.read || []), // User's inboxes (kind 10002)
+      ...(myRelayList.write || []), // User's outboxes (kind 10002)
+      ...(favoriteRelays || []), // User's favorite relays (kind 10012)
+      ...BIG_RELAY_URLS,         // Big relays
+      ...FAST_READ_RELAY_URLS,   // Fast read relays
+      ...FAST_WRITE_RELAY_URLS   // Fast write relays
+    ]
+    
+    const normalizedRelays = allRelays
+      .map(url => normalizeUrl(url))
+      .filter((url): url is string => !!url)
+    
+    return Array.from(new Set(normalizedRelays))
+  }, [accountPubkey, favoriteRelays])
 
   const addBookmark = async (event: Event) => {
     if (!accountPubkey) return
@@ -45,7 +68,14 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
       [...currentTags, isReplaceable ? buildATag(event) : buildETag(event.id, event.pubkey)],
       bookmarkListEvent?.content
     )
-    const newBookmarkEvent = await publish(newBookmarkDraftEvent)
+    
+    // Use the same comprehensive relay list as pins for publishing
+    const comprehensiveRelays = await buildComprehensiveRelayList()
+    console.log('[BookmarksProvider] Publishing to comprehensive relays:', comprehensiveRelays)
+    
+    const newBookmarkEvent = await publish(newBookmarkDraftEvent, {
+      specifiedRelayUrls: comprehensiveRelays
+    })
     await updateBookmarkListEvent(newBookmarkEvent)
   }
 
@@ -64,7 +94,14 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
     if (newTags.length === bookmarkListEvent.tags.length) return
 
     const newBookmarkDraftEvent = createBookmarkDraftEvent(newTags, bookmarkListEvent.content)
-    const newBookmarkEvent = await publish(newBookmarkDraftEvent)
+    
+    // Use the same comprehensive relay list as pins for publishing
+    const comprehensiveRelays = await buildComprehensiveRelayList()
+    console.log('[BookmarksProvider] Publishing to comprehensive relays:', comprehensiveRelays)
+    
+    const newBookmarkEvent = await publish(newBookmarkDraftEvent, {
+      specifiedRelayUrls: comprehensiveRelays
+    })
     await updateBookmarkListEvent(newBookmarkEvent)
   }
 

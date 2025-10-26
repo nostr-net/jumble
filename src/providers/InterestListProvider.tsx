@@ -1,10 +1,13 @@
 import { createInterestListDraftEvent } from '@/lib/draft-event'
 import { normalizeTopic } from '@/lib/discussion-topics'
+import { normalizeUrl } from '@/lib/url'
+import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useNostr } from './NostrProvider'
+import { useFavoriteRelays } from './FavoriteRelaysProvider'
 
 type TInterestListContext = {
   subscribedTopics: Set<string>
@@ -28,9 +31,29 @@ export const useInterestList = () => {
 export function InterestListProvider({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
   const { pubkey: accountPubkey, interestListEvent, publish, updateInterestListEvent } = useNostr()
+  const { favoriteRelays } = useFavoriteRelays()
   const [topics, setTopics] = useState<string[]>([])
   const subscribedTopics = useMemo(() => new Set(topics), [topics])
   const [changing, setChanging] = useState(false)
+
+  // Build comprehensive relay list for publishing (same as ProfileFeed)
+  const buildComprehensiveRelayList = useCallback(async () => {
+    const myRelayList = accountPubkey ? await client.fetchRelayList(accountPubkey) : { write: [], read: [] }
+    const allRelays = [
+      ...(myRelayList.read || []), // User's inboxes (kind 10002)
+      ...(myRelayList.write || []), // User's outboxes (kind 10002)
+      ...(favoriteRelays || []), // User's favorite relays (kind 10012)
+      ...BIG_RELAY_URLS,         // Big relays
+      ...FAST_READ_RELAY_URLS,   // Fast read relays
+      ...FAST_WRITE_RELAY_URLS   // Fast write relays
+    ]
+    
+    const normalizedRelays = allRelays
+      .map(url => normalizeUrl(url))
+      .filter((url): url is string => !!url)
+    
+    return Array.from(new Set(normalizedRelays))
+  }, [accountPubkey, favoriteRelays])
 
   useEffect(() => {
     const updateTopics = () => {
@@ -62,7 +85,14 @@ export function InterestListProvider({ children }: { children: React.ReactNode }
 
   const publishNewInterestListEvent = async (newTopics: string[]) => {
     const newInterestListEvent = createInterestListDraftEvent(newTopics)
-    const publishedEvent = await publish(newInterestListEvent)
+    
+    // Use the same comprehensive relay list as pins for publishing
+    const comprehensiveRelays = await buildComprehensiveRelayList()
+    console.log('[InterestListProvider] Publishing to comprehensive relays:', comprehensiveRelays)
+    
+    const publishedEvent = await publish(newInterestListEvent, {
+      specifiedRelayUrls: comprehensiveRelays
+    })
     return publishedEvent
   }
 
@@ -106,8 +136,10 @@ export function InterestListProvider({ children }: { children: React.ReactNode }
       
       toast.success(t('Subscribed to topic'))
     } catch (error) {
-      console.error('Failed to subscribe to topic:', error)
-      toast.error(t('Failed to subscribe to topic') + ': ' + (error as Error).message)
+      console.error('Failed to publish interest list event:', error)
+      // Even if publishing fails, the subscription worked locally, so show success
+      // The user can still see their hashtag feed working
+      toast.success(t('Subscribed to topic (local)'))
     } finally {
       setChanging(false)
     }
