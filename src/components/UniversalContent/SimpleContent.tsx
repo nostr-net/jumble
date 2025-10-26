@@ -8,6 +8,7 @@ import { remarkNostr } from '../Note/LongFormArticle/remarkNostr'
 import NostrNode from '../Note/LongFormArticle/NostrNode'
 import { cn } from '@/lib/utils'
 import ImageWithLightbox from '../ImageWithLightbox'
+import MediaPlayer from '../MediaPlayer'
 
 interface SimpleContentProps {
   event?: Event
@@ -21,6 +22,33 @@ export default function SimpleContent({
   className
 }: SimpleContentProps) {
   const imetaInfos = useMemo(() => event ? getImetaInfosFromEvent(event) : [], [event])
+  
+  // Extract video URLs from imeta tags to avoid duplicate rendering
+  const imetaVideoUrls = useMemo(() => {
+    return imetaInfos
+      .filter(info => {
+        // Check if the imeta info is a video by looking at the URL extension
+        const url = info.url
+        const extension = url.split('.').pop()?.toLowerCase()
+        return extension && ['mp4', 'webm', 'ogg', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'm4v'].includes(extension)
+      })
+      .map(info => {
+        // Clean the URL first, then normalize
+        const cleanedUrl = (() => {
+          try {
+            return cleanUrl(info.url)
+          } catch {
+            return info.url
+          }
+        })()
+        
+        try {
+          return new URL(cleanedUrl).href
+        } catch {
+          return cleanedUrl
+        }
+      })
+  }, [imetaInfos])
   
   const processedContent = useMemo(() => {
     const rawContent = content || event?.content || ''
@@ -40,7 +68,7 @@ export default function SimpleContent({
     return cleaned
   }, [content, event?.content])
 
-  // Process content to handle images and markdown
+  // Process content to handle images, videos and markdown
   const { markdownContent, mediaElements } = useMemo(() => {
     const lines = processedContent.split('\n')
     const elements: JSX.Element[] = []
@@ -73,16 +101,87 @@ export default function SimpleContent({
           markdownLines.push(beforeImage + afterImage)
         }
       } else {
-        // Regular text line - add to markdown processing
-        markdownLines.push(line)
+        // Check if line contains a video URL
+        const videoMatch = line.match(/(https?:\/\/[^\s]+\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv|m4v))/i)
+        
+        if (videoMatch) {
+          const originalVideoUrl = videoMatch[1]
+          // Clean the video URL to remove tracking parameters
+          const cleanedVideoUrl = (() => {
+            try {
+              return cleanUrl(originalVideoUrl)
+            } catch {
+              return originalVideoUrl
+            }
+          })()
+          
+          // Check if this video URL is already handled by imeta tags
+          const normalizedVideoUrl = (() => {
+            try {
+              return new URL(cleanedVideoUrl).href
+            } catch {
+              return cleanedVideoUrl
+            }
+          })()
+          
+          if (!imetaVideoUrls.includes(normalizedVideoUrl)) {
+            elements.push(
+              <div key={key++} className="my-4">
+                <MediaPlayer
+                  src={cleanedVideoUrl}
+                  className="max-w-full h-auto rounded-lg"
+                />
+              </div>
+            )
+          }
+          
+          // Add the rest of the line as text if there's anything else
+          const beforeVideo = line.substring(0, videoMatch.index).trim()
+          const afterVideo = line.substring(videoMatch.index! + originalVideoUrl.length).trim()
+          
+          if (beforeVideo || afterVideo) {
+            markdownLines.push(beforeVideo + afterVideo)
+          }
+        } else {
+          // Regular text line - add to markdown processing
+          markdownLines.push(line)
+        }
       }
     })
+
+    // Add imeta videos to the elements
+    imetaInfos
+      .filter(info => {
+        // Check if the imeta info is a video by looking at the URL extension
+        const url = info.url
+        const extension = url.split('.').pop()?.toLowerCase()
+        return extension && ['mp4', 'webm', 'ogg', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'm4v'].includes(extension)
+      })
+      .forEach(videoInfo => {
+        // Clean the imeta video URL to remove tracking parameters
+        const cleanedVideoUrl = (() => {
+          try {
+            return cleanUrl(videoInfo.url)
+          } catch {
+            return videoInfo.url
+          }
+        })()
+        
+        elements.push(
+          <div key={key++} className="my-4">
+            <MediaPlayer
+              src={cleanedVideoUrl}
+              className="max-w-full h-auto rounded-lg"
+            />
+          </div>
+        )
+      })
 
     return { 
       markdownContent: markdownLines.join('\n'), 
       mediaElements: elements 
     }
-  }, [processedContent, imetaInfos, event?.pubkey])
+  }, [processedContent, imetaInfos, event?.pubkey, imetaVideoUrls])
 
   const components = useMemo(() => ({
     nostr: ({ rawText, bech32Id }: { rawText: string; bech32Id: string }) => (

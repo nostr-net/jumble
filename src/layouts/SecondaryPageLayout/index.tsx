@@ -84,11 +84,7 @@ const SecondaryPageLayout = forwardRef(
 
     return (
       <DeepBrowsingProvider active={currentIndex === index} scrollAreaRef={scrollAreaRef}>
-        <ScrollArea
-          className="h-[calc(100vh-2rem)] overflow-auto"
-          scrollBarClassName={title ? "z-50 pt-12" : "z-50"}
-          ref={scrollAreaRef}
-        >
+        <div className="h-full flex flex-col">
           {title && (
             <SecondaryPageTitlebar
               title={title}
@@ -98,9 +94,11 @@ const SecondaryPageLayout = forwardRef(
               titlebar={titlebar}
             />
           )}
-          {children}
-          <div className="h-4" />
-        </ScrollArea>
+          <div className="flex-1" ref={scrollAreaRef}>
+            {children}
+            <div className="h-4" />
+          </div>
+        </div>
         {displayScrollToTopButton && <ScrollToTopButton scrollAreaRef={scrollAreaRef} />}
       </DeepBrowsingProvider>
     )
