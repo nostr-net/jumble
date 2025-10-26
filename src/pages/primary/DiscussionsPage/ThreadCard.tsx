@@ -64,9 +64,7 @@ export default function ThreadCard({
   const lastCommentAgo = formatLastActivity(lastCommentTime)
   const lastVoteAgo = formatLastActivity(lastVoteTime)
   
-  // Calculate vote counts
-  const totalVotes = upVotes + downVotes
-  const netVotes = upVotes - downVotes
+  // Vote counts are no longer displayed, keeping variables for potential future use
   
   // Get content preview
   const contentPreview = thread.content.length > 250 
@@ -121,30 +119,10 @@ export default function ThreadCard({
                   <span>{timeAgo}</span>
                 </div>
                 
-                {/* Vote counts - always show */}
+                {/* Last updated */}
                 <div className="text-xs text-muted-foreground">
-                  <span className={netVotes > 0 ? 'text-green-600' : netVotes < 0 ? 'text-red-600' : ''}>
-                    {netVotes > 0 ? '+' : ''}{netVotes}
-                  </span>
-                  {' '}{t('votes')} ({totalVotes} {t('total')})
+                  {t('last updated')}: {lastCommentAgo || lastVoteAgo || timeAgo}
                 </div>
-                
-                {/* Comment count - always show */}
-                <div className="text-xs text-muted-foreground">
-                  {commentCount} {commentCount === 1 ? t('comment') : t('comments')}
-                </div>
-                
-                {/* Last activity */}
-                {lastCommentAgo && (
-                  <div className="text-xs text-muted-foreground">
-                    {t('last commented')}: {lastCommentAgo}
-                  </div>
-                )}
-                {lastVoteAgo && (
-                  <div className="text-xs text-muted-foreground">
-                    {t('last voted')}: {lastVoteAgo}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -177,34 +155,10 @@ export default function ThreadCard({
                     {timeAgo}
                   </div>
                   
-                  {/* Vote counts */}
-                  {totalVotes > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      <span className={netVotes > 0 ? 'text-green-600' : netVotes < 0 ? 'text-red-600' : ''}>
-                        {netVotes > 0 ? '+' : ''}{netVotes}
-                      </span>
-                      {' '}{t('votes')} ({totalVotes} {t('total')})
-                    </div>
-                  )}
-                  
-                  {/* Comment count */}
-                  {commentCount > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      {commentCount} {commentCount === 1 ? t('comment') : t('comments')}
-                    </div>
-                  )}
-                  
-                  {/* Last activity */}
-                  {lastCommentAgo && (
-                    <div className="text-xs text-muted-foreground">
-                      {t('last commented')}: {lastCommentAgo}
-                    </div>
-                  )}
-                  {lastVoteAgo && (
-                    <div className="text-xs text-muted-foreground">
-                      {t('last voted')}: {lastVoteAgo}
-                    </div>
-                  )}
+                  {/* Last updated */}
+                  <div className="text-xs text-muted-foreground">
+                    {t('last updated')}: {lastCommentAgo || lastVoteAgo || timeAgo}
+                  </div>
                 </div>
               </div>
             </div>

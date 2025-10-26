@@ -185,15 +185,20 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
 
   useEffect(() => {
     const fetchRootEvent = async () => {
-      let root: TRootInfo = isReplaceableEvent(event.kind)
-        ? {
-            type: 'A',
-            id: getReplaceableCoordinateFromEvent(event),
-            eventId: event.id,
-            pubkey: event.pubkey,
-            relay: client.getEventHint(event.id)
-          }
-        : { type: 'E', id: event.id, pubkey: event.pubkey }
+      let root: TRootInfo
+      
+      if (isReplaceableEvent(event.kind)) {
+        root = {
+          type: 'A',
+          id: getReplaceableCoordinateFromEvent(event),
+          eventId: event.id,
+          pubkey: event.pubkey,
+          relay: client.getEventHint(event.id)
+        }
+      } else {
+        root = { type: 'E', id: event.id, pubkey: event.pubkey }
+      }
+      
       const rootETag = getRootETag(event)
       if (rootETag) {
         const [, rootEventHexId, , , rootEventPubkey] = rootETag
@@ -255,10 +260,12 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
           try {
             
             // Privacy: Only use user's own relays + defaults, never connect to other users' relays
-            const userRelays = userRelayList?.read || []
+            const userReadRelays = userRelayList?.read || []
+            const userWriteRelays = userRelayList?.write || []
             const finalRelayUrls = Array.from(new Set([
               ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
-              ...userRelays.map(url => normalizeUrl(url) || url) // User's mailbox relays
+              ...userReadRelays.map(url => normalizeUrl(url) || url), // User's read relays
+              ...userWriteRelays.map(url => normalizeUrl(url) || url) // User's write relays
             ]))
             
 
@@ -303,20 +310,13 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
           if (rootInfo.relay) {
             finalRelayUrls.push(rootInfo.relay)
           }
-        } else {
-          // Fetch replies for discussion threads (kind 11)
-          filters.push({
-            '#I': [rootInfo.id],
-            kinds: [ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-            limit: LIMIT
-          })
         }
 
 
         
         const { closer, timelineKey } = await client.subscribeTimeline(
           filters.map((filter) => ({
-            urls: finalRelayUrls.slice(0, 6), // Reduced from 8 to 6 for faster response
+            urls: finalRelayUrls, // Use all relays, don't slice
             filter
           })),
           {

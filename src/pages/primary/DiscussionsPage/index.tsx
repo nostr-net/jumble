@@ -243,7 +243,7 @@ function analyzeDynamicTopics(entries: EventMapEntry[]): {
 
 // Enhanced topic categorization with dynamic topics
 function getEnhancedTopicFromTags(allTopics: string[], predefinedTopicIds: string[], dynamicTopics: DynamicTopic[]): string {
-  // First check predefined topics
+  // First check predefined topics (these are main topics)
   for (const topic of allTopics) {
     if (predefinedTopicIds.includes(topic)) {
       return topic
@@ -258,14 +258,8 @@ function getEnhancedTopicFromTags(allTopics: string[], predefinedTopicIds: strin
     }
   }
   
-  // Finally check dynamic subtopics
-  for (const topic of allTopics) {
-    const dynamicTopic = dynamicTopics.find(dt => dt.id === topic && dt.isSubtopic)
-    if (dynamicTopic) {
-      return topic
-    }
-  }
-  
+  // If no main topic found, return 'general' as the main topic
+  // The grouping logic will handle subtopics under their main topics
   return 'general'
 }
 
@@ -315,7 +309,7 @@ const DiscussionsPage = forwardRef(() => {
     
     logger.debug('[DiscussionsPage] Using', finalRelays.length, 'comprehensive relays')
     return Array.from(new Set(finalRelays))
-  }, []) // Remove dependencies to prevent infinite loop
+  }, []) // No dependencies - will be called fresh each time from fetchAllEvents
   
   // Fetch all events
   const fetchAllEvents = useCallback(async () => {
@@ -329,6 +323,8 @@ const DiscussionsPage = forwardRef(() => {
       // Get comprehensive relay list
       const allRelays = await buildComprehensiveRelayList()
       
+      logger.debug('[DiscussionsPage] Using relays:', allRelays.slice(0, 10), '... (total:', allRelays.length, ')')
+      
       // Step 1: Fetch all discussion threads (kind 11)
       const discussionThreads = await client.fetchEvents(allRelays, [
         {
@@ -338,6 +334,13 @@ const DiscussionsPage = forwardRef(() => {
       ])
       
       logger.debug('[DiscussionsPage] Fetched', discussionThreads.length, 'discussion threads')
+      if (discussionThreads.length > 0) {
+        logger.debug('[DiscussionsPage] Sample threads:', discussionThreads.slice(0, 3).map(t => ({
+          id: t.id.substring(0, 8),
+          pubkey: t.pubkey.substring(0, 8),
+          created_at: new Date(t.created_at * 1000).toISOString()
+        })))
+      }
       
       // Step 2: Get thread IDs and fetch related comments and reactions
       const threadIds = discussionThreads.map((thread: NostrEvent) => thread.id)
@@ -453,7 +456,7 @@ const DiscussionsPage = forwardRef(() => {
       setLoading(false)
       setIsRefreshing(false)
     }
-  }, []) // Remove dependencies to prevent infinite loop
+  }, []) // Only run when explicitly called (mount or refresh button)
   
   // Calculate time span counts
   const calculateTimeSpanCounts = useCallback(() => {
@@ -603,37 +606,77 @@ const DiscussionsPage = forwardRef(() => {
     return () => clearTimeout(timeoutId)
   }, [eventMap, searchQuery])
 
-  // Group events by topic
+  // Group events by topic with hierarchy (main topics and subtopics)
   const groupedEvents = useMemo(() => {
-    const groups = new Map<string, EventMapEntry[]>()
+    const mainTopicGroups = new Map<string, {
+      entries: EventMapEntry[]
+      subtopics: Map<string, EventMapEntry[]>
+    }>()
     
     searchedEntries.forEach((entry) => {
-      const topic = entry.categorizedTopic
-      if (!groups.has(topic)) {
-        groups.set(topic, [])
+      const mainTopic = entry.categorizedTopic
+      
+      // Initialize main topic group if it doesn't exist
+      if (!mainTopicGroups.has(mainTopic)) {
+        mainTopicGroups.set(mainTopic, {
+          entries: [],
+          subtopics: new Map()
+        })
       }
-      groups.get(topic)!.push(entry)
+      
+      const group = mainTopicGroups.get(mainTopic)!
+      
+      // Check if this entry has any dynamic subtopics
+      const entrySubtopics = entry.allTopics.filter(topic => {
+        const dynamicTopic = dynamicTopics.allTopics.find(dt => dt.id === topic && dt.isSubtopic)
+        return !!dynamicTopic
+      })
+      
+      if (entrySubtopics.length > 0) {
+        // Group under the first subtopic found
+        const subtopic = entrySubtopics[0]
+        if (!group.subtopics.has(subtopic)) {
+          group.subtopics.set(subtopic, [])
+        }
+        group.subtopics.get(subtopic)!.push(entry)
+      } else {
+        // No subtopic, add to main topic
+        group.entries.push(entry)
+      }
     })
     
-    // Sort threads within each group by newest-first (most recent activity)
-    groups.forEach((entries) => {
-      entries.sort((a, b) => {
-        const aActivity = Math.max(
-          a.event.created_at * 1000,
-          a.lastCommentTime > 0 ? a.lastCommentTime * 1000 : 0,
-          a.lastVoteTime > 0 ? a.lastVoteTime * 1000 : 0
-        )
-        const bActivity = Math.max(
-          b.event.created_at * 1000,
-          b.lastCommentTime > 0 ? b.lastCommentTime * 1000 : 0,
-          b.lastVoteTime > 0 ? b.lastVoteTime * 1000 : 0
-        )
-        return bActivity - aActivity // Newest first
-      })
+    // Sort threads within each group and subtopic by newest-first
+    mainTopicGroups.forEach((group) => {
+      const sortEntries = (entries: EventMapEntry[]) => {
+        entries.sort((a, b) => {
+          const aActivity = Math.max(
+            a.event.created_at * 1000,
+            a.lastCommentTime > 0 ? a.lastCommentTime * 1000 : 0,
+            a.lastVoteTime > 0 ? a.lastVoteTime * 1000 : 0
+          )
+          const bActivity = Math.max(
+            b.event.created_at * 1000,
+            b.lastCommentTime > 0 ? b.lastCommentTime * 1000 : 0,
+            b.lastVoteTime > 0 ? b.lastVoteTime * 1000 : 0
+          )
+          return bActivity - aActivity // Newest first
+        })
+      }
+      
+      sortEntries(group.entries)
+      group.subtopics.forEach((entries) => sortEntries(entries))
+    })
+    
+    // Convert to array format for rendering with proper hierarchy
+    const result: Array<[string, EventMapEntry[], Map<string, EventMapEntry[]>]> = []
+    
+    mainTopicGroups.forEach((group, mainTopic) => {
+      // Add main topic with its subtopics
+      result.push([mainTopic, group.entries, group.subtopics])
     })
     
     // Sort groups by most recent activity (newest first)
-    const sortedGroups = Array.from(groups.entries()).sort(([, aEntries], [, bEntries]) => {
+    result.sort(([, aEntries], [, bEntries]) => {
       if (aEntries.length === 0 && bEntries.length === 0) return 0
       if (aEntries.length === 0) return 1
       if (bEntries.length === 0) return -1
@@ -652,8 +695,8 @@ const DiscussionsPage = forwardRef(() => {
       return bMostRecent - aMostRecent // Newest first
     })
     
-    return sortedGroups
-  }, [searchedEntries])
+    return result
+  }, [searchedEntries, dynamicTopics])
   
   // Handle refresh
   const handleRefresh = () => {
@@ -711,53 +754,14 @@ const DiscussionsPage = forwardRef(() => {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex flex-col gap-4 p-4 border-b">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h1 className="text-2xl font-bold">{t('Discussions')}</h1>
-          <div className="flex items-center gap-3">
           <button
             onClick={() => setShowCreateDialog(true)}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 w-full sm:w-auto"
           >
             {t('Create Thread')}
           </button>
-          
-          {/* Topic Selection Dropdown */}
-          <select 
-            value={selectedTopic} 
-            onChange={(e) => setSelectedTopic(e.target.value)}
-            className="px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">All Topics ({allEventMap.size})</option>
-            {availableTopics.map(({ topic, count, isDynamic, isMainTopic, isSubtopic }) => (
-              <option key={topic} value={topic}>
-                {isDynamic && isMainTopic ? '🔥 ' : ''}
-                {isDynamic && isSubtopic ? '📌 ' : ''}
-                {topic} ({count})
-                {isDynamic && isMainTopic ? ' [Main Topic]' : ''}
-                {isDynamic && isSubtopic ? ' [Subtopic]' : ''}
-              </option>
-            ))}
-          </select>
-          
-          {/* Time Span Dropdown */}
-          <select 
-            value={timeSpan} 
-            onChange={(e) => setTimeSpan(e.target.value as '30days' | '90days' | 'all')}
-            className="px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="30days">30 days ({timeSpanCounts['30days']})</option>
-            <option value="90days">90 days ({timeSpanCounts['90days']})</option>
-            <option value="all">All found ({timeSpanCounts.all})</option>
-          </select>
-          
-                <button
-            onClick={handleRefresh}
-            disabled={loading}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                </button>
-          </div>
         </div>
         
         {/* Search Bar */}
@@ -775,44 +779,129 @@ const DiscussionsPage = forwardRef(() => {
             className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-black dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
+        
+        {/* Filters - Stack on mobile, row on desktop */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          {/* Topic Selection Dropdown */}
+          <select 
+            value={selectedTopic} 
+            onChange={(e) => setSelectedTopic(e.target.value)}
+            className="w-full sm:w-auto px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="all">All Topics ({allEventMap.size})</option>
+            {availableTopics.map(({ topic, count, isDynamic, isMainTopic, isSubtopic }) => (
+              <option key={topic} value={topic}>
+                {isDynamic && isMainTopic ? '🔥 ' : ''}
+                {isDynamic && isSubtopic ? '📌 ' : ''}
+                {topic} ({count})
+                {isDynamic && isMainTopic ? ' [Main Topic]' : ''}
+                {isDynamic && isSubtopic ? ' [Subtopic]' : ''}
+              </option>
+            ))}
+          </select>
+          
+          {/* Time Span Dropdown */}
+          <select 
+            value={timeSpan} 
+            onChange={(e) => setTimeSpan(e.target.value as '30days' | '90days' | 'all')}
+            className="w-full sm:w-auto px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="30days">30 days ({timeSpanCounts['30days']})</option>
+            <option value="90days">90 days ({timeSpanCounts['90days']})</option>
+            <option value="all">All found ({timeSpanCounts.all})</option>
+          </select>
+          
+          {/* Refresh Button */}
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded w-full sm:w-auto flex items-center justify-center sm:justify-start"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span className="ml-2 sm:hidden">{t('Refresh')}</span>
+          </button>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4">
         {loading ? (
           <div className="text-center py-8">{t('Loading...')}</div>
         ) : isSearching ? (
           <div className="text-center py-8">{t('Searching...')}</div>
         ) : (
           <div className="space-y-6">
-            {groupedEvents.map(([topic, events]) => {
+            {groupedEvents.map(([topic, events, subtopics]) => {
               const topicInfo = availableTopics.find(t => t.topic === topic)
               const isDynamicMain = topicInfo?.isDynamic && topicInfo?.isMainTopic
               const isDynamicSubtopic = topicInfo?.isDynamic && topicInfo?.isSubtopic
               
               return (
-                <div key={topic}>
-                  <h2 className="text-lg font-semibold mb-3 capitalize flex items-center gap-2">
-                    {isDynamicMain && <span className="text-orange-500">🔥</span>}
-                    {isDynamicSubtopic && <span className="text-blue-500">📌</span>}
-                    {topic} ({events.length} {events.length === 1 ? t('thread') : t('threads')})
-                    {isDynamicMain && <span className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 px-2 py-1 rounded">Main Topic</span>}
-                    {isDynamicSubtopic && <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">Subtopic</span>}
+                <div key={topic} className="space-y-4">
+                  {/* Main Topic Header */}
+                  <h2 className="text-lg font-semibold mb-3 capitalize flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                    <span className="flex items-center gap-2">
+                      {isDynamicMain && <span className="text-orange-500">🔥</span>}
+                      {isDynamicSubtopic && <span className="text-blue-500">📌</span>}
+                      {topic} ({events.length} {events.length === 1 ? t('thread') : t('threads')})
+                    </span>
+                    {isDynamicMain && <span className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 px-2 py-1 rounded w-fit">Main Topic</span>}
+                    {isDynamicSubtopic && <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded w-fit">Subtopic</span>}
                   </h2>
-                  <div className="space-y-3">
-                    {events.map((entry) => (
-                      <ThreadCard
-                        key={entry.event.id}
-                        thread={entry.event}
-                        commentCount={entry.commentCount}
-                        lastCommentTime={entry.lastCommentTime}
-                        lastVoteTime={entry.lastVoteTime}
-                        upVotes={entry.upVotes}
-                        downVotes={entry.downVotes}
-                        onThreadClick={() => handleThreadClick(entry.event.id)}
-                      />
-                    ))}
-                  </div>
+                  
+                  {/* Main Topic Threads */}
+                  {events.length > 0 && (
+                    <div className="space-y-3">
+                      {events.map((entry) => (
+                        <ThreadCard
+                          key={entry.event.id}
+                          thread={entry.event}
+                          commentCount={entry.commentCount}
+                          lastCommentTime={entry.lastCommentTime}
+                          lastVoteTime={entry.lastVoteTime}
+                          upVotes={entry.upVotes}
+                          downVotes={entry.downVotes}
+                          onThreadClick={() => handleThreadClick(entry.event.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Subtopic Groups */}
+                  {subtopics.size > 0 && (
+                    <div className="ml-2 sm:ml-4 space-y-4">
+                      {Array.from(subtopics.entries()).map(([subtopic, subtopicEvents]) => {
+                        const subtopicInfo = availableTopics.find(t => t.topic === subtopic)
+                        const isSubtopicDynamic = subtopicInfo?.isDynamic && subtopicInfo?.isSubtopic
+                        
+                        return (
+                          <div key={subtopic} className="space-y-2">
+                            <h3 className="text-sm sm:text-md font-medium capitalize flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-muted-foreground">
+                              <span className="flex items-center gap-2">
+                                {isSubtopicDynamic && <span className="text-blue-500">📌</span>}
+                                {subtopic} ({subtopicEvents.length} {subtopicEvents.length === 1 ? t('thread') : t('threads')})
+                              </span>
+                              {isSubtopicDynamic && <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded w-fit">Subtopic</span>}
+                            </h3>
+                            <div className="space-y-3">
+                              {subtopicEvents.map((entry) => (
+                                <ThreadCard
+                                  key={entry.event.id}
+                                  thread={entry.event}
+                                  commentCount={entry.commentCount}
+                                  lastCommentTime={entry.lastCommentTime}
+                                  lastVoteTime={entry.lastVoteTime}
+                                  upVotes={entry.upVotes}
+                                  downVotes={entry.downVotes}
+                                  onThreadClick={() => handleThreadClick(entry.event.id)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )
             })}
