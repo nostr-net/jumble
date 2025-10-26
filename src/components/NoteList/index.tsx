@@ -149,6 +149,9 @@ const NoteList = forwardRef(
 
     const refresh = () => {
       scrollToTop()
+      // Clear relay connection state to force fresh connections
+      const relayUrls = subRequests.flatMap(req => req.urls)
+      client.clearRelayConnectionState(relayUrls)
       setTimeout(() => {
         setRefreshCount((count) => count + 1)
       }, 500)
@@ -247,12 +250,13 @@ const NoteList = forwardRef(
         )
         
         // Add a fallback timeout to prevent infinite loading
+        // Increased timeout to 15 seconds to handle slow relay connections
         const fallbackTimeout = setTimeout(() => {
           if (loading) {
             setLoading(false)
-            logger.debug('NoteList loading timeout - stopping after 6 seconds')
+            logger.debug('NoteList loading timeout - stopping after 15 seconds')
           }
-        }, 6000)
+        }, 15000)
         
         setTimelineKey(timelineKey)
         return () => {
@@ -344,7 +348,12 @@ const NoteList = forwardRef(
           <div className="text-center text-sm text-muted-foreground mt-2">{t('no more notes')}</div>
         ) : (
           <div className="flex justify-center w-full mt-2">
-            <Button size="lg" onClick={() => setRefreshCount((count) => count + 1)}>
+            <Button size="lg" onClick={() => {
+              // Clear relay connection state to force fresh connections
+              const relayUrls = subRequests.flatMap(req => req.urls)
+              client.clearRelayConnectionState(relayUrls)
+              setRefreshCount((count) => count + 1)
+            }}>
               {t('reload notes')}
             </Button>
           </div>

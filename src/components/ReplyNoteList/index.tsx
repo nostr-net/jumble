@@ -93,45 +93,27 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
       : event.id
     // For replaceable events, also check the event ID in case replies are stored there
     const eventIdKey = event.id
-    let parentEventKeys = [currentEventKey]
+    const parentEventKeys = [currentEventKey]
     if (isReplaceableEvent(event.kind) && currentEventKey !== eventIdKey) {
       parentEventKeys.push(eventIdKey)
     }
 
+    // FIXED: Only fetch direct replies to the original event, don't traverse reply chains
+    // This prevents the doom loop that was causing "too many concurrent REQS"
+    const events = parentEventKeys.flatMap((id) => repliesMap.get(id)?.events || [])
     
-    const processedEventIds = new Set<string>() // Prevent infinite loops
-    let iterationCount = 0
-    const MAX_ITERATIONS = 10 // Prevent infinite loops
-    
-    while (parentEventKeys.length > 0 && iterationCount < MAX_ITERATIONS) {
-      iterationCount++
-      const events = parentEventKeys.flatMap((id) => repliesMap.get(id)?.events || [])
-      
-      events.forEach((evt) => {
-        if (replyIdSet.has(evt.id)) return
-        if (mutePubkeySet.has(evt.pubkey)) {
-          return
-        }
-        if (hideContentMentioningMutedUsers && isMentioningMutedUsers(evt, mutePubkeySet)) {
-          return
-        }
+    events.forEach((evt) => {
+      if (replyIdSet.has(evt.id)) return
+      if (mutePubkeySet.has(evt.pubkey)) {
+        return
+      }
+      if (hideContentMentioningMutedUsers && isMentioningMutedUsers(evt, mutePubkeySet)) {
+        return
+      }
 
-        replyIdSet.add(evt.id)
-        replyEvents.push(evt)
-      })
-      
-      // Prevent infinite loops by tracking processed event IDs
-      const newParentEventKeys = events
-        .map((evt) => evt.id)
-        .filter((id) => !processedEventIds.has(id))
-      
-      newParentEventKeys.forEach((id) => processedEventIds.add(id))
-      parentEventKeys = newParentEventKeys
-    }
-    
-    if (iterationCount >= MAX_ITERATIONS) {
-      logger.warn('ReplyNoteList: Maximum iterations reached, possible circular reference in replies')
-    }
+      replyIdSet.add(evt.id)
+      replyEvents.push(evt)
+    })
     
 
 
@@ -363,10 +345,11 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
   }, [rootInfo, currentIndex, index, onNewReply])
 
   useEffect(() => {
-    if (replies.length === 0 && !loading && timelineKey) {
+    // Only try to load more if we have no replies, not loading, have a timeline key, and haven't reached the end
+    if (replies.length === 0 && !loading && timelineKey && until !== undefined) {
       loadMore()
     }
-  }, [replies.length, loading, timelineKey]) // More specific dependencies to prevent infinite loops
+  }, [replies.length, loading, timelineKey, until]) // Added until to prevent infinite loops
 
   useEffect(() => {
     const options = {

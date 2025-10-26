@@ -27,12 +27,12 @@ export function KindFilterProvider({ children }: { children: React.ReactNode }) 
   )
 
   // Debug logging
-  console.log('KindFilterProvider initialized:', {
-    defaultShowKinds,
-    storedShowKinds,
-    finalShowKinds: showKinds,
-    showKindsLength: showKinds.length
-  })
+  // console.log('KindFilterProvider initialized:', {
+  //   defaultShowKinds,
+  //   storedShowKinds,
+  //   finalShowKinds: showKinds,
+  //   showKindsLength: showKinds.length
+  // })
 
   const updateShowKinds = (kinds: number[]) => {
     storage.setShowKinds(kinds)

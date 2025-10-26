@@ -53,6 +53,40 @@ export function suppressExpectedErrors() {
       return
     }
     
+    // Suppress Workbox precaching errors for development modules
+    if (message.includes('Precaching did not find a match') && (
+      message.includes('@vite/client') ||
+      message.includes('main.tsx') ||
+      message.includes('src/') ||
+      message.includes('node_modules/')
+    )) {
+      return
+    }
+    
+    // Suppress "too many concurrent REQs" errors (handled by circuit breaker)
+    if (message.includes('too many concurrent REQs')) {
+      return
+    }
+    
+    // Suppress relay overload errors (handled by throttling)
+    if (message.includes('Relay overloaded - too many concurrent requests')) {
+      return
+    }
+    
+    // Suppress nostr-tools "too many concurrent REQs" errors
+    if (message.includes('NOTICE from') && message.includes('ERROR: too many concurrent REQs')) {
+      return
+    }
+    
+    // Suppress nostr-tools connection errors
+    if (message.includes('NOTICE from') && (
+      message.includes('ERROR:') ||
+      message.includes('connection closed') ||
+      message.includes('connection errored')
+    )) {
+      return
+    }
+    
     // Call original console.error for unexpected errors
     originalConsoleError.apply(console, args)
   }

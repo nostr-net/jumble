@@ -42,10 +42,50 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,jpg,svg}'],
         globDirectory: 'dist/',
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        cleanupOutdatedCaches: true
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/_/, /^\/admin/],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/image\.nostr\.build\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'nostr-images',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
+              }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/cdn\.satellite\.earth\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'satellite-images',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
+              }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/.*\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'external-images',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+              }
+            }
+          }
+        ]
       },
       devOptions: {
-        enabled: true
+        enabled: true,
+        type: 'module'
       },
       manifest: {
         name: 'Jumble',

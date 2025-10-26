@@ -641,14 +641,14 @@ const DiscussionsPage = forwardRef(() => {
       })
       
       // Debug logging for subtopic detection
-      if (entrySubtopics.length > 0) {
-        console.log('Found subtopics for entry:', {
-          threadId: entry.event.id.substring(0, 8),
-          allTopics: entry.allTopics,
-          entrySubtopics,
-          dynamicTopics: dynamicTopics.allTopics.map(dt => ({ id: dt.id, isSubtopic: dt.isSubtopic }))
-        })
-      }
+      // if (entrySubtopics.length > 0) {
+      //   console.log('Found subtopics for entry:', {
+      //     threadId: entry.event.id.substring(0, 8),
+      //     allTopics: entry.allTopics,
+      //     entrySubtopics,
+      //     dynamicTopics: dynamicTopics.allTopics.map(dt => ({ id: dt.id, isSubtopic: dt.isSubtopic }))
+      //   })
+      // }
       
       if (entrySubtopics.length > 0) {
         // Group under the first subtopic found

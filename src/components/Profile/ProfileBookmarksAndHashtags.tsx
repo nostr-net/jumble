@@ -52,8 +52,8 @@ export default function ProfileBookmarksAndHashtags({
       .filter((url): url is string => !!url)
     
     const comprehensiveRelays = Array.from(new Set(normalizedRelays))
-    console.log('[ProfileBookmarksAndHashtags] Using', comprehensiveRelays.length, 'relays for bookmark/interest list events:', comprehensiveRelays)
-    console.log('[ProfileBookmarksAndHashtags] Relay breakdown - inboxes:', myRelayList.read?.length || 0, 'outboxes:', myRelayList.write?.length || 0, 'favorites:', favoriteRelays?.length || 0, 'big:', BIG_RELAY_URLS.length, 'fast_read:', FAST_READ_RELAY_URLS.length, 'fast_write:', FAST_WRITE_RELAY_URLS.length)
+    // Debug: Relay configuration for bookmark/interest list events
+    // console.log('[ProfileBookmarksAndHashtags] Using', comprehensiveRelays.length, 'relays for bookmark/interest list events:', comprehensiveRelays)
     
     return comprehensiveRelays
   }, [myPubkey, favoriteRelays])
@@ -78,7 +78,7 @@ export default function ProfileBookmarksAndHashtags({
         bookmarkList = await client.fetchBookmarkListEvent(pubkey)
       }
       
-      console.log('[ProfileBookmarksAndHashtags] Bookmark list event:', bookmarkList)
+      // console.log('[ProfileBookmarksAndHashtags] Bookmark list event:', bookmarkList)
       setBookmarkListEvent(bookmarkList)
       
       if (bookmarkList && bookmarkList.tags.length > 0) {
@@ -88,7 +88,7 @@ export default function ProfileBookmarksAndHashtags({
           .map(tag => tag[1])
           .reverse() // Reverse to show newest first
         
-        console.log('[ProfileBookmarksAndHashtags] Found', eventIds.length, 'bookmark event IDs:', eventIds)
+        // console.log('[ProfileBookmarksAndHashtags] Found', eventIds.length, 'bookmark event IDs:', eventIds)
         
         if (eventIds.length > 0) {
           try {
@@ -137,7 +137,7 @@ export default function ProfileBookmarksAndHashtags({
         interestList = await client.fetchInterestListEvent(pubkey)
       }
       
-      console.log('[ProfileBookmarksAndHashtags] Interest list event:', interestList)
+      // console.log('[ProfileBookmarksAndHashtags] Interest list event:', interestList)
       setInterestListEvent(interestList)
       
       if (interestList && interestList.tags.length > 0) {
@@ -146,7 +146,7 @@ export default function ProfileBookmarksAndHashtags({
           .filter(tag => tag[0] === 't' && tag[1])
           .map(tag => tag[1])
         
-        console.log('[ProfileBookmarksAndHashtags] Found', hashtags.length, 'interest hashtags:', hashtags)
+        // console.log('[ProfileBookmarksAndHashtags] Found', hashtags.length, 'interest hashtags:', hashtags)
         
         if (hashtags.length > 0) {
           try {
@@ -156,7 +156,7 @@ export default function ProfileBookmarksAndHashtags({
               '#t': hashtags,
               limit: 100
             })
-            console.log('[ProfileBookmarksAndHashtags] Fetched', events.length, 'hashtag events')
+            // console.log('[ProfileBookmarksAndHashtags] Fetched', events.length, 'hashtag events')
             setHashtagEvents(events)
           } catch (error) {
             console.warn('[ProfileBookmarksAndHashtags] Error fetching hashtag events:', error)
@@ -196,7 +196,7 @@ export default function ProfileBookmarksAndHashtags({
         pinList = await client.fetchPinListEvent(pubkey)
       }
       
-      console.log('[ProfileBookmarksAndHashtags] Pin list event:', pinList)
+      // console.log('[ProfileBookmarksAndHashtags] Pin list event:', pinList)
       setPinListEvent(pinList)
       
       if (pinList && pinList.tags.length > 0) {
@@ -206,7 +206,7 @@ export default function ProfileBookmarksAndHashtags({
           .map(tag => tag[1])
           .reverse() // Reverse to show newest first
         
-        console.log('[ProfileBookmarksAndHashtags] Found', eventIds.length, 'pin event IDs:', eventIds)
+        // console.log('[ProfileBookmarksAndHashtags] Found', eventIds.length, 'pin event IDs:', eventIds)
         
         if (eventIds.length > 0) {
           try {

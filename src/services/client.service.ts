@@ -59,13 +59,17 @@ class ClientService extends EventTarget {
   )
   private trendingNotesCache: NEvent[] | null = null
   private requestThrottle = new Map<string, number>() // Track request timestamps per relay
-  private readonly REQUEST_COOLDOWN = 2000 // 2 second cooldown between requests to prevent "too many REQs"
+  private readonly REQUEST_COOLDOWN = 3000 // 3 second cooldown between requests to prevent "too many REQs"
   private failureCount = new Map<string, number>() // Track consecutive failures per relay
-  private readonly MAX_FAILURES = 2 // Max failures before exponential backoff (reduced from 3)
+  private readonly MAX_FAILURES = 1 // Max failures before exponential backoff (reduced to 1 for faster circuit breaker activation)
   private circuitBreaker = new Map<string, number>() // Track when relays are temporarily disabled
-  private readonly CIRCUIT_BREAKER_TIMEOUT = 120000 // 2 minute timeout for circuit breaker (increased)
+  private readonly CIRCUIT_BREAKER_TIMEOUT = 60000 // 60 second timeout for circuit breaker (increased for better stability)
   private concurrentRequests = new Map<string, number>() // Track concurrent requests per relay
-  private readonly MAX_CONCURRENT_REQUESTS = 2 // Max concurrent requests per relay
+  private readonly MAX_CONCURRENT_REQUESTS = 1 // Max concurrent requests per relay (reduced to prevent "too many REQs")
+  private globalRequestThrottle = 0 // Global request throttle to prevent overwhelming all relays
+  private readonly GLOBAL_REQUEST_COOLDOWN = 1000 // 1 second global cooldown between any relay requests
+  private blacklistedRelays = new Map<string, number>() // Temporarily blacklist problematic relays
+  private readonly BLACKLIST_TIMEOUT = 300000 // 5 minutes blacklist timeout
 
   private userIndex = new FlexSearch.Index({
     tokenize: 'forward'
@@ -75,6 +79,9 @@ class ClientService extends EventTarget {
     super()
     this.pool = new SimplePool()
     this.pool.trackRelays = true
+    
+    // Pre-blacklist known problematic relays
+    this.blacklistRelay('wss://freelay.sovbit.host/')
   }
 
   public static getInstance(): ClientService {
@@ -343,10 +350,21 @@ class ClientService extends EventTarget {
               totalCount: uniqueRelayUrls.length
             })
           } else {
-            reject(new Error('Publishing timeout - no relays responded in time'))
+            // Don't reject for notification updates - they're not critical
+            if (event.kind === 30078) { // Application-specific data (notifications)
+              logger.debug('Notification update timeout - non-critical, continuing')
+              resolve({
+                success: false,
+                relayStatuses,
+                successCount: 0,
+                totalCount: uniqueRelayUrls.length
+              })
+            } else {
+              reject(new Error('Publishing timeout - no relays responded in time'))
+            }
           }
         }
-      }, 15_000) // 15 second overall timeout
+      }, 10_000) // Reduced to 10 second overall timeout
       
       Promise.allSettled(
         uniqueRelayUrls.map(async (url) => {
@@ -388,7 +406,9 @@ class ClientService extends EventTarget {
               error instanceof Error &&
               error.message.includes('too many concurrent REQs')
             ) {
-              logger.debug(`⚠ Relay ${url} is overloaded, skipping retry`)
+              logger.debug(`⚠ Relay ${url} is overloaded, blacklisting temporarily`)
+              // Blacklist this relay for 5 minutes to prevent further overload
+              this.blacklistRelay(url)
               errors.push({ url, error: new Error('Relay overloaded - too many concurrent requests') })
               finishedCount++
               
@@ -555,8 +575,8 @@ class ClientService extends EventTarget {
   ) {
     const newEventIdSet = new Set<string>()
     const requestCount = subRequests.length
-    // More aggressive threshold for faster loading - respond when 1/3 of relays respond
-    const threshold = Math.max(1, Math.floor(requestCount / 3))
+    // More aggressive threshold for faster loading - respond when 1/2 of relays respond (increased from 1/3)
+    const threshold = Math.max(1, Math.floor(requestCount / 2))
     let eventIdSet = new Set<string>()
     let events: NEvent[] = []
     let eosedCount = 0
@@ -567,9 +587,9 @@ class ClientService extends EventTarget {
       if (!hasCalledOnEvents && events.length === 0) {
         hasCalledOnEvents = true
         onEvents([], true) // Call with empty events to stop loading
-        logger.debug('Global subscription timeout - stopping after 8 seconds')
+        logger.debug('Global subscription timeout - stopping after 12 seconds')
       }
-    }, 8000)
+    }, 12000) // Increased timeout to 12 seconds for better reliability
     
     const subs = await Promise.all(
       subRequests.map(async ({ urls, filter }) => {
@@ -1074,6 +1094,52 @@ class ClientService extends EventTarget {
     
     // Now fetch with a fresh attempt
     return this._fetchEvent(id)
+  }
+
+  // Force clear relay connection state to allow fresh connections
+  clearRelayConnectionState(relayUrls?: string[]) {
+    if (relayUrls) {
+      // Clear state for specific relays
+      relayUrls.forEach(url => {
+        this.failureCount.delete(url)
+        this.circuitBreaker.delete(url)
+        this.requestThrottle.delete(url)
+        this.concurrentRequests.delete(url)
+        this.blacklistedRelays.delete(url) // Also clear blacklist
+        logger.debug(`Cleared connection state for relay: ${url}`)
+      })
+    } else {
+      // Clear all relay state
+      this.failureCount.clear()
+      this.circuitBreaker.clear()
+      this.requestThrottle.clear()
+      this.concurrentRequests.clear()
+      this.blacklistedRelays.clear() // Clear blacklist
+      this.globalRequestThrottle = 0 // Reset global throttle
+      logger.debug('Cleared all relay connection state')
+    }
+  }
+
+  // Blacklist a problematic relay temporarily
+  private blacklistRelay(relayUrl: string): void {
+    this.blacklistedRelays.set(relayUrl, Date.now())
+    logger.debug(`🚫 Blacklisted problematic relay: ${relayUrl}`)
+  }
+
+  // Check if a relay is blacklisted
+  private isRelayBlacklisted(relayUrl: string): boolean {
+    const blacklistTime = this.blacklistedRelays.get(relayUrl)
+    if (!blacklistTime) return false
+    
+    const now = Date.now()
+    if (now - blacklistTime > this.BLACKLIST_TIMEOUT) {
+      // Blacklist expired, remove it
+      this.blacklistedRelays.delete(relayUrl)
+      logger.debug(`🟢 Blacklist expired for relay: ${relayUrl}`)
+      return false
+    }
+    
+    return true
   }
 
   async fetchTrendingNotes() {
@@ -1838,6 +1904,12 @@ class ClientService extends EventTarget {
         // Skip empty or invalid URLs
         if (!url || typeof url !== 'string') return false
         
+        // Skip blacklisted relays
+        if (this.isRelayBlacklisted(url)) {
+          logger.debug(`Skipping blacklisted relay: ${url}`)
+          return false
+        }
+        
         // Skip relays with open circuit breaker
         if (this.isCircuitBreakerOpen(url)) {
           logger.debug(`Skipping relay with open circuit breaker: ${url}`)
@@ -1858,8 +1930,26 @@ class ClientService extends EventTarget {
       }
     })
 
-    // Limit to 3 relays to prevent "too many concurrent REQs" errors and improve speed
-    // Reduced from 4 to 3 for faster response
+    // For profile feeds, prioritize write relays to ensure user's own responses are found
+    // Check if this looks like a profile feed (relays include write relays)
+    const hasWriteRelays = validRelays.some(url => 
+      FAST_WRITE_RELAY_URLS.some(writeRelay => normalizeUrl(writeRelay) === normalizeUrl(url))
+    )
+    
+    if (hasWriteRelays) {
+      // For profile feeds: prioritize write relays and allow more relays
+      const writeRelays = validRelays.filter(url => 
+        FAST_WRITE_RELAY_URLS.some(writeRelay => normalizeUrl(writeRelay) === normalizeUrl(url))
+      )
+      const otherRelays = validRelays.filter(url => 
+        !FAST_WRITE_RELAY_URLS.some(writeRelay => normalizeUrl(writeRelay) === normalizeUrl(url))
+      )
+      
+      // Return write relays first, then others (up to 6 total for profile feeds - reduced from 8)
+      return [...writeRelays, ...otherRelays].slice(0, 6)
+    }
+
+    // For other feeds: limit to 3 relays to prevent "too many concurrent REQs" errors (reduced from 5)
     return validRelays.slice(0, 3)
   }
 
@@ -1871,19 +1961,26 @@ class ClientService extends EventTarget {
     const failures = this.failureCount.get(relayUrl) || 0
     const concurrent = this.concurrentRequests.get(relayUrl) || 0
     
+    // Global throttling to prevent overwhelming all relays
+    const globalDelay = Math.max(0, this.GLOBAL_REQUEST_COOLDOWN - (now - this.globalRequestThrottle))
+    if (globalDelay > 0) {
+      await new Promise(resolve => setTimeout(resolve, globalDelay))
+    }
+    this.globalRequestThrottle = Date.now()
+    
     // Check concurrent request limit
     if (concurrent >= this.MAX_CONCURRENT_REQUESTS) {
       logger.debug(`Relay ${relayUrl} has ${concurrent} concurrent requests, waiting...`)
       // Wait for a concurrent request to complete
       while (this.concurrentRequests.get(relayUrl) || 0 >= this.MAX_CONCURRENT_REQUESTS) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise(resolve => setTimeout(resolve, 2000)) // Increased wait time
       }
     }
     
     // Calculate delay based on failures (exponential backoff)
     let delay = this.REQUEST_COOLDOWN
     if (failures >= this.MAX_FAILURES) {
-      delay = Math.min(this.REQUEST_COOLDOWN * Math.pow(2, failures - this.MAX_FAILURES), 30000) // Max 30 seconds
+      delay = Math.min(this.REQUEST_COOLDOWN * Math.pow(2, failures - this.MAX_FAILURES), 60000) // Max 60 seconds
     } else if (now - lastRequest < this.REQUEST_COOLDOWN) {
       delay = this.REQUEST_COOLDOWN - (now - lastRequest)
     }
@@ -1918,8 +2015,8 @@ class ClientService extends EventTarget {
       this.concurrentRequests.set(relayUrl, current - 1)
     }
     
-    // Activate circuit breaker if too many failures
-    if (newFailures >= 3) {
+    // Activate circuit breaker immediately on any failure to prevent "too many concurrent REQs"
+    if (newFailures >= this.MAX_FAILURES) {
       this.circuitBreaker.set(relayUrl, Date.now())
       logger.debug(`🔴 Circuit breaker activated for ${relayUrl} (${newFailures} failures)`)
     }

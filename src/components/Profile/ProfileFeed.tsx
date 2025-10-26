@@ -48,8 +48,18 @@ export default function ProfileFeed({
       // Privacy: Only use user's own relays + defaults, never connect to other users' relays
       const myRelayList = myPubkey ? await client.fetchRelayList(myPubkey) : { write: [], read: [] }
       
-      // Build comprehensive relay list: user's inboxes + user's favorite relays + big relays + fast read relays + fast write relays
-      const allRelays = [
+      // Build comprehensive relay list: prioritize write relays when viewing own profile
+      const isOwnProfile = myPubkey === pubkey
+      const allRelays = isOwnProfile ? [
+        // For own profile: prioritize write relays first to find own responses
+        ...(myRelayList.write || []), // User's outboxes (kind 10002) - PRIORITY
+        ...(myRelayList.read || []), // User's inboxes (kind 10002)
+        ...(favoriteRelays || []), // User's favorite relays (kind 10012)
+        ...FAST_WRITE_RELAY_URLS,   // Fast write relays - PRIORITY
+        ...BIG_RELAY_URLS,         // Big relays
+        ...FAST_READ_RELAY_URLS    // Fast read relays
+      ] : [
+        // For other profiles: use standard order
         ...(myRelayList.read || []), // User's inboxes (kind 10002)
         ...(myRelayList.write || []), // User's outboxes (kind 10002)
         ...(favoriteRelays || []), // User's favorite relays (kind 10012)
@@ -64,7 +74,13 @@ export default function ProfileFeed({
         .filter((url): url is string => !!url)
       
       const userRelays = Array.from(new Set(normalizedRelays))
-      console.log('[ProfileFeed] Using', userRelays.length, 'relays for profile feed:', userRelays)
+      
+      // Debug: Log relay usage for own profile to help troubleshoot missing responses
+      if (isOwnProfile) {
+        console.log('[ProfileFeed] Using', userRelays.length, 'relays for OWN profile (prioritizing write relays):', userRelays)
+        console.log('[ProfileFeed] Write relays:', myRelayList.write)
+        console.log('[ProfileFeed] Read relays:', myRelayList.read)
+      }
 
       if (listMode === 'you') {
         if (!myPubkey) {

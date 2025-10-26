@@ -322,7 +322,7 @@ class NoteStatsService {
 
     // Skip self-interactions - don't count likes from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      console.log('[NoteStats] Skipping self-like from', evt.pubkey, 'to event', targetEventId)
+      // console.log('[NoteStats] Skipping self-like from', evt.pubkey, 'to event', targetEventId)
       return
     }
 
@@ -371,7 +371,7 @@ class NoteStatsService {
 
     // Skip self-interactions - don't count reposts from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      console.log('[NoteStats] Skipping self-repost from', evt.pubkey, 'to event', eventId)
+      // console.log('[NoteStats] Skipping self-repost from', evt.pubkey, 'to event', eventId)
       return
     }
 
@@ -389,7 +389,7 @@ class NoteStatsService {
 
     // Skip self-interactions - don't count zaps from the original event author
     if (originalEventAuthor && originalEventAuthor === senderPubkey) {
-      console.log('[NoteStats] Skipping self-zap from', senderPubkey, 'to event', originalEventId)
+      // console.log('[NoteStats] Skipping self-zap from', senderPubkey, 'to event', originalEventId)
       return
     }
 
@@ -490,7 +490,7 @@ class NoteStatsService {
 
     // Skip self-interactions - don't count quotes from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      console.log('[NoteStats] Skipping self-quote from', evt.pubkey, 'to event', quotedEventId)
+      // console.log('[NoteStats] Skipping self-quote from', evt.pubkey, 'to event', quotedEventId)
       return
     }
 
@@ -513,7 +513,7 @@ class NoteStatsService {
 
     // Skip self-interactions - don't count highlights from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      console.log('[NoteStats] Skipping self-highlight from', evt.pubkey, 'to event', highlightedEventId)
+      // console.log('[NoteStats] Skipping self-highlight from', evt.pubkey, 'to event', highlightedEventId)
       return
     }
 
