@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { RefreshCw } from 'lucide-react'
 import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
+import { useSmartNoteNavigation } from '@/PageManager'
+import { toNote } from '@/lib/link'
 import { NostrEvent, Event as NostrEventType } from 'nostr-tools'
 import { kinds } from 'nostr-tools'
 import { normalizeUrl } from '@/lib/url'
@@ -42,20 +44,35 @@ function countVotesForThread(threadId: string, reactions: NostrEvent[], threadAu
     return 'emoji'
   }
   
+  console.log('[DiscussionsPage] Counting votes for thread', threadId.substring(0, 8), 'with', reactions.length, 'reactions')
+  
   // Process all reactions for this thread
   reactions.forEach(reaction => {
     const eTags = reaction.tags.filter(tag => tag[0] === 'e' && tag[1])
     eTags.forEach(tag => {
       if (tag[1] === threadId) {
+        console.log('[DiscussionsPage] Found reaction for thread', threadId.substring(0, 8), ':', {
+          content: reaction.content,
+          pubkey: reaction.pubkey.substring(0, 8),
+          isSelf: reaction.pubkey === threadAuthor,
+          created_at: reaction.created_at
+        })
+        
         // Skip self-votes
-        if (reaction.pubkey === threadAuthor) return
+        if (reaction.pubkey === threadAuthor) {
+          console.log('[DiscussionsPage] Skipping self-vote')
+          return
+        }
         
         const normalizedReaction = normalizeReaction(reaction.content)
+        console.log('[DiscussionsPage] Normalized reaction:', normalizedReaction)
+        
         if (normalizedReaction === '+' || normalizedReaction === '-') {
           const existingVote = userVotes.get(reaction.pubkey)
           // Only keep the newest vote from each user
           if (!existingVote || reaction.created_at > existingVote.created_at) {
             userVotes.set(reaction.pubkey, { type: normalizedReaction, created_at: reaction.created_at })
+            console.log('[DiscussionsPage] Added vote:', normalizedReaction, 'from', reaction.pubkey.substring(0, 8))
           }
         }
       }
@@ -116,6 +133,7 @@ const DiscussionsPage = forwardRef(() => {
   const { t } = useTranslation()
   const { favoriteRelays, blockedRelays } = useFavoriteRelays()
   const { pubkey } = useNostr()
+  const { navigateToNote } = useSmartNoteNavigation()
   
   // State
   const [allEventMap, setAllEventMap] = useState<Map<string, EventMapEntry>>(new Map())
@@ -458,6 +476,11 @@ const DiscussionsPage = forwardRef(() => {
   const handleCloseDialog = () => {
     setShowCreateDialog(false)
   }
+  
+  // Handle thread click
+  const handleThreadClick = (threadId: string) => {
+    navigateToNote(toNote(threadId))
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -497,14 +520,14 @@ const DiscussionsPage = forwardRef(() => {
             <option value="all">All found ({timeSpanCounts.all})</option>
           </select>
           
-          <button
+                <button
             onClick={handleRefresh}
             disabled={loading}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+                </button>
+          </div>
         </div>
 
       {/* Content */}
@@ -528,7 +551,7 @@ const DiscussionsPage = forwardRef(() => {
                       lastVoteTime={entry.lastVoteTime}
                       upVotes={entry.upVotes}
                       downVotes={entry.downVotes}
-                      onThreadClick={() => console.log('Thread clicked:', entry.event.id)}
+                      onThreadClick={() => handleThreadClick(entry.event.id)}
                       />
                     ))}
                 </div>

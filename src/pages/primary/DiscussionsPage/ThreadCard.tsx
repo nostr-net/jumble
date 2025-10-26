@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils'
 import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 import Username from '@/components/Username'
 import UserAvatar from '@/components/UserAvatar'
-import VoteButtons from '@/components/NoteStats/VoteButtons'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { extractAllTopics } from '@/lib/discussion-topics'
 
@@ -88,8 +87,8 @@ export default function ThreadCard({
           <div className="space-y-3">
             <div className="flex items-start gap-3">
               <div className="flex flex-col items-center gap-1">
-                <div className="text-green-600 font-semibold text-sm">+{upVotes}</div>
-                <div className="text-red-600 font-semibold text-sm">-{downVotes}</div>
+                <div className="text-green-600 font-semibold text-sm">+{upVotes || 0}</div>
+                <div className="text-red-600 font-semibold text-sm">-{downVotes || 0}</div>
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 break-words">
@@ -122,22 +121,18 @@ export default function ThreadCard({
                   <span>{timeAgo}</span>
                 </div>
                 
-                {/* Vote counts */}
-                {totalVotes > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    <span className={netVotes > 0 ? 'text-green-600' : netVotes < 0 ? 'text-red-600' : ''}>
-                      {netVotes > 0 ? '+' : ''}{netVotes}
-                    </span>
-                    {' '}{t('votes')} ({totalVotes} {t('total')})
-                  </div>
-                )}
+                {/* Vote counts - always show */}
+                <div className="text-xs text-muted-foreground">
+                  <span className={netVotes > 0 ? 'text-green-600' : netVotes < 0 ? 'text-red-600' : ''}>
+                    {netVotes > 0 ? '+' : ''}{netVotes}
+                  </span>
+                  {' '}{t('votes')} ({totalVotes} {t('total')})
+                </div>
                 
-                {/* Comment count */}
-                {commentCount > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    {commentCount} {commentCount === 1 ? t('comment') : t('comments')}
-                  </div>
-                )}
+                {/* Comment count - always show */}
+                <div className="text-xs text-muted-foreground">
+                  {commentCount} {commentCount === 1 ? t('comment') : t('comments')}
+                </div>
                 
                 {/* Last activity */}
                 {lastCommentAgo && (
@@ -156,7 +151,10 @@ export default function ThreadCard({
         ) : (
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3 flex-1 min-w-0">
-              <VoteButtons event={thread} />
+              <div className="flex flex-col items-center gap-1">
+                <div className="text-green-600 font-semibold text-sm">+{upVotes || 0}</div>
+                <div className="text-red-600 font-semibold text-sm">-{downVotes || 0}</div>
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2">
                   <h3 className="font-semibold text-lg leading-tight line-clamp-2 break-words">
