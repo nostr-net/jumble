@@ -1,10 +1,12 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Drawer, DrawerContent, DrawerOverlay } from '@/components/ui/drawer'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFetchProfile } from '@/hooks'
 import { generateImageByPubkey } from '@/lib/pubkey'
 import { cn } from '@/lib/utils'
-import { useMemo } from 'react'
+import { useScreenSize } from '@/providers/ScreenSizeProvider'
+import { useMemo, useState } from 'react'
 import ProfileCard from '../ProfileCard'
 
 const UserAvatarSizeCnMap = {
@@ -28,6 +30,8 @@ export default function UserAvatar({
   size?: 'large' | 'big' | 'semiBig' | 'normal' | 'medium' | 'small' | 'xSmall' | 'tiny'
 }) {
   const { profile } = useFetchProfile(userId)
+  const { isSmallScreen } = useScreenSize()
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const defaultAvatar = useMemo(
     () => (profile?.pubkey ? generateImageByPubkey(profile.pubkey) : ''),
     [profile]
@@ -39,6 +43,30 @@ export default function UserAvatar({
     )
   }
   const { avatar, pubkey } = profile
+
+  if (isSmallScreen) {
+    return (
+      <>
+        <Avatar 
+          className={cn('shrink-0 cursor-pointer', UserAvatarSizeCnMap[size], className)}
+          onClick={() => setDrawerOpen(true)}
+        >
+          <AvatarImage src={avatar} className="object-cover object-center" />
+          <AvatarFallback>
+            <img src={defaultAvatar} alt={pubkey} />
+          </AvatarFallback>
+        </Avatar>
+        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+          <DrawerOverlay onClick={() => setDrawerOpen(false)} />
+          <DrawerContent hideOverlay className="max-h-[90vh]">
+            <div className="overflow-y-auto overscroll-contain p-4" style={{ touchAction: 'pan-y' }}>
+              <ProfileCard pubkey={pubkey} />
+            </div>
+          </DrawerContent>
+        </Drawer>
+      </>
+    )
+  }
 
   return (
     <HoverCard>
