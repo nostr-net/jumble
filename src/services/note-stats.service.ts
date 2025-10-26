@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind, SEARCHABLE_RELAY_URLS } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind, SEARCHABLE_RELAY_URLS, FAST_READ_RELAY_URLS } from '@/constants'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
 import { getZapInfoFromEvent } from '@/lib/event-metadata'
 import { getEmojiInfosFromEmojiTags, tagNameEquals } from '@/lib/tag'
@@ -54,7 +54,7 @@ class NoteStatsService {
       ...(relayList.read || []), // User's inboxes (kind 10002)
       ...(favoriteRelays || []), // User's favorite relays (kind 10012)
       ...BIG_RELAY_URLS,         // Big relays
-      ...(pubkey ? [] : SEARCHABLE_RELAY_URLS) // Fast read relays for anonymous users only
+      ...(pubkey ? [] : [...SEARCHABLE_RELAY_URLS, ...FAST_READ_RELAY_URLS]) // Fast read relays for anonymous users only
     ]
     
     // Normalize and deduplicate relay URLs
@@ -65,7 +65,7 @@ class NoteStatsService {
     const finalRelayUrls = Array.from(new Set(normalizedRelays))
     const relayTypes = pubkey 
       ? 'inboxes kind 10002 + favorites kind 10012 + big relays'
-      : 'big relays + searchable relays (anonymous user)'
+      : 'big relays + fast read relays + searchable relays (anonymous user)'
     console.log('[NoteStats] Using', finalRelayUrls.length, 'relays for stats (' + relayTypes + '):', finalRelayUrls)
 
     const replaceableCoordinate = isReplaceableEvent(event.kind)
@@ -187,7 +187,7 @@ class NoteStatsService {
     console.log('[NoteStats] Fetching stats for event', event.id, 'from', finalRelayUrls.length, 'relays')
     await client.fetchEvents(finalRelayUrls, filters, {
       onevent: (evt) => {
-        this.updateNoteStatsByEvents([evt])
+        this.updateNoteStatsByEvents([evt], event.pubkey)
         events.push(evt)
       }
     })
@@ -230,6 +230,7 @@ class NoteStatsService {
     return this.noteStatsMap.get(id)
   }
 
+
   addZap(
     pubkey: string,
     eventId: string,
@@ -253,26 +254,26 @@ class NoteStatsService {
     return eventId
   }
 
-  updateNoteStatsByEvents(events: Event[]) {
+  updateNoteStatsByEvents(events: Event[], originalEventAuthor?: string) {
     const updatedEventIdSet = new Set<string>()
     events.forEach((evt) => {
       let updatedEventId: string | undefined
       if (evt.kind === kinds.Reaction) {
-        updatedEventId = this.addLikeByEvent(evt)
+        updatedEventId = this.addLikeByEvent(evt, originalEventAuthor)
       } else if (evt.kind === kinds.Repost) {
-        updatedEventId = this.addRepostByEvent(evt)
+        updatedEventId = this.addRepostByEvent(evt, originalEventAuthor)
       } else if (evt.kind === kinds.Zap) {
-        updatedEventId = this.addZapByEvent(evt)
+        updatedEventId = this.addZapByEvent(evt, originalEventAuthor)
       } else if (evt.kind === kinds.ShortTextNote || evt.kind === ExtendedKind.COMMENT || evt.kind === ExtendedKind.VOICE_COMMENT) {
         // Check if it's a reply or quote
         const isQuote = this.isQuoteByEvent(evt)
         if (isQuote) {
-          updatedEventId = this.addQuoteByEvent(evt)
+          updatedEventId = this.addQuoteByEvent(evt, originalEventAuthor)
         } else {
-          updatedEventId = this.addReplyByEvent(evt)
+          updatedEventId = this.addReplyByEvent(evt, originalEventAuthor)
         }
       } else if (evt.kind === kinds.Highlights) {
-        updatedEventId = this.addHighlightByEvent(evt)
+        updatedEventId = this.addHighlightByEvent(evt, originalEventAuthor)
       }
       if (updatedEventId) {
         updatedEventIdSet.add(updatedEventId)
@@ -283,7 +284,7 @@ class NoteStatsService {
     })
   }
 
-  private addLikeByEvent(evt: Event) {
+  private addLikeByEvent(evt: Event, originalEventAuthor?: string) {
     const targetEventId = evt.tags.findLast(tagNameEquals('e'))?.[1]
     if (!targetEventId) return
 
@@ -291,6 +292,12 @@ class NoteStatsService {
     const likeIdSet = old.likeIdSet || new Set()
     const likes = old.likes || []
     if (likeIdSet.has(evt.id)) return
+
+    // Skip self-interactions - don't count likes from the original event author
+    if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
+      console.log('[NoteStats] Skipping self-like from', evt.pubkey, 'to event', targetEventId)
+      return
+    }
 
     let emoji: TEmoji | string = evt.content.trim()
     if (!emoji) return
@@ -326,7 +333,7 @@ class NoteStatsService {
     return eventId
   }
 
-  private addRepostByEvent(evt: Event) {
+  private addRepostByEvent(evt: Event, originalEventAuthor?: string) {
     const eventId = evt.tags.find(tagNameEquals('e'))?.[1]
     if (!eventId) return
 
@@ -335,17 +342,29 @@ class NoteStatsService {
     const reposts = old.reposts || []
     if (repostPubkeySet.has(evt.pubkey)) return
 
+    // Skip self-interactions - don't count reposts from the original event author
+    if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
+      console.log('[NoteStats] Skipping self-repost from', evt.pubkey, 'to event', eventId)
+      return
+    }
+
     repostPubkeySet.add(evt.pubkey)
     reposts.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
     this.noteStatsMap.set(eventId, { ...old, repostPubkeySet, reposts })
     return eventId
   }
 
-  private addZapByEvent(evt: Event) {
+  private addZapByEvent(evt: Event, originalEventAuthor?: string) {
     const info = getZapInfoFromEvent(evt)
     if (!info) return
     const { originalEventId, senderPubkey, invoice, amount, comment } = info
     if (!originalEventId || !senderPubkey) return
+
+    // Skip self-interactions - don't count zaps from the original event author
+    if (originalEventAuthor && originalEventAuthor === senderPubkey) {
+      console.log('[NoteStats] Skipping self-zap from', senderPubkey, 'to event', originalEventId)
+      return
+    }
 
     return this.addZap(
       senderPubkey,
@@ -358,7 +377,7 @@ class NoteStatsService {
     )
   }
 
-  private addReplyByEvent(evt: Event) {
+  private addReplyByEvent(evt: Event, originalEventAuthor?: string) {
     // Use the same logic as isReplyNoteEvent to identify replies
     let originalEventId: string | undefined
 
@@ -413,6 +432,12 @@ class NoteStatsService {
 
     if (replyIdSet.has(evt.id)) return
 
+    // Skip self-interactions - don't count replies from the original event author
+    if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
+      console.log('[NoteStats] Skipping self-reply from', evt.pubkey, 'to event', originalEventId)
+      return
+    }
+
     replyIdSet.add(evt.id)
     replies.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
     this.noteStatsMap.set(originalEventId, { ...old, replyIdSet, replies })
@@ -425,7 +450,7 @@ class NoteStatsService {
     return evt.tags.some(tag => tag[0] === 'q' && tag[1])
   }
 
-  private addQuoteByEvent(evt: Event) {
+  private addQuoteByEvent(evt: Event, originalEventAuthor?: string) {
     // Find the quoted event ID from 'q' tag
     const quotedEventId = evt.tags.find(tag => tag[0] === 'q')?.[1]
     if (!quotedEventId) return
@@ -436,13 +461,19 @@ class NoteStatsService {
 
     if (quoteIdSet.has(evt.id)) return
 
+    // Skip self-interactions - don't count quotes from the original event author
+    if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
+      console.log('[NoteStats] Skipping self-quote from', evt.pubkey, 'to event', quotedEventId)
+      return
+    }
+
     quoteIdSet.add(evt.id)
     quotes.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
     this.noteStatsMap.set(quotedEventId, { ...old, quoteIdSet, quotes })
     return quotedEventId
   }
 
-  private addHighlightByEvent(evt: Event) {
+  private addHighlightByEvent(evt: Event, originalEventAuthor?: string) {
     // Find the event ID from 'e' tag
     const highlightedEventId = evt.tags.find(tag => tag[0] === 'e')?.[1]
     if (!highlightedEventId) return
@@ -452,6 +483,12 @@ class NoteStatsService {
     const highlights = old.highlights || []
 
     if (highlightIdSet.has(evt.id)) return
+
+    // Skip self-interactions - don't count highlights from the original event author
+    if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
+      console.log('[NoteStats] Skipping self-highlight from', evt.pubkey, 'to event', highlightedEventId)
+      return
+    }
 
     highlightIdSet.add(evt.id)
     highlights.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
