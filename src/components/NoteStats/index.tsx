@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import { useNostr } from '@/providers/NostrProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
+import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import noteStatsService from '@/services/note-stats.service'
 import { ExtendedKind } from '@/constants'
 import { getRootEventHexId } from '@/lib/event'
@@ -33,6 +34,7 @@ export default function NoteStats({
 }) {
   const { isSmallScreen } = useScreenSize()
   const { pubkey } = useNostr()
+  const { favoriteRelays } = useFavoriteRelays()
   const [loading, setLoading] = useState(false)
   
   // Hide repost button for discussion events and replies to discussions
@@ -59,7 +61,7 @@ export default function NoteStats({
   useEffect(() => {
     if (!fetchIfNotExisting) return
     setLoading(true)
-    noteStatsService.fetchNoteStats(event, pubkey).finally(() => setLoading(false))
+    noteStatsService.fetchNoteStats(event, pubkey, favoriteRelays).finally(() => setLoading(false))
   }, [event, fetchIfNotExisting])
 
   if (isSmallScreen) {

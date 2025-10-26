@@ -15,7 +15,7 @@ const SHOW_COUNT = 10
 
 export default function QuoteList({ event, className }: { event: Event; className?: string }) {
   const { t } = useTranslation()
-  const { startLogin, relayList: userRelayList } = useNostr()
+  const { relayList: userRelayList } = useNostr()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
   const [timelineKey, setTimelineKey] = useState<string | undefined>(undefined)
   const [events, setEvents] = useState<Event[]>([])
@@ -90,8 +90,7 @@ export default function QuoteList({ event, className }: { event: Event; classNam
               [event, ...oldEvents].sort((a, b) => b.created_at - a.created_at)
             )
           }
-        },
-        { startLogin }
+        }
       )
       setTimelineKey(timelineKey)
       return closer

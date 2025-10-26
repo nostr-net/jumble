@@ -1,7 +1,8 @@
-import { BIG_RELAY_URLS, ExtendedKind } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind, SEARCHABLE_RELAY_URLS } from '@/constants'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
 import { getZapInfoFromEvent } from '@/lib/event-metadata'
 import { getEmojiInfosFromEmojiTags, tagNameEquals } from '@/lib/tag'
+import { normalizeUrl } from '@/lib/url'
 import client from '@/services/client.service'
 import { TEmoji } from '@/types'
 import dayjs from 'dayjs'
@@ -35,7 +36,7 @@ class NoteStatsService {
     return NoteStatsService.instance
   }
 
-  async fetchNoteStats(event: Event, pubkey?: string | null) {
+  async fetchNoteStats(event: Event, pubkey?: string | null, favoriteRelays?: string[]) {
     const oldStats = this.noteStatsMap.get(event.id)
     let since: number | undefined
     if (oldStats?.updatedAt) {
@@ -46,6 +47,26 @@ class NoteStatsService {
       pubkey ? client.fetchRelayList(pubkey) : Promise.resolve({ write: [], read: [] }),
       client.fetchProfile(event.pubkey)
     ])
+
+    // Build comprehensive relay list: user's inboxes + user's favorite relays + big relays
+    // For anonymous users, also include fast read relays for better coverage
+    const allRelays = [
+      ...(relayList.read || []), // User's inboxes (kind 10002)
+      ...(favoriteRelays || []), // User's favorite relays (kind 10012)
+      ...BIG_RELAY_URLS,         // Big relays
+      ...(pubkey ? [] : SEARCHABLE_RELAY_URLS) // Fast read relays for anonymous users only
+    ]
+    
+    // Normalize and deduplicate relay URLs
+    const normalizedRelays = allRelays
+      .map(url => normalizeUrl(url))
+      .filter((url): url is string => !!url)
+    
+    const finalRelayUrls = Array.from(new Set(normalizedRelays))
+    const relayTypes = pubkey 
+      ? 'inboxes kind 10002 + favorites kind 10012 + big relays'
+      : 'big relays + searchable relays (anonymous user)'
+    console.log('[NoteStats] Using', finalRelayUrls.length, 'relays for stats (' + relayTypes + '):', finalRelayUrls)
 
     const replaceableCoordinate = isReplaceableEvent(event.kind)
       ? getReplaceableCoordinateFromEvent(event)
@@ -163,12 +184,21 @@ class NoteStatsService {
       })
     }
     const events: Event[] = []
-    await client.fetchEvents([...relayList.read, ...BIG_RELAY_URLS].slice(0, 5), filters, {
+    console.log('[NoteStats] Fetching stats for event', event.id, 'from', finalRelayUrls.length, 'relays')
+    await client.fetchEvents(finalRelayUrls, filters, {
       onevent: (evt) => {
         this.updateNoteStatsByEvents([evt])
         events.push(evt)
       }
     })
+    console.log('[NoteStats] Fetched', events.length, 'events for stats')
+    
+    // Debug: Count events by kind
+    const eventsByKind = events.reduce((acc, evt) => {
+      acc[evt.kind] = (acc[evt.kind] || 0) + 1
+      return acc
+    }, {} as Record<number, number>)
+    console.log('[NoteStats] Events by kind:', eventsByKind)
     this.noteStatsMap.set(event.id, {
       ...(this.noteStatsMap.get(event.id) ?? {}),
       updatedAt: dayjs().unix()
@@ -345,6 +375,7 @@ class NoteStatsService {
       })
       if (parentETag) {
         originalEventId = parentETag[1]
+        console.log('[NoteStats] Found reply with root/reply marker:', evt.id, '->', originalEventId)
       } else {
         // Look for the last E tag that's not a mention
         const embeddedEventIds = this.getEmbeddedNoteBech32Ids(evt)
@@ -355,17 +386,26 @@ class NoteStatsService {
             marker !== 'mention' &&
             !embeddedEventIds.includes(tagValue)
         )
-        originalEventId = lastETag?.[1]
+        if (lastETag) {
+          originalEventId = lastETag[1]
+          console.log('[NoteStats] Found reply with last E tag:', evt.id, '->', originalEventId)
+        }
       }
       
       // Also check for parent A tag
       if (!originalEventId) {
         const aTag = evt.tags.find(tagNameEquals('a'))
-        originalEventId = aTag?.[1]
+        if (aTag) {
+          originalEventId = aTag[1]
+          console.log('[NoteStats] Found reply with A tag:', evt.id, '->', originalEventId)
+        }
       }
     }
 
-    if (!originalEventId) return
+    if (!originalEventId) {
+      console.log('[NoteStats] No original event ID found for potential reply:', evt.id, 'tags:', evt.tags)
+      return
+    }
 
     const old = this.noteStatsMap.get(originalEventId) || {}
     const replyIdSet = old.replyIdSet || new Set()
@@ -376,6 +416,7 @@ class NoteStatsService {
     replyIdSet.add(evt.id)
     replies.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
     this.noteStatsMap.set(originalEventId, { ...old, replyIdSet, replies })
+    console.log('[NoteStats] Added reply:', evt.id, 'to event:', originalEventId, 'total replies:', replies.length)
     return originalEventId
   }
 
