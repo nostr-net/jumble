@@ -24,6 +24,7 @@ import dayjs from 'dayjs'
 import { extractHashtagsFromContent, normalizeTopic } from '@/lib/discussion-topics'
 import DiscussionContent from '@/components/Note/DiscussionContent'
 import RelayIcon from '@/components/RelayIcon'
+import logger from '@/lib/logger'
 
 // Utility functions for thread creation
 function extractImagesFromContent(content: string): string[] {
@@ -134,7 +135,7 @@ export default function CreateThreadDialog({
         setSelectableRelays(result.selectableRelays)
         setSelectedRelayUrls(result.selectedRelays)
       } catch (error) {
-        console.error('Failed to initialize relays:', error)
+        logger.error('[CreateThreadDialog] Failed to initialize relays:', error)
         // Fallback to availableRelays
         setSelectableRelays(availableRelays)
         setSelectedRelayUrls(availableRelays)
@@ -272,7 +273,7 @@ export default function CreateThreadDialog({
       }
       
       // Debug: Log the event before publishing
-      console.log('About to publish thread event:', {
+      logger.debug('[CreateThreadDialog] About to publish thread event:', {
         kind: threadEvent.kind,
         content: threadEvent.content,
         tags: threadEvent.tags,
@@ -296,8 +297,8 @@ export default function CreateThreadDialog({
         throw new Error(t('Failed to publish thread'))
       }
     } catch (error) {
-      console.error('Error creating thread:', error)
-      console.error('Error details:', {
+      logger.error('[CreateThreadDialog] Error creating thread:', error)
+      logger.error('[CreateThreadDialog] Error details:', {
         name: error instanceof Error ? error.name : 'Unknown',
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined

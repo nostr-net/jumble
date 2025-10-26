@@ -73,7 +73,7 @@ function countVotesForThread(threadId: string, reactions: NostrEvent[], threadAu
           // Only keep the newest vote from each user
           if (!existingVote || reaction.created_at > existingVote.created_at) {
             userVotes.set(reaction.pubkey, { type: normalizedReaction, created_at: reaction.created_at })
-            console.log('[DiscussionsPage] Added vote:', normalizedReaction, 'from', reaction.pubkey.substring(0, 8))
+            logger.debug('[DiscussionsPage] Added vote:', normalizedReaction, 'from', reaction.pubkey.substring(0, 8))
           }
         }
       }
@@ -168,7 +168,7 @@ const DiscussionsPage = forwardRef(() => {
       !blockedRelays.some(blocked => relay.includes(blocked))
     )
     
-    console.log('[DiscussionsPage] Using', finalRelays.length, 'comprehensive relays')
+    logger.debug('[DiscussionsPage] Using', finalRelays.length, 'comprehensive relays')
     return Array.from(new Set(finalRelays))
   }, []) // Remove dependencies to prevent infinite loop
   
@@ -179,7 +179,7 @@ const DiscussionsPage = forwardRef(() => {
     setIsRefreshing(true)
     
     try {
-      console.log('[DiscussionsPage] Fetching all discussion threads...')
+      logger.debug('[DiscussionsPage] Fetching all discussion threads...')
       
       // Get comprehensive relay list
       const allRelays = await buildComprehensiveRelayList()
@@ -214,11 +214,11 @@ const DiscussionsPage = forwardRef(() => {
         ]) : Promise.resolve([])
       ])
       
-      console.log('[DiscussionsPage] Fetched', comments.length, 'comments and', reactions.length, 'reactions')
+      logger.debug('[DiscussionsPage] Fetched', comments.length, 'comments and', reactions.length, 'reactions')
       
       // Debug: Log some reaction details
       if (reactions.length > 0) {
-        console.log('[DiscussionsPage] Sample reactions:', reactions.slice(0, 3).map(r => ({
+        logger.debug('[DiscussionsPage] Sample reactions:', reactions.slice(0, 3).map(r => ({
           id: r.id.substring(0, 8),
           content: r.content,
           pubkey: r.pubkey.substring(0, 8),

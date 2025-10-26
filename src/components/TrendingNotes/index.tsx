@@ -120,7 +120,7 @@ export default function TrendingNotes() {
             }
             return eventIds
           } catch (error) {
-            console.error(`Error fetching bookmarks for ${followPubkey}:`, error)
+            logger.error(`[TrendingNotes] Error fetching bookmarks for ${followPubkey}:`, error)
             return []
           }
         })
@@ -254,7 +254,7 @@ export default function TrendingNotes() {
 
       isInitializing = true
       setCacheLoading(true)
-      const relays = getRelays // This is already a value from useMemo
+      const relays = getRelays // Get current relays value
       
       // Set a timeout to prevent infinite loading
       const timeoutId = setTimeout(() => {
@@ -322,7 +322,7 @@ export default function TrendingNotes() {
             })
             allEvents.push(...bookmarkPinEvents)
           } catch (error) {
-            console.warn('[TrendingNotes] Error fetching bookmark/pin events:', error)
+            logger.warn('[TrendingNotes] Error fetching bookmark/pin events:', error)
           }
         }
 
@@ -343,12 +343,12 @@ export default function TrendingNotes() {
                   })
                   allEvents.push(...pinEvents)
                 } catch (error) {
-                  console.warn('[TrendingNotes] Error fetching pin events:', error)
+                  logger.warn('[TrendingNotes] Error fetching pin events:', error)
                 }
               }
             }
           } catch (error) {
-            console.error('[TrendingNotes] Error fetching pin list:', error)
+            logger.error('[TrendingNotes] Error fetching pin list:', error)
           }
         }
 
@@ -467,8 +467,8 @@ export default function TrendingNotes() {
     }
 
     initializeCache()
-    // Only run when getRelays changes (which happens when login status changes)
-  }, [getRelays])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run once on mount to prevent infinite loop
 
   const filteredEvents = useMemo(() => {
     const idSet = new Set<string>()
