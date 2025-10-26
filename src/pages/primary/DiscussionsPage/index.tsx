@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 // Removed dropdown menu import - no longer using relay selection
-import { FAST_READ_RELAY_URLS, HASHTAG_REGEX } from '@/constants'
+import { FAST_READ_RELAY_URLS, SEARCHABLE_RELAY_URLS, HASHTAG_REGEX } from '@/constants'
 import { normalizeUrl } from '@/lib/url'
 import { normalizeTopic } from '@/lib/discussion-topics'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
@@ -145,10 +145,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
         }
       }
       
-      // Use favorite relays from provider (includes stored relay sets) + user's read relays + fast read relays
+      // Use a comprehensive relay list for discussions to ensure we get all topics
+      // Combine searchable relays (comprehensive list) + user's read relays + favorite relays
       const allRawRelays = [
-        ...favoriteRelays,
+        ...SEARCHABLE_RELAY_URLS, // Comprehensive list of searchable relays
         ...userReadRelays,
+        ...favoriteRelays,
         ...FAST_READ_RELAY_URLS
       ]
       
