@@ -22,9 +22,12 @@ interface ThreadCardProps {
   className?: string
   subtopics?: string[] // Available subtopics for this thread
   primaryTopic?: string // The categorized primary topic (e.g., 'general', 'tech', etc.)
+  commentCount?: number
+  lastCommentTime?: number
+  lastVoteTime?: number
 }
 
-export default function ThreadCard({ thread, onThreadClick, className, subtopics = [], primaryTopic }: ThreadCardProps) {
+export default function ThreadCard({ thread, onThreadClick, className, subtopics = [], primaryTopic, commentCount = 0, lastCommentTime = 0, lastVoteTime = 0 }: ThreadCardProps) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
 
@@ -55,6 +58,15 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
   // Format creation time
   const createdAt = new Date(thread.created_at * 1000)
   const timeAgo = formatDistanceToNow(createdAt, { addSuffix: true })
+  
+  // Format last activity times
+  const formatLastActivity = (timestamp: number) => {
+    if (timestamp === 0) return null
+    return formatDistanceToNow(new Date(timestamp * 1000), { addSuffix: true })
+  }
+  
+  const lastCommentAgo = formatLastActivity(lastCommentTime)
+  const lastVoteAgo = formatLastActivity(lastVoteTime)
 
   // Get topic display info from centralized DISCUSSION_TOPICS
   const getTopicInfo = (topicId: string) => {
@@ -156,6 +168,21 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                   <Clock className="w-3 h-3" />
                   <span>{timeAgo}</span>
                 </div>
+                {commentCount > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    {commentCount} {commentCount === 1 ? t('comment') : t('comments')}
+                  </div>
+                )}
+                {lastCommentAgo && (
+                  <div className="text-xs text-muted-foreground">
+                    {t('last commented')}: {lastCommentAgo}
+                  </div>
+                )}
+                {lastVoteAgo && (
+                  <div className="text-xs text-muted-foreground">
+                    {t('last voted')}: {lastVoteAgo}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -190,6 +217,21 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                     <Clock className="w-3 h-3" />
                     {timeAgo}
                   </div>
+                  {commentCount > 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      {commentCount} {commentCount === 1 ? t('comment') : t('comments')}
+                    </div>
+                  )}
+                  {lastCommentAgo && (
+                    <div className="text-xs text-muted-foreground">
+                      {t('last commented')}: {lastCommentAgo}
+                    </div>
+                  )}
+                  {lastVoteAgo && (
+                    <div className="text-xs text-muted-foreground">
+                      {t('last voted')}: {lastVoteAgo}
+                    </div>
+                  )}
                 </div>
                 {isReadingGroup && (authorTag || subjectTag) && (
                   <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 mt-2">

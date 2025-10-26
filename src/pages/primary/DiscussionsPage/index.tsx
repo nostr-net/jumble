@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 // Removed dropdown menu import - no longer using relay selection
-import { FAST_READ_RELAY_URLS, SEARCHABLE_RELAY_URLS, HASHTAG_REGEX } from '@/constants'
+import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, SEARCHABLE_RELAY_URLS, HASHTAG_REGEX, ExtendedKind } from '@/constants'
 import { normalizeUrl } from '@/lib/url'
 import { normalizeTopic } from '@/lib/discussion-topics'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
@@ -9,7 +9,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { forwardRef, useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
-import { MessageSquarePlus, Book, BookOpen, Hash, Search, X } from 'lucide-react'
+import { MessageSquarePlus, Book, BookOpen, Hash, Search, X, RefreshCw } from 'lucide-react'
 import ThreadCard from '@/pages/primary/DiscussionsPage/ThreadCard'
 import TopicFilter from '@/pages/primary/DiscussionsPage/TopicFilter'
 import ThreadSort, { SortOption } from '@/pages/primary/DiscussionsPage/ThreadSort'
@@ -101,11 +101,14 @@ type EventMapEntry = {
   hashtags: string[]
   allTopics: string[]
   categorizedTopic: string
+  commentCount: number
+  lastCommentTime: number
+  lastVoteTime: number
 }
 
 const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
-  const { favoriteRelays } = useFavoriteRelays()
+  const { favoriteRelays, blockedRelays } = useFavoriteRelays()
   const { pubkey } = useNostr()
   const { navigateToNote } = useSmartNoteNavigation()
   
@@ -114,13 +117,24 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const [selectedSubtopic, setSelectedSubtopic] = useState<string | null>(null)
   // Removed relay filtering - using all relays
   const [selectedSort, setSelectedSort] = useState<SortOption>('newest')
-  const [eventMap, setEventMap] = useState<Map<string, EventMapEntry>>(new Map())
+  const [allEventMap, setAllEventMap] = useState<Map<string, EventMapEntry>>(new Map()) // Store all threads
+  const [eventMap, setEventMap] = useState<Map<string, EventMapEntry>>(new Map()) // Filtered for display
   const [filteredEvents, setFilteredEvents] = useState<NostrEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateThread, setShowCreateThread] = useState(false)
   const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('grouped')
   const [groupedEvents, setGroupedEvents] = useState<Record<string, NostrEvent[]>>({})
   const [searchQuery, setSearchQuery] = useState('')
+  
+  // Time span selector
+  const [timeSpan, setTimeSpan] = useState<'30days' | '90days' | 'all'>('30days')
+  
+  // Track counts for each time span (calculated from actual filtered results)
+  const [timeSpanCounts, setTimeSpanCounts] = useState<{
+    '30days': number
+    '90days': number
+    'all': number
+  }>({ '30days': 0, '90days': 0, 'all': 0 })
   
   // Available subtopics for the selected topic
   const [availableSubtopics, setAvailableSubtopics] = useState<string[]>([])
@@ -129,6 +143,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
   const [allRelays, setAllRelays] = useState<string[]>([])
   const isFetchingRef = useRef(false)
   const lastFetchTimeRef = useRef(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Get all available relays (use favorite relays from provider + user's read relays or fast read relays)
   useEffect(() => {
@@ -140,34 +155,66 @@ const DiscussionsPage = forwardRef((_, ref) => {
           // Get user's read relays
           const relayList = await client.fetchRelayList(pubkey)
           userReadRelays = relayList?.read || []
+          console.log('[DiscussionsPage] User read relays:', userReadRelays)
         } catch (error) {
           console.warn('Failed to fetch user relay list:', error)
         }
+      } else {
+        console.log('[DiscussionsPage] No pubkey - using anonymous relay list')
       }
       
+      console.log('[DiscussionsPage] Relay sources:')
+      console.log('  - SEARCHABLE_RELAY_URLS:', SEARCHABLE_RELAY_URLS.length, 'relays')
+      console.log('  - userReadRelays:', userReadRelays.length, 'relays')
+      console.log('  - favoriteRelays:', favoriteRelays.length, 'relays')
+      console.log('  - BIG_RELAY_URLS:', BIG_RELAY_URLS.length, 'relays')
+      console.log('  - FAST_READ_RELAY_URLS:', FAST_READ_RELAY_URLS.length, 'relays')
+      console.log('  - FAST_WRITE_RELAY_URLS:', FAST_WRITE_RELAY_URLS.length, 'relays')
+      console.log('  - blockedRelays:', blockedRelays.length, 'relays')
+      
       // Use a comprehensive relay list for discussions to ensure we get all topics
-      // Combine searchable relays (comprehensive list) + user's read relays + favorite relays
+      // Combine searchable relays + user's read relays + favorite relays + big relays + fast relays
       const allRawRelays = [
         ...SEARCHABLE_RELAY_URLS, // Comprehensive list of searchable relays
         ...userReadRelays,
         ...favoriteRelays,
-        ...FAST_READ_RELAY_URLS
+        ...BIG_RELAY_URLS,         // Big relays
+        ...FAST_READ_RELAY_URLS,   // Fast read relays
+        ...FAST_WRITE_RELAY_URLS   // Fast write relays
       ]
       
+      console.log('[DiscussionsPage] Total raw relays before processing:', allRawRelays.length)
+      
       // Normalize and deduplicate all relays
-      const relays = Array.from(new Set(
+      const normalizedRelays = Array.from(new Set(
         allRawRelays
           .map(url => normalizeUrl(url))
           .filter(url => url && url.length > 0) // Remove any empty/invalid URLs
       ))
+      
+      console.log('[DiscussionsPage] Normalized relays after deduplication:', normalizedRelays.length)
+      
+      // Filter out blocked relays
+      const relays = normalizedRelays.filter(relay => {
+        const normalizedRelay = normalizeUrl(relay) || relay
+        return !blockedRelays.some(blocked => {
+          const normalizedBlocked = normalizeUrl(blocked) || blocked
+          return normalizedBlocked === normalizedRelay
+        })
+      })
+      
+      console.log('[DiscussionsPage] Final relay list after blocking filter:', relays.length, 'relays')
+      console.log('[DiscussionsPage] Final relays:', relays)
       
       // Only update if relays actually changed
       setAllRelays(prevRelays => {
         const prevRelaysStr = prevRelays.sort().join(',')
         const newRelaysStr = relays.sort().join(',')
         if (prevRelaysStr === newRelaysStr) {
+          console.log('[DiscussionsPage] Relays unchanged, skipping update')
           return prevRelays // No change, don't trigger re-render
         }
+        console.log('[DiscussionsPage] Relays changed, updating state')
         return relays
       })
     }
@@ -175,7 +222,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
     // Debounce relay updates to prevent rapid changes
     const timeoutId = setTimeout(updateRelays, 500)
     return () => clearTimeout(timeoutId)
-  }, [pubkey, favoriteRelays])
+  }, [pubkey, favoriteRelays, blockedRelays])
 
   // State for dynamic topics and subtopics
   const [dynamicTopics, setDynamicTopics] = useState<string[]>([])
@@ -203,7 +250,8 @@ const DiscussionsPage = forwardRef((_, ref) => {
       return
     }
     
-    console.log('Starting fetchAllEvents...')
+    console.log('[DiscussionsPage] Starting fetchAllEvents...')
+    console.log('[DiscussionsPage] Using', allRelays.length, 'relays for fetching:', allRelays)
     
     isFetchingRef.current = true
     lastFetchTimeRef.current = now
@@ -211,21 +259,52 @@ const DiscussionsPage = forwardRef((_, ref) => {
     
     // Safety timeout to reset fetch state if it gets stuck
     const safetyTimeout = setTimeout(() => {
-      console.warn('Fetch timeout - resetting fetch state')
+      console.warn('[DiscussionsPage] Fetch timeout - resetting fetch state')
       isFetchingRef.current = false
       setLoading(false)
     }, 30000) // 30 second timeout
     try {
-      // Fetch recent kind 11 events (last 30 days)
-      const thirtyDaysAgo = Math.floor((Date.now() - (30 * 24 * 60 * 60 * 1000)) / 1000)
+      // Time span calculation is now only used in the display filter layer
       
-      const events = await client.fetchEvents(allRelays, [
+      console.log('[DiscussionsPage] Simplified approach: Fetch all kind 11, then related 1111/7, remove self-responses, process bumping, filter by', timeSpan, 'in display layer')
+      console.log('[DiscussionsPage] Fetching all discussion threads (no time limit)')
+      
+      // Step 1: Fetch all kind 11 (discussion threads) - no time filtering
+      const discussionThreads = await client.fetchEvents(allRelays, [
         {
-          kinds: [11], // Thread events
-          since: thirtyDaysAgo,
-          limit: 100
+          kinds: [ExtendedKind.DISCUSSION], // Only discussion threads
+          limit: 500
         }
       ])
+      
+      console.log('[DiscussionsPage] Step 1: Fetched', discussionThreads.length, 'discussion threads (kind 11)')
+      
+      // Step 2: Get all thread IDs to fetch related comments and reactions
+      const threadIds = discussionThreads.map(thread => thread.id)
+      console.log('[DiscussionsPage] Step 2: Fetching related comments and reactions for', threadIds.length, 'threads')
+      
+      // Fetch comments (kind 1111) that reference these threads
+      const comments = threadIds.length > 0 ? await client.fetchEvents(allRelays, [
+        {
+          kinds: [ExtendedKind.COMMENT],
+          '#e': threadIds,
+          limit: 1000
+        }
+      ]) : []
+      
+      // Fetch reactions (kind 7) that reference these threads
+      const reactions = threadIds.length > 0 ? await client.fetchEvents(allRelays, [
+        {
+          kinds: [kinds.Reaction],
+          '#e': threadIds,
+          limit: 1000
+        }
+      ]) : []
+      
+      console.log('[DiscussionsPage] Step 2: Fetched', comments.length, 'comments and', reactions.length, 'reactions for existing threads')
+      
+      // Combine all events for processing
+      const events = [...discussionThreads, ...comments, ...reactions]
       
       // Create a map of events with their relay sources
       const newEventMap = new Map<string, { event: NostrEvent, relaySources: string[] }>()
@@ -255,7 +334,6 @@ const DiscussionsPage = forwardRef((_, ref) => {
             {
               kinds: [kinds.EventDeletion],
               '#e': eventIds,
-              since: thirtyDaysAgo,
               limit: 1000
             }
           ])
@@ -270,18 +348,166 @@ const DiscussionsPage = forwardRef((_, ref) => {
             })
           })
         } catch (error) {
-          console.warn('Failed to fetch deletion events:', error)
+          console.warn('[DiscussionsPage] Failed to fetch deletion events:', error)
         }
       }
       
-      // Build the final event map with topic information
+      console.log('[DiscussionsPage] Found', deletedEventIds.size, 'deleted events')
+      console.log('[DiscussionsPage] Processing', newEventMap.size, 'events for final map')
+      
+      // Step 3: Remove self-responses and Step 4: Process thread bumping
+      const threadIdsToFetch = new Set<string>()
+      const threadAuthors = new Map<string, string>() // Map thread ID to author pubkey
+      
+      // First, collect all thread authors to exclude self-activity
+      newEventMap.forEach(({ event }) => {
+        if (event.kind === ExtendedKind.DISCUSSION) {
+          threadAuthors.set(event.id, event.pubkey)
+        }
+      })
+      
+      // Step 3: Remove self-responses and identify threads to bump
+      newEventMap.forEach(({ event }) => {
+        if (event.kind === ExtendedKind.COMMENT || event.kind === kinds.Reaction) {
+          // Look for 'e' tags that reference discussion threads
+          const eTags = event.tags.filter(tag => tag[0] === 'e' && tag[1])
+          eTags.forEach(tag => {
+            const threadId = tag[1]
+            if (threadId) {
+              // Check if this activity is from someone other than the thread author
+              const threadAuthor = threadAuthors.get(threadId)
+              if (!threadAuthor || event.pubkey !== threadAuthor) {
+                // This is a non-self response
+                if (!newEventMap.has(threadId)) {
+                  // This comment/reaction references a thread we don't have yet - add to bump list
+                  threadIdsToFetch.add(threadId)
+                }
+              }
+              // If it's a self-response, we simply don't process it further
+            }
+          })
+        }
+      })
+      
+      console.log('[DiscussionsPage] Found', threadIdsToFetch.size, 'older threads to fetch due to recent comments/reactions (excluding self-activity)')
+      
+      // Fetch the older threads that have recent activity
+      if (threadIdsToFetch.size > 0) {
+        try {
+          const olderThreads = await client.fetchEvents(allRelays, [
+            {
+              kinds: [ExtendedKind.DISCUSSION],
+              ids: Array.from(threadIdsToFetch),
+              limit: 100
+            }
+          ])
+          
+          console.log('[DiscussionsPage] Fetched', olderThreads.length, 'older threads due to recent comments')
+          
+          // Add the older threads to our event map
+          olderThreads.forEach(event => {
+            const eventHints = client.getEventHints(event.id)
+            const relaySources = eventHints.length > 0 ? eventHints : ['unknown']
+            
+            if (!newEventMap.has(event.id)) {
+              newEventMap.set(event.id, { event, relaySources })
+            }
+          })
+        } catch (error) {
+          console.warn('[DiscussionsPage] Failed to fetch older threads:', error)
+        }
+      }
+      
+      // Analyze comment counts and last activity timestamps for each thread
+      const threadStats = new Map<string, { commentCount: number, lastCommentTime: number, lastVoteTime: number }>()
+      
+      newEventMap.forEach(({ event }) => {
+        if (event.kind === ExtendedKind.DISCUSSION) {
+          // Initialize thread stats
+          threadStats.set(event.id, { commentCount: 0, lastCommentTime: 0, lastVoteTime: 0 })
+        }
+      })
+      
+      // Helper function to normalize reaction content according to NIP-25
+      const normalizeReactionContent = (content: string): string => {
+        const normalized = content.trim()
+        
+        // NIP-25: Empty string or "+" should be interpreted as "like" or "upvote"
+        if (normalized === '' || normalized === '+') {
+          return '+'
+        }
+        
+        // NIP-25: "-" should be interpreted as "dislike" or "downvote"
+        if (normalized === '-') {
+          return '-'
+        }
+        
+        // Normalize common arrow emojis to +/- for consistent counting
+        if (normalized === '⬆️' || normalized === '↑' || normalized === '👍' || normalized === '❤️' || normalized === '🔥') {
+          return '+'
+        }
+        
+        if (normalized === '⬇️' || normalized === '↓' || normalized === '👎' || normalized === '💩') {
+          return '-'
+        }
+        
+        // For other emojis or custom reactions, treat as neutral (don't count as vote)
+        return 'emoji'
+      }
+      
+      // Count comments and track last activity times (excluding self-responses)
+      newEventMap.forEach(({ event }) => {
+        if (event.kind === ExtendedKind.COMMENT || event.kind === kinds.Reaction) {
+          const eTags = event.tags.filter(tag => tag[0] === 'e' && tag[1])
+          eTags.forEach(tag => {
+            const threadId = tag[1]
+            if (threadId && threadStats.has(threadId)) {
+              // Check if this is a self-response
+              const threadAuthor = threadAuthors.get(threadId)
+              if (threadAuthor && event.pubkey === threadAuthor) {
+                // Skip self-responses
+                return
+              }
+              
+              const stats = threadStats.get(threadId)!
+              
+              if (event.kind === ExtendedKind.COMMENT) {
+                stats.commentCount++
+                if (event.created_at > stats.lastCommentTime) {
+                  stats.lastCommentTime = event.created_at
+                }
+              } else if (event.kind === kinds.Reaction) {
+                // Only count reactions that normalize to +/- as votes
+                const normalizedReaction = normalizeReactionContent(event.content)
+                if (normalizedReaction === '+' || normalizedReaction === '-') {
+                  if (event.created_at > stats.lastVoteTime) {
+                    stats.lastVoteTime = event.created_at
+                  }
+                }
+              }
+            }
+          })
+        }
+      })
+      
+      console.log('[DiscussionsPage] Thread stats calculated:', Array.from(threadStats.entries()).map(([id, stats]) => ({ id, ...stats })))
+      
+      // Step 5: Build the final event map with topic information (90-day filter applied)
       const finalEventMap = new Map<string, EventMapEntry>()
       
+      // Step 5: Display kind 11s with activity newer than 90 days
       newEventMap.forEach(({ event, relaySources }, eventId) => {
         // Skip deleted events
         if (deletedEventIds.has(eventId)) {
           return
         }
+        
+        // Only process discussion threads (kind 11) for display
+        if (event.kind !== ExtendedKind.DISCUSSION) {
+          return
+        }
+        
+        // Include all threads - filtering will be done in display layer
         
         // Extract topics - normalize subtopics but keep originals for topic detection
         const tTagsRaw = event.tags.filter(tag => tag[0] === 't' && tag[1]).map(tag => tag[1].toLowerCase())
@@ -293,10 +519,18 @@ const DiscussionsPage = forwardRef((_, ref) => {
         const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
         const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds)
         
+        // Debug logging for topics
+        if (allTopicsRaw.length === 0) {
+          console.log('[DiscussionsPage] Discussion with no topics categorized as:', categorizedTopic, 'Event ID:', event.id)
+        }
+        
         // Normalize subtopics for grouping (but not main topic IDs)
         const tTags = tTagsRaw.map(tag => normalizeTopic(tag))
         const hashtags = hashtagsRaw.map(tag => normalizeTopic(tag))
         const allTopics = [...new Set([...tTags, ...hashtags])]
+        
+        // Get thread stats for this event
+        const finalStats = threadStats.get(eventId) || { commentCount: 0, lastCommentTime: 0, lastVoteTime: 0 }
         
         finalEventMap.set(eventId, {
           event,
@@ -304,23 +538,33 @@ const DiscussionsPage = forwardRef((_, ref) => {
           tTags,
           hashtags,
           allTopics,
-          categorizedTopic
+          categorizedTopic,
+          commentCount: finalStats.commentCount,
+          lastCommentTime: finalStats.lastCommentTime,
+          lastVoteTime: finalStats.lastVoteTime
         })
       })
       
-      setEventMap(finalEventMap)
+      console.log('[DiscussionsPage] Step 6: Final event map size:', finalEventMap.size, 'threads with recent activity')
+      console.log('[DiscussionsPage] Final events:', Array.from(finalEventMap.values()).map(e => ({ id: e.event.id, content: e.event.content.substring(0, 100) + '...' })))
+      
+      // Store all threads in allEventMap (for counting)
+      setAllEventMap(finalEventMap)
       
       // Analyze and set dynamic topics/subtopics from the fetched events
       if (finalEventMap.size > 0) {
         const { dynamicTopics: newTopics, dynamicSubtopics: newSubtopics } = analyzeDynamicTopicsAndSubtopics(finalEventMap)
+        console.log('[DiscussionsPage] Dynamic topics found:', newTopics)
+        console.log('[DiscussionsPage] Dynamic subtopics found:', newSubtopics)
         setDynamicTopics(newTopics)
         setDynamicSubtopics(newSubtopics)
       } else {
+        console.log('[DiscussionsPage] No events found, clearing topics')
         setDynamicTopics([])
         setDynamicSubtopics([])
       }
     } catch (error) {
-      console.error('Error fetching events:', error)
+      console.error('[DiscussionsPage] Error fetching events:', error)
       setEventMap(new Map())
       setDynamicTopics([])
       setDynamicSubtopics([])
@@ -331,6 +575,42 @@ const DiscussionsPage = forwardRef((_, ref) => {
     }
   }, [allRelays])
 
+  // Calculate counts for all time spans from the all event map
+  const calculateTimeSpanCounts = useCallback(() => {
+    if (allEventMap.size === 0) {
+      setTimeSpanCounts({ '30days': 0, '90days': 0, 'all': 0 })
+      return
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60)
+    const ninetyDaysAgo = now - (90 * 24 * 60 * 60)
+
+    const counts = { '30days': 0, '90days': 0, 'all': 0 }
+
+    // Count threads for each time span based on all event map
+    allEventMap.forEach((entry) => {
+      const { event, lastCommentTime, lastVoteTime } = entry
+      
+      // Check if thread has activity within each time span
+      const hasActivity30Days = lastCommentTime > thirtyDaysAgo || 
+                               lastVoteTime > thirtyDaysAgo ||
+                               event.created_at > thirtyDaysAgo
+      
+      const hasActivity90Days = lastCommentTime > ninetyDaysAgo || 
+                               lastVoteTime > ninetyDaysAgo ||
+                               event.created_at > ninetyDaysAgo
+
+      if (hasActivity30Days) counts['30days']++
+      if (hasActivity90Days) counts['90days']++
+      // 'all' should always count every thread in the map
+      counts['all']++
+    })
+
+    setTimeSpanCounts(counts)
+    console.log('[DiscussionsPage] Time span counts calculated from all event map:', counts)
+  }, [allEventMap])
+
   // Fetch events on component mount and periodically
   useEffect(() => {
     if (allRelays.length > 0) {
@@ -340,7 +620,74 @@ const DiscussionsPage = forwardRef((_, ref) => {
       const interval = setInterval(fetchAllEvents, 5 * 60 * 1000)
       return () => clearInterval(interval)
     }
-  }, [allRelays])
+  }, [allRelays, timeSpan, fetchAllEvents])
+
+  // Filter allEventMap based on selected timeSpan for display
+  const filterEventMapForDisplay = useCallback(() => {
+    if (allEventMap.size === 0) {
+      setEventMap(new Map())
+      return
+    }
+
+    const now = Math.floor(Date.now() / 1000)
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60)
+    const ninetyDaysAgo = now - (90 * 24 * 60 * 60)
+
+    const filteredMap = new Map<string, EventMapEntry>()
+
+    allEventMap.forEach((entry, eventId) => {
+      const { event, lastCommentTime, lastVoteTime } = entry
+      
+      let shouldInclude = false
+      
+      switch (timeSpan) {
+        case '30days':
+          shouldInclude = lastCommentTime > thirtyDaysAgo || 
+                         lastVoteTime > thirtyDaysAgo ||
+                         event.created_at > thirtyDaysAgo
+          break
+        case '90days':
+          shouldInclude = lastCommentTime > ninetyDaysAgo || 
+                         lastVoteTime > ninetyDaysAgo ||
+                         event.created_at > ninetyDaysAgo
+          break
+        case 'all':
+          shouldInclude = true // Include all threads
+          break
+      }
+
+      if (shouldInclude) {
+        filteredMap.set(eventId, entry)
+      }
+    })
+
+    setEventMap(filteredMap)
+    console.log('[DiscussionsPage] Filtered event map for display:', filteredMap.size, 'threads for timeSpan:', timeSpan)
+  }, [allEventMap, timeSpan])
+
+  // Calculate time span counts when all event map changes
+  useEffect(() => {
+    calculateTimeSpanCounts()
+  }, [calculateTimeSpanCounts])
+
+  // Filter event map for display when allEventMap or timeSpan changes
+  useEffect(() => {
+    filterEventMapForDisplay()
+  }, [filterEventMapForDisplay])
+
+  // Manual refresh function
+  const handleManualRefresh = useCallback(async () => {
+    if (isFetchingRef.current || allRelays.length === 0) {
+      return
+    }
+
+    setIsRefreshing(true)
+    try {
+      await fetchAllEvents()
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [fetchAllEvents, allRelays.length])
 
   // Simplified filtering - no relay filtering, just return all events
   const getFilteredEvents = useCallback(() => {
@@ -434,6 +781,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
         groups[topic].push(event)
         return groups
       }, {} as Record<string, NostrEvent[]>)
+      
+      // Debug logging for grouping
+      console.log('[DiscussionsPage] Grouped topics:', Object.keys(grouped).map(topic => `${topic}: ${grouped[topic].length}`).join(', '))
 
       // Sort groups by newest event
       const sortedGrouped = Object.fromEntries(
@@ -562,7 +912,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
           tTags,
           hashtags,
           allTopics,
-          categorizedTopic
+          categorizedTopic,
+          commentCount: 0,
+          lastCommentTime: 0,
+          lastVoteTime: 0
         })
         return newMap
       })
@@ -640,6 +993,27 @@ const DiscussionsPage = forwardRef((_, ref) => {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Time Span Selector */}
+            <select
+              value={timeSpan}
+              onChange={(e) => setTimeSpan(e.target.value as '30days' | '90days' | 'all')}
+              className="px-2 py-1 text-sm border rounded bg-background"
+            >
+              <option value="30days">30 days ({timeSpanCounts['30days']})</option>
+              <option value="90days">90 days ({timeSpanCounts['90days']})</option>
+              <option value="all">All found ({timeSpanCounts['all']})</option>
+            </select>
+            
+            {/* Refresh Button */}
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing || loading}
+              className="p-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              title={t('Refresh discussions')}
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+            
             {selectedTopic === 'all' && (
               <ViewToggle
                 viewMode={viewMode}
@@ -720,6 +1094,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
                     key={event.id}
                     thread={event}
                     subtopics={availableSubtopics}
+                    commentCount={eventMap.get(event.id)?.commentCount || 0}
+                    lastCommentTime={eventMap.get(event.id)?.lastCommentTime || 0}
+                    lastVoteTime={eventMap.get(event.id)?.lastVoteTime || 0}
                     onThreadClick={() => {
                       navigateToNote(toNote(event))
                     }}
@@ -762,6 +1139,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
                         key={event.id}
                         thread={event}
                         subtopics={availableSubtopics}
+                        commentCount={eventMap.get(event.id)?.commentCount || 0}
+                        lastCommentTime={eventMap.get(event.id)?.lastCommentTime || 0}
+                        lastVoteTime={eventMap.get(event.id)?.lastVoteTime || 0}
                         onThreadClick={() => {
                           navigateToNote(toNote(event))
                         }}
@@ -843,6 +1223,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
                           thread={event}
                           subtopics={threadSubtopics}
                           primaryTopic={entry?.categorizedTopic}
+                          commentCount={entry?.commentCount || 0}
+                          lastCommentTime={entry?.lastCommentTime || 0}
+                          lastVoteTime={entry?.lastVoteTime || 0}
                           onThreadClick={() => {
                             navigateToNote(toNote(event))
                           }}
@@ -868,6 +1251,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
                   thread={event}
                   subtopics={threadSubtopics}
                   primaryTopic={entry?.categorizedTopic}
+                  commentCount={entry?.commentCount || 0}
+                  lastCommentTime={entry?.lastCommentTime || 0}
+                  lastVoteTime={entry?.lastVoteTime || 0}
                   onThreadClick={() => {
                     navigateToNote(toNote(event))
                   }}
