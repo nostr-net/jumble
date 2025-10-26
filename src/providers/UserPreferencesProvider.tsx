@@ -1,6 +1,6 @@
 import storage from '@/services/local-storage.service'
 import { TNotificationStyle } from '@/types'
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 type TUserPreferencesContext = {
   notificationListStyle: TNotificationStyle
@@ -26,6 +26,22 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
   const [showRecommendedRelaysPanel, setShowRecommendedRelaysPanel] = useState(
     storage.getShowRecommendedRelaysPanel()
   )
+  
+  // Force showRecommendedRelaysPanel to true on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobile = window.innerWidth <= 768
+      if (isMobile && !showRecommendedRelaysPanel) {
+        setShowRecommendedRelaysPanel(true)
+        storage.setShowRecommendedRelaysPanel(true)
+      }
+    }
+    
+    // Check on mount and on resize
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [showRecommendedRelaysPanel])
 
   const updateNotificationListStyle = (style: TNotificationStyle) => {
     setNotificationListStyle(style)
@@ -33,6 +49,11 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
   }
 
   const updateShowRecommendedRelaysPanel = (show: boolean) => {
+    // Don't allow turning off the panel on mobile
+    const isMobile = window.innerWidth <= 768
+    if (isMobile && !show) {
+      return
+    }
     setShowRecommendedRelaysPanel(show)
     storage.setShowRecommendedRelaysPanel(show)
   }
