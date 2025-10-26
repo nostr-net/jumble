@@ -7,6 +7,7 @@ import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
+import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
 import { Bell, BellOff, Code, Copy, Link, SatelliteDish, Trash2, TriangleAlert, Pin } from 'lucide-react'
 import { Event } from 'nostr-tools'
@@ -71,7 +72,35 @@ export function useMenuActions({
         return
       }
       try {
-        const pinListEvent = await client.fetchPinListEvent(pubkey)
+        // Build comprehensive relay list for pin status check
+        const allRelays = [
+          ...(currentBrowsingRelayUrls || []),
+          ...(favoriteRelays || []),
+          ...BIG_RELAY_URLS,
+          ...FAST_READ_RELAY_URLS,
+          ...FAST_WRITE_RELAY_URLS
+        ]
+        
+        const normalizedRelays = allRelays
+          .map(url => normalizeUrl(url))
+          .filter((url): url is string => !!url)
+        
+        const comprehensiveRelays = Array.from(new Set(normalizedRelays))
+        
+        // Try to fetch pin list event from comprehensive relay list first
+        let pinListEvent = null
+        try {
+          const pinListEvents = await client.fetchEvents(comprehensiveRelays, {
+            authors: [pubkey],
+            kinds: [10001], // Pin list kind
+            limit: 1
+          })
+          pinListEvent = pinListEvents[0] || null
+        } catch (error) {
+          console.warn('[PinStatus] Error fetching pin list from comprehensive relays, falling back to default method:', error)
+          pinListEvent = await client.fetchPinListEvent(pubkey)
+        }
+        
         if (pinListEvent) {
           const isEventPinned = pinListEvent.tags.some(tag => tag[0] === 'e' && tag[1] === event.id)
           setIsPinned(isEventPinned)
@@ -81,20 +110,52 @@ export function useMenuActions({
       }
     }
     checkIfPinned()
-  }, [pubkey, event.id])
+  }, [pubkey, event.id, currentBrowsingRelayUrls, favoriteRelays])
   
   const handlePinNote = async () => {
     if (!pubkey) return
     
     try {
-      // Fetch existing pin list
-      let pinListEvent = await client.fetchPinListEvent(pubkey)
+      // Build comprehensive relay list for pin list fetching
+      const allRelays = [
+        ...(currentBrowsingRelayUrls || []),
+        ...(favoriteRelays || []),
+        ...BIG_RELAY_URLS,
+        ...FAST_READ_RELAY_URLS,
+        ...FAST_WRITE_RELAY_URLS
+      ]
+      
+      const normalizedRelays = allRelays
+        .map(url => normalizeUrl(url))
+        .filter((url): url is string => !!url)
+      
+      const comprehensiveRelays = Array.from(new Set(normalizedRelays))
+      
+      // Try to fetch pin list event from comprehensive relay list first
+      let pinListEvent = null
+      try {
+        const pinListEvents = await client.fetchEvents(comprehensiveRelays, {
+          authors: [pubkey],
+          kinds: [10001], // Pin list kind
+          limit: 1
+        })
+        pinListEvent = pinListEvents[0] || null
+      } catch (error) {
+        console.warn('[PinNote] Error fetching pin list from comprehensive relays, falling back to default method:', error)
+        pinListEvent = await client.fetchPinListEvent(pubkey)
+      }
+      
+      console.log('[PinNote] Current pin list event:', pinListEvent)
       
       // Get existing event IDs, excluding the one we're toggling
       const existingEventIds = (pinListEvent?.tags || [])
         .filter(tag => tag[0] === 'e' && tag[1])
         .map(tag => tag[1])
         .filter(id => id !== event.id)
+      
+      console.log('[PinNote] Existing event IDs (excluding current):', existingEventIds)
+      console.log('[PinNote] Current event ID:', event.id)
+      console.log('[PinNote] Is currently pinned:', isPinned)
       
       let newTags: string[][]
       let successMessage: string
@@ -103,18 +164,24 @@ export function useMenuActions({
         // Unpin: just keep the existing tags without this event
         newTags = existingEventIds.map(id => ['e', id])
         successMessage = t('Note unpinned')
+        console.log('[PinNote] Unpinning - new tags:', newTags)
       } else {
         // Pin: add this event to the existing list
         newTags = [...existingEventIds.map(id => ['e', id]), ['e', event.id]]
         successMessage = t('Note pinned')
+        console.log('[PinNote] Pinning - new tags:', newTags)
       }
       
       // Create and publish the new pin list event
+      console.log('[PinNote] Publishing new pin list event with', newTags.length, 'tags')
+      console.log('[PinNote] Publishing to comprehensive relays:', comprehensiveRelays)
       await publish({
         kind: 10001,
         tags: newTags,
         content: '',
         created_at: Math.floor(Date.now() / 1000)
+      }, {
+        specifiedRelayUrls: comprehensiveRelays
       })
       
       // Update local state - the publish will update the cache automatically
@@ -337,7 +404,8 @@ export function useMenuActions({
       }
     }
 
-    if (pubkey && event.pubkey === pubkey) {
+    // Pin functionality available for any note (not just own notes)
+    if (pubkey) {
       actions.push({
         icon: Pin,
         label: isPinned ? t('Unpin note') : t('Pin note'),
@@ -346,6 +414,10 @@ export function useMenuActions({
         },
         separator: true
       })
+    }
+
+    // Delete functionality only available for own notes
+    if (pubkey && event.pubkey === pubkey) {
       actions.push({
         icon: Trash2,
         label: t('Try deleting this note'),
