@@ -9,9 +9,22 @@ class WebService {
       return await Promise.all(
         urls.map(async (url) => {
           try {
+            // Skip metadata fetching for known problematic domains to reduce CORS errors
+            const problematicDomains = [
+              'imdb.com',
+              'alby.com', 
+              'github.com',
+              'mycelium.social',
+              'void.cat'
+            ]
+            
+            if (problematicDomains.some(domain => url.includes(domain))) {
+              return {}
+            }
+            
             // Add timeout and better error handling for CORS issues
             const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout (reduced from 5s)
             
             const res = await fetch(url, {
               signal: controller.signal,
@@ -60,7 +73,7 @@ class WebService {
         })
       )
     },
-    { maxBatchSize: 1 }
+    { maxBatchSize: 1, batchScheduleFn: (callback) => setTimeout(callback, 100) }
   )
 
   constructor() {

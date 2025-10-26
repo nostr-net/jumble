@@ -28,6 +28,21 @@ export function suppressExpectedErrors() {
       return
     }
     
+    // Suppress additional network errors that are expected
+    if (message.includes('net::ERR_FAILED') && (
+      message.includes('404 (Not Found)') ||
+      message.includes('302 (Found)') ||
+      message.includes('ERR_NAME_NOT_RESOLVED') ||
+      message.includes('ERR_CONNECTION_REFUSED')
+    )) {
+      return
+    }
+    
+    // Suppress postMessage origin errors
+    if (message.includes('Failed to execute \'postMessage\' on \'DOMWindow\'')) {
+      return
+    }
+    
     // Suppress YouTube API warnings
     if (message.includes('Unrecognized feature: \'web-share\'')) {
       return

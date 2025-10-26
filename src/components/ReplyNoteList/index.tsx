@@ -316,7 +316,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
         
         const { closer, timelineKey } = await client.subscribeTimeline(
           filters.map((filter) => ({
-            urls: finalRelayUrls.slice(0, 8), // Increased from 5 to 8 for better coverage
+            urls: finalRelayUrls.slice(0, 6), // Reduced from 8 to 6 for faster response
             filter
           })),
           {
@@ -337,8 +337,19 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
             }
           }
         )
+        
+        // Add a fallback timeout to prevent infinite loading
+        const fallbackTimeout = setTimeout(() => {
+          if (loading) {
+            setLoading(false)
+            logger.debug('Reply loading timeout - stopping after 8 seconds')
+          }
+        }, 8000)
         setTimelineKey(timelineKey)
-        return closer
+        return () => {
+          clearTimeout(fallbackTimeout)
+          closer?.()
+        }
       } catch {
         setLoading(false)
       }

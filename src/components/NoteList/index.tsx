@@ -244,8 +244,20 @@ const NoteList = forwardRef(
             needSort: !areAlgoRelays
           }
         )
+        
+        // Add a fallback timeout to prevent infinite loading
+        const fallbackTimeout = setTimeout(() => {
+          if (loading) {
+            setLoading(false)
+            logger.debug('NoteList loading timeout - stopping after 6 seconds')
+          }
+        }, 6000)
+        
         setTimelineKey(timelineKey)
-        return closer
+        return () => {
+          clearTimeout(fallbackTimeout)
+          closer?.()
+        }
       }
 
       const promise = init()

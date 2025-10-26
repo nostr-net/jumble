@@ -59,7 +59,7 @@ class ClientService extends EventTarget {
   )
   private trendingNotesCache: NEvent[] | null = null
   private requestThrottle = new Map<string, number>() // Track request timestamps per relay
-  private readonly REQUEST_COOLDOWN = 5000 // 5 second cooldown between requests to prevent "too many REQs"
+  private readonly REQUEST_COOLDOWN = 2000 // 2 second cooldown between requests to prevent "too many REQs"
   private failureCount = new Map<string, number>() // Track consecutive failures per relay
   private readonly MAX_FAILURES = 2 // Max failures before exponential backoff (reduced from 3)
   private circuitBreaker = new Map<string, number>() // Track when relays are temporarily disabled
@@ -562,6 +562,15 @@ class ClientService extends EventTarget {
     let eosedCount = 0
     let hasCalledOnEvents = false
 
+    // Add a global timeout for the entire subscription process
+    const globalTimeout = setTimeout(() => {
+      if (!hasCalledOnEvents && events.length === 0) {
+        hasCalledOnEvents = true
+        onEvents([], true) // Call with empty events to stop loading
+        logger.debug('Global subscription timeout - stopping after 8 seconds')
+      }
+    }, 8000)
+    
     const subs = await Promise.all(
       subRequests.map(async ({ urls, filter }) => {
         // Throttle subscription requests to prevent overload
@@ -589,8 +598,10 @@ class ClientService extends EventTarget {
               // Call immediately on first events, then on threshold/completion
               if (!hasCalledOnEvents && events.length > 0) {
                 hasCalledOnEvents = true
+                clearTimeout(globalTimeout)
                 onEvents(events, eosedCount >= requestCount)
               } else if (eosedCount >= threshold) {
+                clearTimeout(globalTimeout)
                 onEvents(events, eosedCount >= requestCount)
               }
             },
@@ -611,6 +622,7 @@ class ClientService extends EventTarget {
 
     return {
       closer: () => {
+        clearTimeout(globalTimeout)
         onEvents = () => {}
         onNew = () => {}
         subs.forEach((sub) => {
@@ -680,7 +692,7 @@ class ClientService extends EventTarget {
 
       async function startSub() {
         startedCount++
-        const relay = await that.pool.ensureRelay(url, { connectionTimeout: 1500 }).catch(() => {
+        const relay = await that.pool.ensureRelay(url, { connectionTimeout: 3000 }).catch(() => {
           return undefined
         })
         // cannot connect to relay
@@ -759,7 +771,7 @@ class ClientService extends EventTarget {
             }
             return
           },
-          eoseTimeout: 8_000 // 8s
+          eoseTimeout: 5_000 // 5s (reduced from 8s)
         })
       }
     })
@@ -1846,9 +1858,9 @@ class ClientService extends EventTarget {
       }
     })
 
-    // Limit to 4 relays to prevent "too many concurrent REQs" errors
-    // Reduced from 8 to 4 to reduce relay load
-    return validRelays.slice(0, 4)
+    // Limit to 3 relays to prevent "too many concurrent REQs" errors and improve speed
+    // Reduced from 4 to 3 for faster response
+    return validRelays.slice(0, 3)
   }
 
   // ================= Utils =================
