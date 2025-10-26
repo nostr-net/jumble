@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Clock, Hash, Server } from 'lucide-react'
+import { Clock, Hash } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
@@ -12,22 +12,27 @@ import VoteButtons from '@/components/NoteStats/VoteButtons'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { extractAllTopics } from '@/lib/discussion-topics'
 
-interface ThreadWithRelaySource extends NostrEvent {
-  _relaySource?: string
-}
-
 interface ThreadCardProps {
-  thread: ThreadWithRelaySource
+  thread: NostrEvent
   onThreadClick: () => void
   className?: string
-  subtopics?: string[] // Available subtopics for this thread
-  primaryTopic?: string // The categorized primary topic (e.g., 'general', 'tech', etc.)
   commentCount?: number
   lastCommentTime?: number
   lastVoteTime?: number
+  upVotes?: number
+  downVotes?: number
 }
 
-export default function ThreadCard({ thread, onThreadClick, className, subtopics = [], primaryTopic, commentCount = 0, lastCommentTime = 0, lastVoteTime = 0 }: ThreadCardProps) {
+export default function ThreadCard({ 
+  thread, 
+  onThreadClick, 
+  className,
+  commentCount = 0,
+  lastCommentTime = 0,
+  lastVoteTime = 0,
+  upVotes = 0,
+  downVotes = 0
+}: ThreadCardProps) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
 
@@ -35,25 +40,17 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
   const titleTag = thread.tags.find(tag => tag[0] === 'title' && tag[1])
   const title = titleTag?.[1] || t('Untitled')
 
-  // Use the categorized primary topic if provided, otherwise extract from tags
-  const topic = primaryTopic || (() => {
-    const topicTag = thread.tags.find(tag => tag[0] === 't' && tag[1])
-    const firstTag = topicTag?.[1] || 'general'
-    
-    // If the first tag is not a predefined topic, default to 'general'
-    const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
-    return predefinedTopicIds.includes(firstTag) ? firstTag : 'general'
-  })()
-  
-  // Extract author and subject for readings threads
-  const authorTag = thread.tags.find(tag => tag[0] === 'author' && tag[1])
-  const subjectTag = thread.tags.find(tag => tag[0] === 'subject' && tag[1])
-  const isReadingGroup = thread.tags.find(tag => tag[0] === 't' && tag[1] === 'readings')
+  // Get topic info
+  const topicTag = thread.tags.find(tag => tag[0] === 't' && tag[1])
+  const topic = topicTag?.[1] || 'general'
+  const topicInfo = DISCUSSION_TOPICS.find(t => t.id === topic) || { 
+    id: topic, 
+    label: topic, 
+    icon: Hash
+  }
 
-  // Get first 250 characters of content
-  const contentPreview = thread.content.length > 250 
-    ? thread.content.substring(0, 250) + '...'
-    : thread.content
+  // Get all topics from this thread
+  const allTopics = extractAllTopics(thread)
 
   // Format creation time
   const createdAt = new Date(thread.created_at * 1000)
@@ -67,47 +64,16 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
   
   const lastCommentAgo = formatLastActivity(lastCommentTime)
   const lastVoteAgo = formatLastActivity(lastVoteTime)
-
-  // Get topic display info from centralized DISCUSSION_TOPICS
-  const getTopicInfo = (topicId: string) => {
-    const topic = DISCUSSION_TOPICS.find(t => t.id === topicId)
-    return topic || { 
-      id: topicId, 
-      label: topicId, 
-      icon: Hash
-    }
-  }
-
-  const topicInfo = getTopicInfo(topic)
-
-  // Get all topics from this thread
-  const allTopics = extractAllTopics(thread)
   
-  // Find which subtopics this thread matches
-  // Handle both normalized and original forms (e.g., 'readings' -> 'reading')
-  const matchingSubtopics = subtopics.filter(subtopic => {
-    // Direct match
-    if (allTopics.includes(subtopic)) return true
-    
-    // Check if any topic in allTopics matches when we normalize the subtopic
-    // This handles cases like 'readings' in subtopics matching 'reading' in allTopics
-    const normalizedSubtopic = subtopic.replace(/s$/, '') // Remove trailing 's'
-    if (allTopics.includes(normalizedSubtopic)) return true
-    
-    return false
-  })
+  // Calculate vote counts
+  const totalVotes = upVotes + downVotes
+  const netVotes = upVotes - downVotes
   
+  // Get content preview
+  const contentPreview = thread.content.length > 250 
+    ? thread.content.substring(0, 250) + '...'
+    : thread.content
 
-  // Format relay name for display
-  const formatRelayName = (relaySource: string) => {
-    if (relaySource === 'multiple') {
-      return t('Multiple Relays')
-    }
-    if (relaySource === 'unknown') {
-      return t('Unknown Relay')
-    }
-    return relaySource.replace('wss://', '').replace('ws://', '')
-  }
 
   return (
     <Card 
@@ -121,7 +87,10 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
         {isSmallScreen ? (
           <div className="space-y-3">
             <div className="flex items-start gap-3">
-              <VoteButtons event={thread} />
+              <div className="flex flex-col items-center gap-1">
+                <div className="text-green-600 font-semibold text-sm">+{upVotes}</div>
+                <div className="text-red-600 font-semibold text-sm">-{downVotes}</div>
+              </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 break-words">
                   {title}
@@ -131,23 +100,13 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                     <topicInfo.icon className="w-4 h-4" />
                     <span className="text-xs">{topicInfo.id}</span>
                   </div>
-                  {matchingSubtopics.map(subtopic => (
-                    <Badge key={subtopic} variant="outline" className="text-xs">
+                  {allTopics.slice(0, 3).map(topic => (
+                    <Badge key={topic} variant="outline" className="text-xs">
                       <Hash className="w-3 h-3 mr-1" />
-                      {subtopic.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                      {topic.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                     </Badge>
                   ))}
                 </div>
-                {isReadingGroup && (authorTag || subjectTag) && (
-                  <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 mt-2">
-                    {authorTag && (
-                      <span><strong>Author:</strong> {authorTag[1]}</span>
-                    )}
-                    {subjectTag && (
-                      <span><strong>Book:</strong> {subjectTag[1]}</span>
-                    )}
-                  </div>
-                )}
               </div>
               <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -158,21 +117,29 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                     skeletonClassName="h-4 w-20"
                   />
                 </div>
-                {thread._relaySource && (
-                  <Badge variant="outline" className="text-xs">
-                    <Server className="w-3 h-3 mr-1" />
-                    {formatRelayName(thread._relaySource)}
-                  </Badge>
-                )}
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Clock className="w-3 h-3" />
                   <span>{timeAgo}</span>
                 </div>
+                
+                {/* Vote counts */}
+                {totalVotes > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    <span className={netVotes > 0 ? 'text-green-600' : netVotes < 0 ? 'text-red-600' : ''}>
+                      {netVotes > 0 ? '+' : ''}{netVotes}
+                    </span>
+                    {' '}{t('votes')} ({totalVotes} {t('total')})
+                  </div>
+                )}
+                
+                {/* Comment count */}
                 {commentCount > 0 && (
                   <div className="text-xs text-muted-foreground">
                     {commentCount} {commentCount === 1 ? t('comment') : t('comments')}
                   </div>
                 )}
+                
+                {/* Last activity */}
                 {lastCommentAgo && (
                   <div className="text-xs text-muted-foreground">
                     {t('last commented')}: {lastCommentAgo}
@@ -195,33 +162,41 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                   <h3 className="font-semibold text-lg leading-tight line-clamp-2 break-words">
                     {title}
                   </h3>
-                  {thread._relaySource && (
-                    <Badge variant="outline" className="text-xs shrink-0">
-                      <Server className="w-3 h-3 mr-1" />
-                      {formatRelayName(thread._relaySource)}
-                    </Badge>
-                  )}
                 </div>
                 <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground">
                   <Badge variant="secondary" className="text-xs">
                     <topicInfo.icon className="w-3 h-3 mr-1" />
                     {topicInfo.label}
                   </Badge>
-                  {matchingSubtopics.map(subtopic => (
-                    <Badge key={subtopic} variant="outline" className="text-xs">
+                  {allTopics.slice(0, 3).map(topic => (
+                    <Badge key={topic} variant="outline" className="text-xs">
                       <Hash className="w-3 h-3 mr-1" />
-                      {subtopic.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                      {topic.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                     </Badge>
                   ))}
                   <div className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {timeAgo}
                   </div>
+                  
+                  {/* Vote counts */}
+                  {totalVotes > 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      <span className={netVotes > 0 ? 'text-green-600' : netVotes < 0 ? 'text-red-600' : ''}>
+                        {netVotes > 0 ? '+' : ''}{netVotes}
+                      </span>
+                      {' '}{t('votes')} ({totalVotes} {t('total')})
+                    </div>
+                  )}
+                  
+                  {/* Comment count */}
                   {commentCount > 0 && (
                     <div className="text-xs text-muted-foreground">
                       {commentCount} {commentCount === 1 ? t('comment') : t('comments')}
                     </div>
                   )}
+                  
+                  {/* Last activity */}
                   {lastCommentAgo && (
                     <div className="text-xs text-muted-foreground">
                       {t('last commented')}: {lastCommentAgo}
@@ -233,16 +208,6 @@ export default function ThreadCard({ thread, onThreadClick, className, subtopics
                     </div>
                   )}
                 </div>
-                {isReadingGroup && (authorTag || subjectTag) && (
-                  <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 mt-2">
-                    {authorTag && (
-                      <span><strong>Author:</strong> {authorTag[1]}</span>
-                    )}
-                    {subjectTag && (
-                      <span><strong>Book:</strong> {subjectTag[1]}</span>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">
