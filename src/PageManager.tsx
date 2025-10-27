@@ -172,15 +172,14 @@ export function useSmartProfileNavigation() {
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToProfile = (url: string) => {
-    if (!showRecommendedRelaysPanel) {
-      // When right panel is hidden, show profile in primary area
-      // Extract profile ID from URL (e.g., "/users/npub1..." -> "npub1...")
+    if (showRecommendedRelaysPanel) {
+      // Secondary panel is available - show profile in secondary panel
+      pushSecondary(url)
+    } else {
+      // Secondary panel is not available - show profile in primary panel
       const profileId = url.replace('/users/', '')
       window.history.replaceState(null, '', url)
       setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
-    } else {
-      // Normal behavior - use secondary navigation
-      pushSecondary(url)
     }
   }
   
@@ -678,28 +677,58 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
         <CurrentRelaysProvider>
           <NotificationProvider>
             <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView, primaryViewType }}>
-            {!!secondaryStack.length &&
-              secondaryStack.map((item, index) => (
-                <div
-                  key={item.index}
-                  style={{
-                    display: index === secondaryStack.length - 1 ? 'block' : 'none'
-                  }}
-                >
-                  {item.component}
+            {primaryNoteView ? (
+              // Show primary note view with back button on mobile
+              <div className="flex flex-col h-full w-full">
+                <div className="flex gap-1 p-1 items-center justify-between font-semibold border-b">
+                  <div className="flex items-center flex-1 w-0">
+                    <Button
+                      className="flex gap-1 items-center w-fit max-w-full justify-start pl-2 pr-3"
+                      variant="ghost"
+                      size="titlebar-icon"
+                      title="Back to feed"
+                      onClick={() => setPrimaryNoteView(null)}
+                    >
+                      <ChevronLeft />
+                      <div className="truncate text-lg font-semibold">
+                        {primaryViewType === 'settings' ? 'Settings' : 
+                         primaryViewType === 'settings-sub' ? 'Settings' : 
+                         primaryViewType === 'profile' ? 'Back' : 
+                         primaryViewType === 'hashtag' ? 'Hashtag' : 'Note'}
+                      </div>
+                    </Button>
+                  </div>
                 </div>
-              ))}
-            {primaryPages.map(({ name, element, props }) => (
-              <div
-                key={name}
-                style={{
-                  display:
-                    secondaryStack.length === 0 && currentPrimaryPage === name ? 'block' : 'none'
-                }}
-              >
-                {props ? cloneElement(element as React.ReactElement, props) : element}
+                <div className="flex-1 overflow-auto">
+                  {primaryNoteView}
+                </div>
               </div>
-            ))}
+            ) : (
+              <>
+                {!!secondaryStack.length &&
+                  secondaryStack.map((item, index) => (
+                    <div
+                      key={item.index}
+                      style={{
+                        display: index === secondaryStack.length - 1 ? 'block' : 'none'
+                      }}
+                    >
+                      {item.component}
+                    </div>
+                  ))}
+                {primaryPages.map(({ name, element, props }) => (
+                  <div
+                    key={name}
+                    style={{
+                      display:
+                        secondaryStack.length === 0 && currentPrimaryPage === name ? 'block' : 'none'
+                    }}
+                  >
+                    {props ? cloneElement(element as React.ReactElement, props) : element}
+                  </div>
+                ))}
+              </>
+            )}
             <BottomNavigationBar />
             <TooManyRelaysAlertDialog />
             <CreateWalletGuideToast />

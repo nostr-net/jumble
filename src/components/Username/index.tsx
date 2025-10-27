@@ -1,11 +1,8 @@
-import { Drawer, DrawerContent, DrawerOverlay } from '@/components/ui/drawer'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFetchProfile } from '@/hooks'
+import { toProfile } from '@/lib/link'
 import { cn } from '@/lib/utils'
-import { useScreenSize } from '@/providers/ScreenSizeProvider'
-import { useState } from 'react'
-import ProfileCard from '../ProfileCard'
+import { useSmartProfileNavigation } from '@/PageManager'
 
 export default function Username({
   userId,
@@ -21,8 +18,7 @@ export default function Username({
   withoutSkeleton?: boolean
 }) {
   const { profile } = useFetchProfile(userId)
-  const { isSmallScreen } = useScreenSize()
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const { navigateToProfile } = useSmartProfileNavigation()
   
   if (!profile && !withoutSkeleton) {
     return (
@@ -31,44 +27,21 @@ export default function Username({
       </div>
     )
   }
-  if (!profile) return null
+
+  if (!profile) {
+    return null
+  }
 
   const { username, pubkey } = profile
 
-  if (isSmallScreen) {
-    return (
-      <>
-        <div 
-          className={cn('truncate hover:underline cursor-pointer', className)}
-          onClick={() => setDrawerOpen(true)}
-        >
-          {showAt && '@'}
-          {username}
-        </div>
-        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-          <DrawerOverlay onClick={() => setDrawerOpen(false)} />
-          <DrawerContent hideOverlay className="max-h-[90vh]">
-            <div className="overflow-y-auto overscroll-contain p-4" style={{ touchAction: 'pan-y' }}>
-              <ProfileCard pubkey={pubkey} />
-            </div>
-          </DrawerContent>
-        </Drawer>
-      </>
-    )
-  }
-
   return (
-    <HoverCard>
-      <HoverCardTrigger asChild>
-        <div className={cn('truncate hover:underline cursor-pointer', className)}>
-          {showAt && '@'}
-          {username}
-        </div>
-      </HoverCardTrigger>
-      <HoverCardContent className="w-80">
-        <ProfileCard pubkey={pubkey} />
-      </HoverCardContent>
-    </HoverCard>
+    <div 
+      className={cn('truncate hover:underline cursor-pointer', className)}
+      onClick={() => navigateToProfile(toProfile(pubkey))}
+    >
+      {showAt && '@'}
+      {username}
+    </div>
   )
 }
 
@@ -86,6 +59,7 @@ export function SimpleUsername({
   withoutSkeleton?: boolean
 }) {
   const { profile } = useFetchProfile(userId)
+  
   if (!profile && !withoutSkeleton) {
     return (
       <div className="py-1">
@@ -93,12 +67,15 @@ export function SimpleUsername({
       </div>
     )
   }
-  if (!profile) return null
+
+  if (!profile) {
+    return null
+  }
 
   const { username } = profile
 
   return (
-    <div className={className}>
+    <div className={cn('truncate', className)}>
       {showAt && '@'}
       {username}
     </div>

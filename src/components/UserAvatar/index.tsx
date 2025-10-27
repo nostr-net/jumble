@@ -1,13 +1,11 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Drawer, DrawerContent, DrawerOverlay } from '@/components/ui/drawer'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useFetchProfile } from '@/hooks'
 import { generateImageByPubkey } from '@/lib/pubkey'
+import { toProfile } from '@/lib/link'
 import { cn } from '@/lib/utils'
-import { useScreenSize } from '@/providers/ScreenSizeProvider'
-import { useMemo, useState } from 'react'
-import ProfileCard from '../ProfileCard'
+import { useSmartProfileNavigation } from '@/PageManager'
+import { useMemo } from 'react'
 
 const UserAvatarSizeCnMap = {
   large: 'w-24 h-24',
@@ -30,8 +28,7 @@ export default function UserAvatar({
   size?: 'large' | 'big' | 'semiBig' | 'normal' | 'medium' | 'small' | 'xSmall' | 'tiny'
 }) {
   const { profile } = useFetchProfile(userId)
-  const { isSmallScreen } = useScreenSize()
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const { navigateToProfile } = useSmartProfileNavigation()
   const defaultAvatar = useMemo(
     () => (profile?.pubkey ? generateImageByPubkey(profile.pubkey) : ''),
     [profile]
@@ -42,59 +39,30 @@ export default function UserAvatar({
       <Skeleton className={cn('shrink-0', UserAvatarSizeCnMap[size], 'rounded-full', className)} />
     )
   }
+
   const { avatar, pubkey } = profile
 
-  if (isSmallScreen) {
-    return (
-      <>
-        <Avatar 
-          className={cn('shrink-0 cursor-pointer', UserAvatarSizeCnMap[size], className)}
-          onClick={() => setDrawerOpen(true)}
-        >
-          <AvatarImage src={avatar} className="object-cover object-center" />
-          <AvatarFallback>
-            <img src={defaultAvatar} alt={pubkey} />
-          </AvatarFallback>
-        </Avatar>
-        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-          <DrawerOverlay onClick={() => setDrawerOpen(false)} />
-          <DrawerContent hideOverlay className="max-h-[90vh]">
-            <div className="overflow-y-auto overscroll-contain p-4" style={{ touchAction: 'pan-y' }}>
-              <ProfileCard pubkey={pubkey} />
-            </div>
-          </DrawerContent>
-        </Drawer>
-      </>
-    )
-  }
-
   return (
-    <HoverCard>
-      <HoverCardTrigger asChild>
-        <Avatar className={cn('shrink-0 cursor-pointer', UserAvatarSizeCnMap[size], className)}>
-          <AvatarImage src={avatar} className="object-cover object-center" />
-          <AvatarFallback>
-            <img src={defaultAvatar} alt={pubkey} />
-          </AvatarFallback>
-        </Avatar>
-      </HoverCardTrigger>
-      <HoverCardContent className="w-72">
-        <ProfileCard pubkey={pubkey} />
-      </HoverCardContent>
-    </HoverCard>
+    <Avatar 
+      className={cn('shrink-0 cursor-pointer', UserAvatarSizeCnMap[size], className)}
+      onClick={() => navigateToProfile(toProfile(pubkey))}
+    >
+      <AvatarImage src={avatar} className="object-cover object-center" />
+      <AvatarFallback>
+        <img src={defaultAvatar} alt={pubkey} />
+      </AvatarFallback>
+    </Avatar>
   )
 }
 
 export function SimpleUserAvatar({
   userId,
   size = 'normal',
-  className,
-  onClick
+  className
 }: {
   userId: string
-  size?: 'large' | 'big' | 'normal' | 'medium' | 'small' | 'xSmall' | 'tiny'
+  size?: 'large' | 'big' | 'semiBig' | 'normal' | 'medium' | 'small' | 'xSmall' | 'tiny'
   className?: string
-  onClick?: (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => void
 }) {
   const { profile } = useFetchProfile(userId)
   const defaultAvatar = useMemo(
@@ -107,10 +75,11 @@ export function SimpleUserAvatar({
       <Skeleton className={cn('shrink-0', UserAvatarSizeCnMap[size], 'rounded-full', className)} />
     )
   }
+
   const { avatar, pubkey } = profile
 
   return (
-    <Avatar className={cn('shrink-0', UserAvatarSizeCnMap[size], className)} onClick={onClick}>
+    <Avatar className={cn('shrink-0', UserAvatarSizeCnMap[size], className)}>
       <AvatarImage src={avatar} className="object-cover object-center" />
       <AvatarFallback>
         <img src={defaultAvatar} alt={pubkey} />
