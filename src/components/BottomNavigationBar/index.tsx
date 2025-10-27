@@ -2,6 +2,8 @@ import { cn } from '@/lib/utils'
 import HomeButton from './HomeButton'
 import NotificationsButton from './NotificationsButton'
 import DiscussionsButton from './DiscussionsButton'
+import SearchButton from './SearchButton'
+import WriteButton from './WriteButton'
 
 export default function BottomNavigationBar() {
   return (
@@ -14,8 +16,10 @@ export default function BottomNavigationBar() {
         paddingBottom: 'env(safe-area-inset-bottom)'
       }}
     >
+      <WriteButton />
       <DiscussionsButton />
       <HomeButton />
+      <SearchButton />
       <NotificationsButton />
     </div>
   )

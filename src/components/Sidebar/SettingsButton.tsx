@@ -1,13 +1,13 @@
 import { toSettings } from '@/lib/link'
 import { useSmartSettingsNavigation, usePrimaryNoteView } from '@/PageManager'
-import { useUserPreferences } from '@/providers/UserPreferencesProvider'
+// DEPRECATED: useUserPreferences removed - double-panel functionality disabled
 import { Settings } from 'lucide-react'
 import SidebarItem from './SidebarItem'
 
 export default function SettingsButton() {
   const { navigateToSettings } = useSmartSettingsNavigation()
   const { primaryViewType } = usePrimaryNoteView()
-  const { showRecommendedRelaysPanel } = useUserPreferences()
+  // DEPRECATED: showRecommendedRelaysPanel removed - double-panel functionality disabled
 
   // Settings is active when:
   // 1. primaryViewType is 'settings' or 'settings-sub' (when side panel is off)
@@ -16,7 +16,7 @@ export default function SettingsButton() {
   const isActive = 
     primaryViewType === 'settings' || 
     primaryViewType === 'settings-sub' || 
-    (showRecommendedRelaysPanel && url.startsWith('/settings'))
+    url.startsWith('/settings')
 
   return (
     <SidebarItem title="Settings" onClick={() => navigateToSettings(toSettings())} active={isActive}>

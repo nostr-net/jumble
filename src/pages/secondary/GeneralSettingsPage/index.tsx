@@ -32,7 +32,7 @@ const GeneralSettingsPage = forwardRef(({ index, hideTitlebar = false }: { index
     setMediaAutoLoadPolicy
   } = useContentPolicy()
   const { hideUntrustedNotes, updateHideUntrustedNotes } = useUserTrust()
-  const { notificationListStyle, updateNotificationListStyle, showRecommendedRelaysPanel, updateShowRecommendedRelaysPanel } = useUserPreferences()
+  const { notificationListStyle, updateNotificationListStyle } = useUserPreferences()
 
   const handleLanguageChange = (value: TLanguage) => {
     i18n.changeLanguage(value)
@@ -153,21 +153,7 @@ const GeneralSettingsPage = forwardRef(({ index, hideTitlebar = false }: { index
           </Label>
           <Switch id="show-nsfw" checked={defaultShowNsfw} onCheckedChange={setDefaultShowNsfw} />
         </SettingItem>
-        {!isSmallScreen && (
-          <SettingItem>
-            <Label htmlFor="show-recommended-relays" className="text-base font-normal">
-              <div>{t('Show recommended relays panel')}</div>
-              <div className="text-muted-foreground">
-                {t('Display the right-side panel with recommended relays on desktop')}
-              </div>
-            </Label>
-            <Switch 
-              id="show-recommended-relays" 
-              checked={showRecommendedRelaysPanel} 
-              onCheckedChange={updateShowRecommendedRelaysPanel} 
-            />
-          </SettingItem>
-        )}
+        {/* DEPRECATED: Double-panel setting removed for technical debt reduction */}
         <SettingItem>
           <div>
             <a

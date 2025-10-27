@@ -1,6 +1,6 @@
 import storage from '@/services/local-storage.service'
 import { TNotificationStyle } from '@/types'
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 
 type TUserPreferencesContext = {
   notificationListStyle: TNotificationStyle
@@ -23,39 +23,20 @@ export function UserPreferencesProvider({ children }: { children: React.ReactNod
   const [notificationListStyle, setNotificationListStyle] = useState(
     storage.getNotificationListStyle()
   )
-  const [showRecommendedRelaysPanel, setShowRecommendedRelaysPanel] = useState(
-    storage.getShowRecommendedRelaysPanel()
-  )
+  // DEPRECATED: Double-panel functionality removed for technical debt reduction
+  // Keeping for backward compatibility in case we miss any references
+  const [showRecommendedRelaysPanel] = useState(false)
   
-  // Force showRecommendedRelaysPanel to true on mobile
-  useEffect(() => {
-    const handleResize = () => {
-      const isMobile = window.innerWidth <= 768
-      if (isMobile && !showRecommendedRelaysPanel) {
-        setShowRecommendedRelaysPanel(true)
-        storage.setShowRecommendedRelaysPanel(true)
-      }
-    }
-    
-    // Check on mount and on resize
-    handleResize()
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [showRecommendedRelaysPanel])
+  // DEPRECATED: Mobile panel forcing removed - double-panel functionality disabled
 
   const updateNotificationListStyle = (style: TNotificationStyle) => {
     setNotificationListStyle(style)
     storage.setNotificationListStyle(style)
   }
 
-  const updateShowRecommendedRelaysPanel = (show: boolean) => {
-    // Don't allow turning off the panel on mobile
-    const isMobile = window.innerWidth <= 768
-    if (isMobile && !show) {
-      return
-    }
-    setShowRecommendedRelaysPanel(show)
-    storage.setShowRecommendedRelaysPanel(show)
+  // DEPRECATED: Double-panel functionality disabled - always returns false
+  const updateShowRecommendedRelaysPanel = (_show: boolean) => {
+    // No-op: double-panel functionality has been removed
   }
 
   return (

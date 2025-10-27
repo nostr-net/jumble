@@ -1,16 +1,14 @@
-import { useSecondaryPage } from '@/PageManager'
+import { usePrimaryPage } from '@/PageManager'
 import BookmarkList from '@/components/BookmarkList'
-import PostEditor from '@/components/PostEditor'
 import RelayInfo from '@/components/RelayInfo'
 import { Button } from '@/components/ui/button'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
-import { toSearch } from '@/lib/link'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFeed } from '@/providers/FeedProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { TPageRef } from '@/types'
-import { Info, PencilLine, Search } from 'lucide-react'
+import { Info } from 'lucide-react'
 import {
   Dispatch,
   forwardRef,
@@ -129,6 +127,7 @@ function NoteListPageTitlebar({
   setShowRelayDetails?: Dispatch<SetStateAction<boolean>>
 }) {
   const { isSmallScreen } = useScreenSize()
+  const { navigate } = usePrimaryPage()
 
   return (
     <div className="relative flex gap-1 items-center h-full justify-between">
@@ -138,9 +137,12 @@ function NoteListPageTitlebar({
       </div>
       {isSmallScreen && (
         <div className="absolute left-1/2 transform -translate-x-1/2">
-          <div className="text-green-600 dark:text-green-500 font-semibold text-sm">
+          <button
+            className="text-green-600 dark:text-green-500 font-semibold text-sm hover:text-green-700 dark:hover:text-green-400 transition-colors cursor-pointer"
+            onClick={() => navigate('home')}
+          >
             Im Wald
-          </div>
+          </button>
         </div>
       )}
       <div className="shrink-0 flex gap-1 items-center">
@@ -161,47 +163,9 @@ function NoteListPageTitlebar({
             <Info />
           </Button>
         )}
-        {isSmallScreen && (
-          <>
-            <SearchButton />
-            <PostButton />
-          </>
-        )}
         <AccountButton />
       </div>
     </div>
   )
 }
 
-function PostButton() {
-  const { checkLogin } = useNostr()
-  const [open, setOpen] = useState(false)
-
-  return (
-    <>
-      <Button
-        variant="ghost"
-        size="titlebar-icon"
-        onClick={(e) => {
-          e.stopPropagation()
-          checkLogin(() => {
-            setOpen(true)
-          })
-        }}
-      >
-        <PencilLine />
-      </Button>
-      <PostEditor open={open} setOpen={setOpen} />
-    </>
-  )
-}
-
-function SearchButton() {
-  const { push } = useSecondaryPage()
-
-  return (
-    <Button variant="ghost" size="titlebar-icon" onClick={() => push(toSearch())}>
-      <Search />
-    </Button>
-  )
-}

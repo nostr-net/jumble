@@ -1,4 +1,5 @@
 import { useSecondaryPage } from '@/PageManager'
+import { ExtendedKind } from '@/constants'
 import ContentPreview from '@/components/ContentPreview'
 import Note from '@/components/Note'
 import NoteInteractions from '@/components/NoteInteractions'
@@ -7,7 +8,6 @@ import UserAvatar from '@/components/UserAvatar'
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ExtendedKind } from '@/constants'
 import { useFetchEvent } from '@/hooks'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { getParentBech32Id, getParentETag, getRootBech32Id } from '@/lib/event'
@@ -70,8 +70,45 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
     )
   }
 
+  const getNoteTypeTitle = (kind: number): string => {
+    switch (kind) {
+      case 1: // kinds.ShortTextNote
+        return 'Note: Text Post'
+      case 30023: // kinds.LongFormArticle
+        return 'Note: Longform Article'
+      case 20: // ExtendedKind.PICTURE
+        return 'Note: Picture'
+      case 21: // ExtendedKind.VIDEO
+        return 'Note: Video'
+      case 22: // ExtendedKind.SHORT_VIDEO
+        return 'Note: Short Video'
+      case 11: // ExtendedKind.DISCUSSION
+        return 'Note: Discussion Thread'
+      case 9802: // kinds.Highlights
+        return 'Note: Highlight'
+      case 1068: // ExtendedKind.POLL
+        return 'Note: Poll'
+      case 31987: // ExtendedKind.RELAY_REVIEW
+        return 'Note: Relay Review'
+      case 9735: // ExtendedKind.ZAP_RECEIPT
+        return 'Note: Zap Receipt'
+      case 6: // kinds.Repost
+        return 'Note: Repost'
+      case 7: // kinds.Reaction
+        return 'Note: Reaction'
+      case 1111: // ExtendedKind.COMMENT
+        return 'Note: Comment'
+      case 1222: // ExtendedKind.VOICE
+        return 'Note: Voice Post'
+      case 1244: // ExtendedKind.VOICE_COMMENT
+        return 'Note: Voice Comment'
+      default:
+        return 'Note'
+    }
+  }
+
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Note')} displayScrollToTopButton>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : getNoteTypeTitle(finalEvent.kind)} displayScrollToTopButton>
       <div className="px-4 pt-3">
         {rootITag && <ExternalRoot value={rootITag[1]} />}
         {rootEventId && rootEventId !== parentEventId && (

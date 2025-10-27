@@ -39,12 +39,14 @@ const SearchPage = forwardRef((_, ref) => {
     <PrimaryPageLayout
       ref={layoutRef}
       pageName="search"
-      titlebar={
-        <SearchBar ref={searchBarRef} onSearch={onSearch} input={input} setInput={setInput} />
-      }
       displayScrollToTopButton
     >
-      <SearchResult searchParams={searchParams} />
+      <div className="px-4 pt-4">
+        <div className="text-2xl font-bold mb-4">Search Nostr</div>
+        <SearchBar ref={searchBarRef} onSearch={onSearch} input={input} setInput={setInput} />
+        <div className="h-4"></div>
+        <SearchResult searchParams={searchParams} />
+      </div>
     </PrimaryPageLayout>
   )
 })

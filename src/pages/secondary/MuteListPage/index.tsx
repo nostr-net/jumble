@@ -12,7 +12,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import NotFoundPage from '../NotFoundPage'
 
-const MuteListPage = forwardRef(({ index }: { index?: number }, ref) => {
+const MuteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
   const { profile, pubkey } = useNostr()
   const { getMutePubkeys } = useMuteList()
@@ -61,6 +61,7 @@ const MuteListPage = forwardRef(({ index }: { index?: number }, ref) => {
       ref={ref}
       index={index}
       title={t("username's muted", { username: profile.username })}
+      hideBackButton={hideTitlebar}
       displayScrollToTopButton
     >
       <div className="space-y-2 px-4 pt-2">

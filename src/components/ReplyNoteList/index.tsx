@@ -20,7 +20,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import { useFeed } from '@/providers/FeedProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
-import { useUserPreferences } from '@/providers/UserPreferencesProvider'
+// DEPRECATED: useUserPreferences removed - double-panel functionality disabled
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
 import { Filter, Event as NEvent, kinds } from 'nostr-tools'
@@ -47,7 +47,7 @@ function ReplyNoteList({ index: _index, event, sort = 'oldest' }: { index?: numb
   const { hideContentMentioningMutedUsers } = useContentPolicy()
   const { relayList: userRelayList } = useNostr()
   const { relayUrls: currentFeedRelays } = useFeed()
-  const { showRecommendedRelaysPanel } = useUserPreferences()
+  // DEPRECATED: showRecommendedRelaysPanel removed - double-panel functionality disabled
   const [rootInfo, setRootInfo] = useState<TRootInfo | undefined>(undefined)
   const { repliesMap, addReplies } = useReply()
 
@@ -561,7 +561,6 @@ function ReplyNoteList({ index: _index, event, sort = 'oldest' }: { index?: numb
                   logger.debug('[ReplyNoteList] onClickParent called:', {
                     parentEventHexId: parentEventHexId?.substring(0, 8),
                     parentEventId: parentEventId?.substring(0, 8),
-                    showRecommendedRelaysPanel,
                     repliesCount: replies.length,
                     parentInReplies: !replies.every((r) => r.id !== parentEventHexId)
                   })
@@ -578,37 +577,28 @@ function ReplyNoteList({ index: _index, event, sort = 'oldest' }: { index?: numb
                     return
                   }
                   
-                  // If parent is not in current replies, we need to fetch it
-                  // In single-panel mode, we should expand the thread to show the parent
-                  // rather than navigating away from the current thread
-                  if (!showRecommendedRelaysPanel) {
-                    // Single-panel mode: fetch and add the parent to the thread
-                    // This will expand the current thread to show the parent
-                    logger.debug('[ReplyNoteList] Single-panel mode: fetching parent event')
-                    const fetchAndAddParent = async () => {
-                      try {
-                        logger.debug('[ReplyNoteList] Fetching parent event:', parentEventId ?? parentEventHexId)
-                        const parentEvent = await client.fetchEvent(parentEventId ?? parentEventHexId)
-                        if (parentEvent) {
-                          logger.debug('[ReplyNoteList] Parent event fetched, adding to replies:', parentEvent.id.substring(0, 8))
-                          addReplies([parentEvent])
-                          // Highlight the parent after it's added
-                          setTimeout(() => highlightReply(parentEvent.id), 100)
-                        } else {
-                          logger.debug('[ReplyNoteList] Parent event not found')
-                        }
-                      } catch (error) {
-                        logger.debug('[ReplyNoteList] Failed to fetch parent event:', error)
-                        // Fallback to navigation if fetch fails
-                        navigateToNote(toNote(parentEventId ?? parentEventHexId))
+                  // DEPRECATED: Double-panel logic removed - always expand thread to show parent
+                  // Fetch and add the parent to the thread to expand the current thread
+                  logger.debug('[ReplyNoteList] Fetching parent event to expand thread')
+                  const fetchAndAddParent = async () => {
+                    try {
+                      logger.debug('[ReplyNoteList] Fetching parent event:', parentEventId ?? parentEventHexId)
+                      const parentEvent = await client.fetchEvent(parentEventId ?? parentEventHexId)
+                      if (parentEvent) {
+                        logger.debug('[ReplyNoteList] Parent event fetched, adding to replies:', parentEvent.id.substring(0, 8))
+                        addReplies([parentEvent])
+                        // Highlight the parent after it's added
+                        setTimeout(() => highlightReply(parentEvent.id), 100)
+                      } else {
+                        logger.debug('[ReplyNoteList] Parent event not found')
                       }
+                    } catch (error) {
+                      logger.debug('[ReplyNoteList] Failed to fetch parent event:', error)
+                      // Fallback to navigation if fetch fails
+                      navigateToNote(toNote(parentEventId ?? parentEventHexId))
                     }
-                    fetchAndAddParent()
-                  } else {
-                    // Double-panel mode: navigate to parent in secondary panel
-                    logger.debug('[ReplyNoteList] Double-panel mode: navigating to parent')
-                    navigateToNote(toNote(parentEventId ?? parentEventHexId))
                   }
+                  fetchAndAddParent()
                 }}
                 highlight={highlightReplyId === reply.id}
               />

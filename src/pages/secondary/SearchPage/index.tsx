@@ -50,17 +50,16 @@ const SearchPage = forwardRef(({ index, hideTitlebar = false }: { index?: number
       ref={ref}
       index={index}
       title={hideTitlebar ? undefined : "Search"}
-      titlebar={hideTitlebar ? undefined : (
-        <div className="flex items-center gap-1 h-full">
-          <Button variant="ghost" size="titlebar-icon" onClick={() => pop()}>
-            <ChevronLeft />
-          </Button>
-          <SearchBar ref={searchBarRef} input={input} setInput={setInput} onSearch={onSearch} />
-        </div>
-      )}
+      hideBackButton={hideTitlebar}
       displayScrollToTopButton
     >
-      <SearchResult searchParams={searchParams} />
+      <div className="px-4 pt-4">
+        <div className="text-2xl font-bold mb-4">Search Nostr</div>
+        <SearchBar ref={searchBarRef} input={input} setInput={setInput} onSearch={onSearch} />
+        <div className="h-4"></div>
+        <div className="text-xl font-semibold mb-4">Trending Notes</div>
+        <SearchResult searchParams={searchParams} />
+      </div>
     </SecondaryPageLayout>
   )
 })

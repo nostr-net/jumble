@@ -4,21 +4,22 @@ import { cn } from '@/lib/utils'
 import logger from '@/lib/logger'
 import { ChevronLeft } from 'lucide-react'
 import NoteListPage from '@/pages/primary/NoteListPage'
-import HomePage from '@/pages/secondary/HomePage'
-import NotePage from '@/pages/secondary/NotePage'
+// Page imports needed for primary note view
 import SettingsPage from '@/pages/secondary/SettingsPage'
 import RelaySettingsPage from '@/pages/secondary/RelaySettingsPage'
 import WalletPage from '@/pages/secondary/WalletPage'
 import PostSettingsPage from '@/pages/secondary/PostSettingsPage'
 import GeneralSettingsPage from '@/pages/secondary/GeneralSettingsPage'
 import TranslationPage from '@/pages/secondary/TranslationPage'
+import NotePage from '@/pages/secondary/NotePage'
 import SecondaryProfilePage from '@/pages/secondary/ProfilePage'
 import FollowingListPage from '@/pages/secondary/FollowingListPage'
 import MuteListPage from '@/pages/secondary/MuteListPage'
 import OthersRelaySettingsPage from '@/pages/secondary/OthersRelaySettingsPage'
+import SecondaryRelayPage from '@/pages/secondary/RelayPage'
 import { CurrentRelaysProvider } from '@/providers/CurrentRelaysProvider'
 import { NotificationProvider } from '@/providers/NotificationProvider'
-import { useUserPreferences } from '@/providers/UserPreferencesProvider'
+// DEPRECATED: useUserPreferences removed - double-panel functionality disabled
 import { TPageRef } from '@/types'
 import {
   cloneElement,
@@ -94,8 +95,8 @@ const PrimaryPageContext = createContext<TPrimaryPageContext | undefined>(undefi
 const SecondaryPageContext = createContext<TSecondaryPageContext | undefined>(undefined)
 
 const PrimaryNoteViewContext = createContext<{
-  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag') => void
-  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | null
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay') => void
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null
 } | undefined>(undefined)
 
 export function usePrimaryPage() {
@@ -122,239 +123,188 @@ export function usePrimaryNoteView() {
   return context
 }
 
-// Custom hook for intelligent note navigation
+// Fixed: Note navigation now uses primary note view since secondary panel is disabled
 export function useSmartNoteNavigation() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToNote = (url: string) => {
-    if (!showRecommendedRelaysPanel) {
-      // When right panel is hidden, show note in primary area
-      // Extract note ID from URL (e.g., "/notes/note1..." -> "note1...")
-      const noteId = url.replace('/notes/', '')
-      window.history.replaceState(null, '', url)
-      setPrimaryNoteView(<NotePage id={noteId} index={0} hideTitlebar={true} />, 'note')
-    } else {
-      // Normal behavior - use secondary navigation
-      pushSecondary(url)
-    }
+    // Use primary note view to show notes since secondary panel is disabled
+    // Extract note ID from URL (e.g., "/notes/note1..." -> "note1...")
+    const noteId = url.replace('/notes/', '')
+    window.history.replaceState(null, '', url)
+    setPrimaryNoteView(<NotePage id={noteId} index={0} hideTitlebar={true} />, 'note')
   }
   
   return { navigateToNote }
 }
 
-// Custom hook for intelligent relay navigation
+// Fixed: Relay navigation now uses primary note view since secondary panel is disabled
 export function useSmartRelayNavigation() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  const { push: pushSecondary } = useSecondaryPage()
-  const { navigate: navigatePrimary } = usePrimaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToRelay = (url: string) => {
-    if (!showRecommendedRelaysPanel) {
-      // When right panel is hidden, navigate to relay page in primary area
-      // Extract relay URL from the path (e.g., "/relays/wss%3A%2F%2F..." -> "wss://...")
-      const relayUrl = url.startsWith('/relays/') ? decodeURIComponent(url.replace('/relays/', '')) : url
-      navigatePrimary('relay', { url: relayUrl })
-    } else {
-      // Normal behavior - use secondary navigation
-      pushSecondary(url)
-    }
+    // Use primary note view to show relay pages since secondary panel is disabled
+    // Extract relay URL from the URL (e.g., "/relays/wss://..." -> "wss://...")
+    const relayUrl = url.replace('/relays/', '')
+    window.history.replaceState(null, '', url)
+    setPrimaryNoteView(<SecondaryRelayPage url={relayUrl} index={0} hideTitlebar={true} />, 'relay')
   }
   
   return { navigateToRelay }
 }
 
-// Custom hook for intelligent profile navigation
+// Fixed: Profile navigation now uses primary note view since secondary panel is disabled
 export function useSmartProfileNavigation() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToProfile = (url: string) => {
-    if (showRecommendedRelaysPanel) {
-      // Secondary panel is available - show profile in secondary panel
-      pushSecondary(url)
-    } else {
-      // Secondary panel is not available - show profile in primary panel
-      const profileId = url.replace('/users/', '')
-      window.history.replaceState(null, '', url)
-      setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
-    }
+    // Use primary note view to show profiles since secondary panel is disabled
+    const profileId = url.replace('/users/', '')
+    window.history.replaceState(null, '', url)
+    setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
   }
   
   return { navigateToProfile }
 }
 
-// Custom hook for intelligent hashtag navigation
+// Fixed: Hashtag navigation now uses primary note view since secondary panel is disabled
 export function useSmartHashtagNavigation() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToHashtag = (url: string) => {
-    if (!showRecommendedRelaysPanel) {
-      // When right panel is hidden, show hashtag feed in primary area
-      // Extract hashtag from URL (e.g., "/notes?t=hashtag" -> "hashtag")
-      const urlObj = new URL(url, window.location.origin)
-      const hashtag = urlObj.searchParams.get('t')
-      if (hashtag) {
-        window.history.replaceState(null, '', url)
-        setPrimaryNoteView(<NoteListPage />, 'hashtag')
-      }
-    } else {
-      // Normal behavior - use secondary navigation
-      pushSecondary(url)
-    }
+    // Use primary note view to show hashtag feed since secondary panel is disabled
+    window.history.replaceState(null, '', url)
+    setPrimaryNoteView(<NoteListPage />, 'hashtag')
   }
   
   return { navigateToHashtag }
 }
 
-// Custom hook for intelligent following list navigation
+// Fixed: Following list navigation now uses primary note view since secondary panel is disabled
 export function useSmartFollowingListNavigation() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToFollowingList = (url: string) => {
-    if (!showRecommendedRelaysPanel) {
-      // When right panel is hidden, show following list in primary area
-      // Extract profile ID from URL (e.g., "/users/npub1.../following" -> "npub1...")
-      const profileId = url.replace('/users/', '').replace('/following', '')
-      window.history.replaceState(null, '', url)
-      setPrimaryNoteView(<FollowingListPage id={profileId} index={0} />, 'profile')
-    } else {
-      // Normal behavior - use secondary navigation
-      pushSecondary(url)
-    }
+    // Use primary note view to show following list since secondary panel is disabled
+    const profileId = url.replace('/users/', '').replace('/following', '')
+    window.history.replaceState(null, '', url)
+    setPrimaryNoteView(<FollowingListPage id={profileId} index={0} hideTitlebar={true} />, 'profile')
   }
   
   return { navigateToFollowingList }
 }
 
-// Custom hook for intelligent mute list navigation
+// Fixed: Mute list navigation now uses primary note view since secondary panel is disabled
 export function useSmartMuteListNavigation() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToMuteList = (url: string) => {
-    if (!showRecommendedRelaysPanel) {
-      // When right panel is hidden, show mute list in primary area
-      window.history.replaceState(null, '', url)
-      setPrimaryNoteView(<MuteListPage index={0} />, 'settings')
-    } else {
-      // Normal behavior - use secondary navigation
-      pushSecondary(url)
-    }
+    // Use primary note view to show mute list since secondary panel is disabled
+    window.history.replaceState(null, '', url)
+    setPrimaryNoteView(<MuteListPage index={0} hideTitlebar={true} />, 'settings')
   }
   
   return { navigateToMuteList }
 }
 
-// Custom hook for intelligent others relay settings navigation
+// Fixed: Others relay settings navigation now uses primary note view since secondary panel is disabled
 export function useSmartOthersRelaySettingsNavigation() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToOthersRelaySettings = (url: string) => {
-    if (!showRecommendedRelaysPanel) {
-      // When right panel is hidden, show others relay settings in primary area
-      // Extract profile ID from URL (e.g., "/users/npub1.../relays" -> "npub1...")
-      const profileId = url.replace('/users/', '').replace('/relays', '')
-      window.history.replaceState(null, '', url)
-      setPrimaryNoteView(<OthersRelaySettingsPage id={profileId} index={0} />, 'profile')
-    } else {
-      // Normal behavior - use secondary navigation
-      pushSecondary(url)
-    }
+    // Use primary note view to show others relay settings since secondary panel is disabled
+    const profileId = url.replace('/users/', '').replace('/relays', '')
+    window.history.replaceState(null, '', url)
+    setPrimaryNoteView(<OthersRelaySettingsPage id={profileId} index={0} hideTitlebar={true} />, 'profile')
   }
   
   return { navigateToOthersRelaySettings }
 }
 
-// Custom hook for intelligent settings navigation
+// Fixed: Settings navigation now uses primary note view since secondary panel is disabled
 export function useSmartSettingsNavigation() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  const { push: pushSecondary } = useSecondaryPage()
   const { setPrimaryNoteView } = usePrimaryNoteView()
   
   const navigateToSettings = (url: string) => {
-    if (!showRecommendedRelaysPanel) {
-      // When right panel is hidden, show settings page in primary area
-      if (url === '/settings') {
-        window.history.replaceState(null, '', url)
-        setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
-      } else if (url === '/settings/relays') {
-        window.history.replaceState(null, '', url)
-        setPrimaryNoteView(<RelaySettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
-      } else if (url === '/settings/wallet') {
-        window.history.replaceState(null, '', url)
-        setPrimaryNoteView(<WalletPage index={0} hideTitlebar={true} />, 'settings-sub')
-      } else if (url === '/settings/posts') {
-        window.history.replaceState(null, '', url)
-        setPrimaryNoteView(<PostSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
-      } else if (url === '/settings/general') {
-        window.history.replaceState(null, '', url)
-        setPrimaryNoteView(<GeneralSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
-      } else if (url === '/settings/translation') {
-        window.history.replaceState(null, '', url)
-        setPrimaryNoteView(<TranslationPage index={0} hideTitlebar={true} />, 'settings-sub')
-      }
-    } else {
-      // Normal behavior - use secondary navigation
-      pushSecondary(url)
+    // Use primary note view to show settings since secondary panel is disabled
+    if (url === '/settings') {
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
+    } else if (url === '/settings/relays') {
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<RelaySettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
+    } else if (url === '/settings/wallet') {
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<WalletPage index={0} hideTitlebar={true} />, 'settings-sub')
+    } else if (url === '/settings/posts') {
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<PostSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
+    } else if (url === '/settings/general') {
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<GeneralSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
+    } else if (url === '/settings/translation') {
+      window.history.replaceState(null, '', url)
+      setPrimaryNoteView(<TranslationPage index={0} hideTitlebar={true} />, 'settings-sub')
     }
   }
   
   return { navigateToSettings }
 }
 
-function ConditionalHomePage() {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  
-  if (!showRecommendedRelaysPanel) {
-    return null
+// DEPRECATED: ConditionalHomePage removed - double-panel functionality disabled
+
+// Helper function to get page title based on view type and URL
+function getPageTitle(viewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null, pathname: string): string {
+  if (viewType === 'settings') return 'Settings'
+  if (viewType === 'settings-sub') {
+    if (pathname.includes('/general')) return 'General Settings'
+    if (pathname.includes('/relays')) return 'Relay Settings'
+    if (pathname.includes('/wallet')) return 'Wallet Settings'
+    if (pathname.includes('/posts')) return 'Post Settings'
+    if (pathname.includes('/translation')) return 'Translation Settings'
+    return 'Settings'
   }
-  
-  return <HomePage />
+  if (viewType === 'profile') {
+    if (pathname.includes('/following')) return 'Following'
+    if (pathname.includes('/relays')) return 'Relay Settings'
+    return 'Profile'
+  }
+  if (viewType === 'hashtag') return 'Hashtag'
+  if (viewType === 'relay') return 'Relay'
+  if (viewType === 'note') {
+    // For now, return a generic "Note" - this could be enhanced to detect specific types
+    // by fetching the event and checking its kind
+    return 'Note'
+  }
+  return 'Page'
 }
 
+// DEPRECATED: Double-panel functionality removed - simplified to single column layout
 function MainContentArea({ 
   primaryPages, 
   currentPrimaryPage, 
-  secondaryStack,
   primaryNoteView,
   primaryViewType,
   setPrimaryNoteView
 }: {
   primaryPages: { name: TPrimaryPageName; element: ReactNode; props?: any }[]
   currentPrimaryPage: TPrimaryPageName
-  secondaryStack: { index: number; component: ReactNode }[]
   primaryNoteView: ReactNode | null
-  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | null
-  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag') => void
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay') => void
 }) {
-  const { showRecommendedRelaysPanel } = useUserPreferences()
-  
   logger.debug('MainContentArea rendering:', { 
     currentPrimaryPage, 
     primaryPages: primaryPages.map(p => p.name), 
-    showRecommendedRelaysPanel,
     primaryNoteView: !!primaryNoteView
   })
   
-  // If recommended relays panel is shown, use two-column layout
-  // Otherwise use single column layout
-  const gridClass = showRecommendedRelaysPanel ? "grid-cols-2" : "grid-cols-1"
-  
+  // Always use single column layout since double-panel is disabled
   return (
-    <div className={`grid ${gridClass} gap-2 w-full pr-2 py-2`}>
+    <div className="grid grid-cols-1 gap-2 w-full pr-2 py-2">
       <div className="rounded-lg shadow-lg bg-background overflow-hidden">
-        {!showRecommendedRelaysPanel && primaryNoteView ? (
-          // Show note view with back button when right panel is hidden
+        {primaryNoteView ? (
+          // Show note view with back button
           <div className="flex flex-col h-full w-full">
             <div className="flex gap-1 p-1 items-center justify-between font-semibold border-b">
               <div className="flex items-center flex-1 w-0">
@@ -362,18 +312,30 @@ function MainContentArea({
                   className="flex gap-1 items-center w-fit max-w-full justify-start pl-2 pr-3"
                   variant="ghost"
                   size="titlebar-icon"
-                  title="Back to feed"
-                  onClick={() => setPrimaryNoteView(null)}
+                  title="Back"
+                  onClick={() => {
+                    if (primaryViewType === 'settings-sub') {
+                      // For settings sub-pages, navigate back to main settings page
+                      window.history.replaceState(null, '', '/settings')
+                      setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
+                    } else {
+                      // For other pages, go back to feed
+                      setPrimaryNoteView(null)
+                    }
+                  }}
                 >
                   <ChevronLeft />
                   <div className="truncate text-lg font-semibold">
-                    {primaryViewType === 'settings' ? 'Settings' : 
-                     primaryViewType === 'settings-sub' ? 'Settings' : 
-                     primaryViewType === 'profile' ? 'Back' : 
-                     primaryViewType === 'hashtag' ? 'Hashtag' : 'Note'}
+                    Back
                   </div>
                 </Button>
               </div>
+              <div className="flex-1 flex justify-center">
+                <div className="text-lg font-semibold text-green-500">
+                  {getPageTitle(primaryViewType, window.location.pathname)}
+                </div>
+              </div>
+              <div className="flex-1 w-0"></div>
             </div>
             <div className="flex-1 overflow-auto">
               {primaryNoteView}
@@ -406,33 +368,14 @@ function MainContentArea({
           })
         )}
       </div>
-      {showRecommendedRelaysPanel && (
-        <div className="rounded-lg shadow-lg bg-background overflow-hidden">
-          {secondaryStack.map((item, index) => (
-            <div
-              key={item.index}
-              className="flex flex-col h-full w-full"
-              style={{ display: index === secondaryStack.length - 1 ? 'block' : 'none' }}
-            >
-              {item.component}
-            </div>
-          ))}
-          <div
-            key="home"
-            className="w-full"
-            style={{ display: secondaryStack.length === 0 ? 'block' : 'none' }}
-          >
-            <ConditionalHomePage />
-          </div>
-        </div>
-      )}
+      {/* DEPRECATED: Secondary panel removed - double-panel functionality disabled */}
     </div>
   )
 }
 
 export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   const { isSmallScreen } = useScreenSize()
-  const { showRecommendedRelaysPanel } = useUserPreferences()
+  // DEPRECATED: showRecommendedRelaysPanel removed - double-panel functionality disabled
   const [currentPrimaryPage, setCurrentPrimaryPage] = useState<TPrimaryPageName>('home')
   const [primaryPages, setPrimaryPages] = useState<
     { name: TPrimaryPageName; element: ReactNode; props?: any }[]
@@ -444,10 +387,10 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   ])
   const [secondaryStack, setSecondaryStack] = useState<TStackItem[]>([])
   const [primaryNoteView, setPrimaryNoteViewState] = useState<ReactNode | null>(null)
-  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | null>(null)
+  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null>(null)
   const [savedPrimaryPage, setSavedPrimaryPage] = useState<TPrimaryPageName | null>(null)
   
-  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag') => {
+  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay') => {
     if (view && !primaryNoteView) {
       // Saving current primary page before showing overlay
       setSavedPrimaryPage(currentPrimaryPage)
@@ -486,26 +429,21 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     if (window.location.pathname !== '/') {
       const url = window.location.pathname + window.location.search + window.location.hash
       
-      // If the side panel is off and we're on a settings page, don't add to secondary stack
-      // The settings navigation will handle it via primary view
-      if (!showRecommendedRelaysPanel && window.location.pathname.startsWith('/settings')) {
-        // Skip secondary stack handling for settings when side panel is off
-      } else {
-        setSecondaryStack((prevStack) => {
-          if (isCurrentPage(prevStack, url)) return prevStack
+      // DEPRECATED: Double-panel logic removed - always add to secondary stack
+      setSecondaryStack((prevStack) => {
+        if (isCurrentPage(prevStack, url)) return prevStack
 
-          const { newStack, newItem } = pushNewPageToStack(
-            prevStack,
-            url,
-            maxStackSize,
-            window.history.state?.index
-          )
-          if (newItem) {
-            window.history.replaceState({ index: newItem.index, url }, '', url)
-          }
-          return newStack
-        })
-      }
+        const { newStack, newItem } = pushNewPageToStack(
+          prevStack,
+          url,
+          maxStackSize,
+          window.history.state?.index
+        )
+        if (newItem) {
+          window.history.replaceState({ index: newItem.index, url }, '', url)
+        }
+        return newStack
+      })
     } else {
       const searchParams = new URLSearchParams(window.location.search)
       const r = searchParams.get('r')
@@ -769,7 +707,6 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
                 <MainContentArea 
                   primaryPages={primaryPages}
                   currentPrimaryPage={currentPrimaryPage}
-                  secondaryStack={secondaryStack}
                   primaryNoteView={primaryNoteView}
                   primaryViewType={primaryViewType}
                   setPrimaryNoteView={setPrimaryNoteView}

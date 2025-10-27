@@ -15,7 +15,7 @@ const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
   const { t } = useTranslation()
   const { navigate } = usePrimaryPage()
   const { navigateToRelay } = useSmartRelayNavigation()
-  const { updateShowRecommendedRelaysPanel } = useUserPreferences()
+  // DEPRECATED: updateShowRecommendedRelaysPanel removed - double-panel functionality disabled
   const [recommendedRelayInfos, setRecommendedRelayInfos] = useState<TRelayInfo[]>([])
 
   useEffect(() => {
@@ -51,15 +51,8 @@ const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
         </div>
       }
       controls={
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => updateShowRecommendedRelaysPanel(false)}
-          title={t('Close')}
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        // DEPRECATED: Close button removed - double-panel functionality disabled
+        null
       }
       hideBackButton
       hideTitlebarBottomBorder
