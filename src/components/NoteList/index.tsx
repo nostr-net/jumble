@@ -80,48 +80,97 @@ const NoteList = forwardRef(
 
     const shouldHideEvent = useCallback(
       (evt: Event) => {
-        if (isEventDeleted(evt)) return true
+        // Check if this is a profile feed
+        const isProfileFeed = subRequests.some(req => req.filter.authors && req.filter.authors.length === 1)
         
-        // Special handling for zaps - always check threshold, then check hideReplies for non-zap replies
-        if (evt.kind === kinds.Zap) {
-          const zapInfo = getZapInfoFromEvent(evt)
-          
-          // Always filter zaps by threshold regardless of hideReplies setting
-          if (zapInfo && zapInfo.amount < zapReplyThreshold) {
-            return true
-          }
-        } else if (hideReplies && isReplyNoteEvent(evt)) {
+        console.log('🔍 [NoteList] Checking shouldHideEvent for:', { 
+          id: evt.id, 
+          kind: evt.kind, 
+          pubkey: evt.pubkey.substring(0, 8),
+          isDeleted: isEventDeleted(evt),
+          isReply: isReplyNoteEvent(evt),
+          isTrusted: isUserTrusted(evt.pubkey),
+          isMuted: mutePubkeySet.has(evt.pubkey),
+          hideReplies,
+          hideUntrustedNotes,
+          filterMutedNotes,
+          isProfileFeed
+        })
+        
+        if (isEventDeleted(evt)) {
+          console.log('❌ [NoteList] Event deleted:', evt.id)
           return true
         }
         
-        if (hideUntrustedNotes && !isUserTrusted(evt.pubkey)) return true
-        if (filterMutedNotes && mutePubkeySet.has(evt.pubkey)) return true
+        // Special handling for zaps - check threshold, but be more lenient for profile feeds
+        if (evt.kind === kinds.Zap) {
+          const zapInfo = getZapInfoFromEvent(evt)
+          
+          // For profile feeds, show all zaps from the profile owner
+          // For timeline feeds, filter by threshold
+          if (!isProfileFeed && zapInfo && zapInfo.amount < zapReplyThreshold) {
+            console.log('❌ [NoteList] Zap below threshold:', { id: evt.id, amount: zapInfo.amount, threshold: zapReplyThreshold })
+            return true
+          }
+        } else if (hideReplies && isReplyNoteEvent(evt)) {
+          console.log('❌ [NoteList] Reply hidden:', evt.id)
+          return true
+        }
+        
+        if (hideUntrustedNotes && !isUserTrusted(evt.pubkey)) {
+          console.log('❌ [NoteList] Untrusted user:', evt.id)
+          return true
+        }
+        if (filterMutedNotes && mutePubkeySet.has(evt.pubkey)) {
+          console.log('❌ [NoteList] Muted user:', evt.id)
+          return true
+        }
         if (
           filterMutedNotes &&
           hideContentMentioningMutedUsers &&
           isMentioningMutedUsers(evt, mutePubkeySet)
         ) {
+          console.log('❌ [NoteList] Mentions muted users:', evt.id)
           return true
         }
 
+        console.log('✅ [NoteList] Event passed all filters:', evt.id)
         return false
       },
-      [hideReplies, hideUntrustedNotes, mutePubkeySet, isEventDeleted, zapReplyThreshold]
+      [hideReplies, hideUntrustedNotes, mutePubkeySet, isEventDeleted, zapReplyThreshold, subRequests]
     )
 
     const filteredEvents = useMemo(() => {
       const idSet = new Set<string>()
+      
+      console.log('🔍 [NoteList] Filtering events:', {
+        totalEvents: events.length,
+        showCount,
+        eventKinds: events.map(e => e.kind).slice(0, 10)
+      })
 
-      return events.slice(0, showCount).filter((evt) => {
-        if (shouldHideEvent(evt)) return false
+      const filtered = events.slice(0, showCount).filter((evt) => {
+        if (shouldHideEvent(evt)) {
+          console.log('❌ [NoteList] Event hidden:', { id: evt.id, kind: evt.kind, reason: 'shouldHideEvent' })
+          return false
+        }
 
         const id = isReplaceableEvent(evt.kind) ? getReplaceableCoordinateFromEvent(evt) : evt.id
         if (idSet.has(id)) {
+          console.log('❌ [NoteList] Event hidden:', { id: evt.id, kind: evt.kind, reason: 'duplicate' })
           return false
         }
         idSet.add(id)
         return true
       })
+      
+      console.log('✅ [NoteList] Filtered events result:', { 
+        total: events.length, 
+        filtered: filtered.length,
+        showCount 
+      })
+      
+      return filtered
     }, [events, showCount, shouldHideEvent])
 
     const filteredNewEvents = useMemo(() => {
@@ -182,36 +231,55 @@ const NoteList = forwardRef(
           return () => {}
         }
 
-        console.log('[NoteList] Subscribing to timeline with:', subRequests.map(({ urls, filter }) => ({
-            urls,
-            filter: {
-              kinds: showKinds,
-              ...filter,
-              limit: areAlgoRelays ? ALGO_LIMIT : LIMIT
-            }
-          })))
+        const finalFilters = subRequests.map(({ urls, filter }) => ({
+          urls,
+          filter: {
+            kinds: showKinds,
+            ...filter,
+            limit: areAlgoRelays ? ALGO_LIMIT : LIMIT
+          }
+        }))
+        
+        console.log('[NoteList] Subscribing to timeline with:', finalFilters)
+        console.log('[NoteList] showKinds:', showKinds)
         
         const { closer, timelineKey } = await client.subscribeTimeline(
-          subRequests.map(({ urls, filter }) => ({
-            urls,
-            filter: {
-              kinds: showKinds,
-              ...filter,
-              limit: areAlgoRelays ? ALGO_LIMIT : LIMIT
-            }
-          })),
+          finalFilters,
           {
             onEvents: (events, eosed) => {
               console.log('📥 [NoteList] Received events:', { 
                 eventsCount: events.length, 
                 eosed,
                 loading,
-                hasMore 
+                hasMore,
+                eventKinds: events.map(e => e.kind).slice(0, 10), // First 10 event kinds
+                showKinds
               })
               logger.debug('NoteList received events:', { eventsCount: events.length, eosed })
               if (events.length > 0) {
-                console.log('✅ [NoteList] Setting events and stopping loading')
-                setEvents(events)
+                console.log('✅ [NoteList] Accumulating events from relay')
+                setEvents(prevEvents => {
+                  // For profile feeds, accumulate events from all relays
+                  // For timeline feeds, replace events
+                  const isProfileFeed = subRequests.some(req => req.filter.authors && req.filter.authors.length === 1)
+                  
+                  if (isProfileFeed) {
+                    // Accumulate events, removing duplicates
+                    const existingIds = new Set(prevEvents.map(e => e.id))
+                    const newEvents = events.filter(e => !existingIds.has(e.id))
+                    const combined = [...prevEvents, ...newEvents]
+                    console.log('📊 [NoteList] Profile feed - accumulated:', { 
+                      previous: prevEvents.length, 
+                      new: events.length, 
+                      unique: newEvents.length,
+                      total: combined.length 
+                    })
+                    return combined
+                  } else {
+                    // Timeline feed - replace events
+                    return events
+                  }
+                })
                 // Stop loading as soon as we have events, don't wait for all relays
                 setLoading(false)
               }
