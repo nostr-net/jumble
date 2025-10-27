@@ -369,14 +369,14 @@ const DiscussionsPage = forwardRef((_, ref) => {
           {
             kinds: [1111], // ExtendedKind.COMMENT
             '#e': threadIds,
-            limit: 1000
+            limit: 100
           }
         ]) : Promise.resolve([]),
         threadIds.length > 0 ? client.fetchEvents(allRelays, [
           {
             kinds: [kinds.Reaction],
             '#e': threadIds,
-              limit: 1000
+              limit: 100
             }
         ]) : Promise.resolve([])
       ])

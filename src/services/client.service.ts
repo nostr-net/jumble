@@ -1375,7 +1375,7 @@ class ClientService extends EventTarget {
       const events = await this.fetchEvents(BIG_RELAY_URLS, {
         authors: followings,
         kinds: [ExtendedKind.FAVORITE_RELAYS, kinds.Relaysets],
-        limit: 1000
+        limit: 100
       })
       const alreadyExistsFavoriteRelaysPubkeySet = new Set<string>()
       const alreadyExistsRelaySetsPubkeySet = new Set<string>()

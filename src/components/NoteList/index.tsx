@@ -33,8 +33,8 @@ import PullToRefresh from 'react-simple-pull-to-refresh'
 import { toast } from 'sonner'
 import NoteCard, { NoteCardLoadingSkeleton } from '../NoteCard'
 
-const LIMIT = 200
-const ALGO_LIMIT = 500
+const LIMIT = 100
+const ALGO_LIMIT = 100
 const SHOW_COUNT = 10
 
 const NoteList = forwardRef(

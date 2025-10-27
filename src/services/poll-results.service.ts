@@ -91,7 +91,7 @@ class PollResultsService {
     const filter: Filter = {
       kinds: [ExtendedKind.POLL_RESPONSE],
       '#e': [pollEventId],
-      limit: 1000
+      limit: 100
     }
 
     if (endsAt) {
