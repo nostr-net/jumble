@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, DEFAULT_FAVORITE_RELAYS, ExtendedKind, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, PROFILE_FETCH_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
+import { BIG_RELAY_URLS, DEFAULT_FAVORITE_RELAYS, ExtendedKind, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, PROFILE_FETCH_RELAY_URLS, PROFILE_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
 import {
   compareEvents,
   getReplaceableCoordinate,
@@ -79,9 +79,6 @@ class ClientService extends EventTarget {
     super()
     this.pool = new SimplePool()
     this.pool.trackRelays = true
-    
-    // Pre-blacklist known problematic relays
-    this.blacklistRelay('wss://freelay.sovbit.host/')
   }
 
   public static getInstance(): ClientService {
@@ -151,10 +148,16 @@ class ClientService extends EventTarget {
           kinds.Contacts,
           ExtendedKind.FAVORITE_RELAYS,
           ExtendedKind.BLOSSOM_SERVER_LIST,
-          ExtendedKind.RELAY_REVIEW
+          ExtendedKind.RELAY_REVIEW,
+          ExtendedKind.BLOCKED_RELAYS,
+          kinds.Pinlist,
+          kinds.Mutelist,
+          kinds.BookmarkList,
+          kinds.InterestsList,
+          ExtendedKind.FAVORITE_RELAYS,
         ].includes(event.kind)
       ) {
-        _additionalRelayUrls.push(...BIG_RELAY_URLS)
+        _additionalRelayUrls.push(...PROFILE_RELAY_URLS, ...FAST_WRITE_RELAY_URLS)
       }
 
       // Use current user's relay list
@@ -1950,7 +1953,7 @@ class ClientService extends EventTarget {
     }
 
     // For other feeds: limit to 3 relays to prevent "too many concurrent REQs" errors (reduced from 5)
-    return validRelays.slice(0, 3)
+    return validRelays.slice(0, 5)
   }
 
   // ================= Utils =================

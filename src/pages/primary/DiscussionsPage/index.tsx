@@ -874,7 +874,6 @@ const DiscussionsPage = forwardRef(() => {
                         <ThreadCard
                           key={entry.event.id}
                           thread={entry.event}
-                          commentCount={entry.commentCount}
                           lastCommentTime={entry.lastCommentTime}
                           lastVoteTime={entry.lastVoteTime}
                           upVotes={entry.upVotes}
@@ -906,7 +905,6 @@ const DiscussionsPage = forwardRef(() => {
                                 <ThreadCard
                                   key={entry.event.id}
                                   thread={entry.event}
-                                  commentCount={entry.commentCount}
                                   lastCommentTime={entry.lastCommentTime}
                                   lastVoteTime={entry.lastVoteTime}
                                   upVotes={entry.upVotes}

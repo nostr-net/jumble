@@ -15,7 +15,6 @@ interface ThreadCardProps {
   thread: NostrEvent
   onThreadClick: () => void
   className?: string
-  commentCount?: number
   lastCommentTime?: number
   lastVoteTime?: number
   upVotes?: number
@@ -26,7 +25,6 @@ export default function ThreadCard({
   thread, 
   onThreadClick, 
   className,
-  commentCount = 0,
   lastCommentTime = 0,
   lastVoteTime = 0,
   upVotes = 0,

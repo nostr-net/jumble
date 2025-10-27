@@ -39,7 +39,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,jpg,svg}'],
+        globPatterns: ['**/*.{js,css,html,png,jpg,svg,ico,webmanifest}'],
         globDirectory: 'dist/',
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         cleanupOutdatedCaches: true,
@@ -47,6 +47,14 @@ export default defineConfig({
         clientsClaim: true,
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/_/, /^\/admin/],
+        // Exclude source files and development files from precaching
+        globIgnores: [
+          '**/src/**',
+          '**/node_modules/**',
+          '**/*.map',
+          '**/sw.js',
+          '**/workbox-*.js'
+        ],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/image\.nostr\.build\/.*/i,

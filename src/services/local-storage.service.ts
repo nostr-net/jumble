@@ -49,7 +49,7 @@ class LocalStorageService {
   private hideContentMentioningMutedUsers: boolean = false
   private notificationListStyle: TNotificationStyle = NOTIFICATION_LIST_STYLE.DETAILED
   private mediaAutoLoadPolicy: TMediaAutoLoadPolicy = MEDIA_AUTO_LOAD_POLICY.ALWAYS
-  private showRecommendedRelaysPanel: boolean = true
+  private showRecommendedRelaysPanel: boolean = false
   private shownCreateWalletGuideToastPubkeys: Set<string> = new Set()
 
   constructor() {
@@ -166,7 +166,7 @@ class LocalStorageService {
       window.localStorage.getItem(StorageKey.DISMISSED_TOO_MANY_RELAYS_ALERT) === 'true'
 
     const storedValue = window.localStorage.getItem(StorageKey.SHOW_RECOMMENDED_RELAYS_PANEL)
-    this.showRecommendedRelaysPanel = storedValue !== 'false' // Default to true if not explicitly set to false
+    this.showRecommendedRelaysPanel = storedValue === 'true' // Default to false if not explicitly set to true
 
     const showKindsStr = window.localStorage.getItem(StorageKey.SHOW_KINDS)
     if (!showKindsStr) {

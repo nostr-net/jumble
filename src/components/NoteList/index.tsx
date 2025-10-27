@@ -177,7 +177,7 @@ const NoteList = forwardRef(
           return () => {}
         }
 
-        logger.debug('NoteList subscribing to timeline with:', subRequests.map(({ urls, filter }) => ({
+        console.log('[NoteList] Subscribing to timeline with:', subRequests.map(({ urls, filter }) => ({
             urls,
             filter: {
               kinds: showKinds,
@@ -269,7 +269,7 @@ const NoteList = forwardRef(
       return () => {
         promise.then((closer) => closer())
       }
-    }, [JSON.stringify(subRequests), refreshCount, showKinds])
+    }, [subRequests, refreshCount, showKinds])
 
     useEffect(() => {
       const options = {

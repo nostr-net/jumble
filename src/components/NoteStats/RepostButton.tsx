@@ -51,8 +51,8 @@ export default function RepostButton({ event }: { event: Event }) {
         const hasReposted = noteStats?.repostPubkeySet?.has(pubkey)
         if (hasReposted) return
         if (!noteStats?.updatedAt) {
-          const noteStats = await noteStatsService.fetchNoteStats(event, pubkey)
-          if (noteStats.repostPubkeySet?.has(pubkey)) {
+          const fetchedNoteStats = await noteStatsService.fetchNoteStats(event, pubkey)
+          if (fetchedNoteStats?.repostPubkeySet?.has(pubkey)) {
             return
           }
         }

@@ -36,7 +36,7 @@ export default function RelaysFeed() {
   }
 
   const subRequests = [{ urls: relayUrls, filter: {} }]
-  logger.debug('RelaysFeed rendering NormalFeed with:', { subRequests, relayUrls, areAlgoRelays })
+  console.log('[RelaysFeed] Rendering NormalFeed with:', { subRequests, relayUrls, areAlgoRelays })
 
   return (
     <NormalFeed

@@ -196,12 +196,14 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               }
 
               // Only reconnect if still mounted and not a manual close
+              // Increase timeout to prevent rapid reconnection loops
               if (isMountedRef.current) {
                 setTimeout(() => {
                   if (isMountedRef.current) {
+                    console.log('[NotificationProvider] Reconnecting after close...')
                     subscribe()
                   }
-                }, 5_000)
+                }, 15_000) // Increased from 5s to 15s
               }
             }
           }

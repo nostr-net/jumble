@@ -18,6 +18,7 @@ import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
+import { useFeed } from '@/providers/FeedProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
@@ -36,6 +37,8 @@ const LIMIT = 100
 const SHOW_COUNT = 10
 
 function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
+  console.log('[ReplyNoteList] Component rendered for event:', event.id.substring(0, 8))
+  
   const { t } = useTranslation()
   const { navigateToNote } = useSmartNoteNavigation()
   const { currentIndex } = useSecondaryPage()
@@ -43,6 +46,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
   const { mutePubkeySet } = useMuteList()
   const { hideContentMentioningMutedUsers } = useContentPolicy()
   const { relayList: userRelayList } = useNostr()
+  const { relayUrls: currentFeedRelays } = useFeed()
   const [rootInfo, setRootInfo] = useState<TRootInfo | undefined>(undefined)
   const { repliesMap, addReplies } = useReply()
 
@@ -101,6 +105,14 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     // FIXED: Only fetch direct replies to the original event, don't traverse reply chains
     // This prevents the doom loop that was causing "too many concurrent REQS"
     const events = parentEventKeys.flatMap((id) => repliesMap.get(id)?.events || [])
+    
+    logger.debug('[ReplyNoteList] Processing replies:', {
+      eventId: event.id.substring(0, 8),
+      parentEventKeys,
+      eventsFromMap: events.length,
+      repliesMapSize: repliesMap.size,
+      repliesMapKeys: Array.from(repliesMap.keys()).map(k => k.substring(0, 8))
+    })
     
     events.forEach((evt) => {
       if (replyIdSet.has(evt.id)) return
@@ -164,8 +176,10 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
   const [highlightReplyId, setHighlightReplyId] = useState<string | undefined>(undefined)
   const replyRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const requestTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
+    console.log('[ReplyNoteList] fetchRootEvent useEffect triggered for event:', event.id.substring(0, 8))
     const fetchRootEvent = async () => {
       let root: TRootInfo
       
@@ -207,6 +221,11 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
           root = { type: 'I', id: rootITag[1] }
         }
       }
+      logger.debug('[ReplyNoteList] Root info determined:', {
+        eventId: event.id.substring(0, 8),
+        rootInfo: root,
+        eventKind: event.kind
+      })
       setRootInfo(root)
     }
     fetchRootEvent()
@@ -234,22 +253,79 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
   }, [rootInfo, onNewReply])
 
   useEffect(() => {
-    if (loading || !rootInfo || currentIndex !== index) return
+    console.log('[ReplyNoteList] Main useEffect triggered:', {
+      loading,
+      hasRootInfo: !!rootInfo,
+      currentIndex,
+      index,
+      shouldInit: !loading && !!rootInfo && currentIndex === index
+    })
+    
+    if (loading || !rootInfo || currentIndex !== index) {
+      console.log('[ReplyNoteList] Early return - conditions not met:', {
+        loading,
+        hasRootInfo: !!rootInfo,
+        currentIndex,
+        index,
+        rootInfo
+      })
+      return
+    }
+    
+    console.log('[ReplyNoteList] All conditions met, starting reply fetch...')
+    
+    // Clear any existing timeout to prevent multiple simultaneous requests
+    if (requestTimeoutRef.current) {
+      clearTimeout(requestTimeoutRef.current)
+    }
+    
+    // Debounce the request to prevent rapid successive calls
+    requestTimeoutRef.current = setTimeout(() => {
+      console.log('[ReplyNoteList] Debounced request starting...')
+      
+      // Check if we're already loading to prevent duplicate requests
+      if (loading) {
+        console.log('[ReplyNoteList] Already loading, skipping request')
+        return
+      }
 
         const init = async () => {
           setLoading(true)
 
           try {
             
-            // Privacy: Only use user's own relays + defaults, never connect to other users' relays
-            const userReadRelays = userRelayList?.read || []
-            const userWriteRelays = userRelayList?.write || []
-            const finalRelayUrls = Array.from(new Set([
-              ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
-              ...userReadRelays.map(url => normalizeUrl(url) || url), // User's read relays
-              ...userWriteRelays.map(url => normalizeUrl(url) || url) // User's write relays
-            ]))
+            // Use current feed's relay selection - if user selected a specific relay, use only that
+            let finalRelayUrls: string[]
             
+            console.log('[ReplyNoteList] Current feed relays:', currentFeedRelays)
+            
+            if (currentFeedRelays.length > 0) {
+              // Use the current feed's relay selection (respects user's choice of single relay)
+              finalRelayUrls = currentFeedRelays.map(url => normalizeUrl(url) || url).filter(Boolean)
+              console.log('[ReplyNoteList] Using current feed relays:', finalRelayUrls)
+            } else {
+              // Fallback: build comprehensive relay list only if no feed relays are set
+              const userReadRelays = userRelayList?.read || []
+              const userWriteRelays = userRelayList?.write || []
+              const eventHints = client.getEventHints(event.id)
+              
+              const allRelays = [
+                ...userReadRelays.map(url => normalizeUrl(url) || url),
+                ...userWriteRelays.map(url => normalizeUrl(url) || url),
+                ...eventHints.map(url => normalizeUrl(url) || url),
+                ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url),
+              ]
+              
+              finalRelayUrls = Array.from(new Set(allRelays.filter(Boolean)))
+              console.log('[ReplyNoteList] Using fallback relay list:', finalRelayUrls)
+            }
+            
+            logger.debug('[ReplyNoteList] Fetching replies for event:', {
+              eventId: event.id.substring(0, 8),
+              rootInfo,
+              finalRelayUrls: finalRelayUrls.slice(0, 5), // Log first 5 relays
+              totalRelays: finalRelayUrls.length
+            })
 
         const filters: (Omit<Filter, 'since' | 'until'> & {
           limit: number
@@ -298,13 +374,22 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
         
         const { closer, timelineKey } = await client.subscribeTimeline(
           filters.map((filter) => ({
-            urls: finalRelayUrls, // Use all relays, don't slice
+            urls: finalRelayUrls, // Use current feed's relay selection
             filter
           })),
           {
               onEvents: (evts, eosed) => {
+                logger.debug('[ReplyNoteList] Received events:', {
+                  totalEvents: evts.length,
+                  eosed,
+                  eventIds: evts.map(e => e.id.substring(0, 8))
+                })
                 if (evts.length > 0) {
                   const regularReplies = evts.filter((evt) => isReplyNoteEvent(evt))
+                  logger.debug('[ReplyNoteList] Filtered replies:', {
+                    replyCount: regularReplies.length,
+                    replyIds: regularReplies.map(r => r.id.substring(0, 8))
+                  })
                   addReplies(regularReplies)
                 }
               if (eosed) {
@@ -342,6 +427,13 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     return () => {
       promise.then((closer) => closer?.())
     }
+    }, 500) // 500ms debounce delay
+    
+    return () => {
+      if (requestTimeoutRef.current) {
+        clearTimeout(requestTimeoutRef.current)
+      }
+    }
   }, [rootInfo, currentIndex, index, onNewReply])
 
   useEffect(() => {
@@ -349,7 +441,16 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     if (replies.length === 0 && !loading && timelineKey && until !== undefined) {
       loadMore()
     }
-  }, [replies.length, loading, timelineKey, until]) // Added until to prevent infinite loops
+  }, [replies.length, loading, timelineKey, until])
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (requestTimeoutRef.current) {
+        clearTimeout(requestTimeoutRef.current)
+      }
+    }
+  }, []) // Added until to prevent infinite loops
 
   useEffect(() => {
     const options = {
