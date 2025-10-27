@@ -1,4 +1,4 @@
-import { usePrimaryPage } from '@/PageManager'
+import { usePrimaryNoteView } from '@/PageManager'
 import BookmarkList from '@/components/BookmarkList'
 import RelayInfo from '@/components/RelayInfo'
 import { Button } from '@/components/ui/button'
@@ -127,7 +127,7 @@ function NoteListPageTitlebar({
   setShowRelayDetails?: Dispatch<SetStateAction<boolean>>
 }) {
   const { isSmallScreen } = useScreenSize()
-  const { navigate } = usePrimaryPage()
+  const { setPrimaryNoteView } = usePrimaryNoteView()
 
   return (
     <div className="relative flex gap-1 items-center h-full justify-between">
@@ -136,10 +136,15 @@ function NoteListPageTitlebar({
         <FeedButton className="flex-1 max-w-fit w-0" />
       </div>
       {isSmallScreen && (
-        <div className="absolute left-1/2 transform -translate-x-1/2">
+        <div className="absolute left-1/2 transform -translate-x-1/2 z-10">
           <button
             className="text-green-600 dark:text-green-500 font-semibold text-sm hover:text-green-700 dark:hover:text-green-400 transition-colors cursor-pointer"
-            onClick={() => navigate('home')}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              console.log('Im Wald clicked, clearing overlay')
+              setPrimaryNoteView(null)
+            }}
           >
             Im Wald
           </button>

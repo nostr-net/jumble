@@ -137,7 +137,7 @@ async function searchThreads(entries: EventMapEntry[], query: string): Promise<E
   const searchTerm = query.toLowerCase().trim()
   
   // Search for profiles that match the query
-  let matchingPubkeys = new Set<string>()
+  const matchingPubkeys = new Set<string>()
   try {
     const profiles = await client.searchProfilesFromLocal(searchTerm, 50)
     profiles.forEach(profile => {

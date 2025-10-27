@@ -50,7 +50,13 @@ export default function ZapDialog({
   useEffect(() => {
     const handleResize = () => {
       if (drawerContentRef.current) {
-        drawerContentRef.current.style.setProperty('bottom', `env(safe-area-inset-bottom)`)
+        // Use visual viewport height to ensure proper positioning when keyboard/emoji picker opens
+        const viewportHeight = window.visualViewport?.height || window.innerHeight
+        
+        // Ensure drawer doesn't go above the viewport, but don't override bottom positioning
+        const maxHeight = viewportHeight - 100 // Leave some space at top
+        drawerContentRef.current.style.setProperty('max-height', `${maxHeight}px`)
+        // Don't set bottom position here - let the drawer handle it naturally
       }
     }
 
@@ -74,9 +80,14 @@ export default function ZapDialog({
           hideOverlay
           onOpenAutoFocus={(e) => e.preventDefault()}
           ref={drawerContentRef}
-          className="flex flex-col gap-4 px-4 mb-4"
+          className="flex flex-col h-[80vh]"
+          style={{
+            maxHeight: 'calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem)',
+            height: '80vh',
+            paddingBottom: '0' // Remove default padding since we handle it in the button container
+          }}
         >
-          <DrawerHeader>
+          <DrawerHeader className="px-4">
             <DrawerTitle className="flex gap-2 items-center">
               <div className="shrink-0">{t('Zap to')}</div>
               <UserAvatar size="small" userId={pubkey} />
@@ -198,55 +209,61 @@ function ZapDialogContent({
   }
 
   return (
-    <>
-      {/* Sats slider or input */}
-      <div className="flex flex-col items-center">
-        <div className="flex justify-center w-full">
-          <input
-            id="sats"
-            value={sats}
-            onChange={(e) => {
-              setSats((pre) => {
-                if (e.target.value === '') {
-                  return 0
-                }
-                let num = parseInt(e.target.value, 10)
-                if (isNaN(num) || num < 0) {
-                  num = pre
-                }
-                return num
-              })
-            }}
-            onFocus={(e) => {
-              requestAnimationFrame(() => {
-                const val = e.target.value
-                e.target.setSelectionRange(val.length, val.length)
-              })
-            }}
-            className="bg-transparent text-center w-full p-0 focus-visible:outline-none text-6xl font-bold"
-          />
+    <div className="flex flex-col h-full">
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-y-auto space-y-4 min-h-0">
+        {/* Sats slider or input */}
+        <div className="flex flex-col items-center px-4">
+          <div className="flex justify-center w-full max-w-xs">
+            <input
+              id="sats"
+              value={sats}
+              onChange={(e) => {
+                setSats((pre) => {
+                  if (e.target.value === '') {
+                    return 0
+                  }
+                  let num = parseInt(e.target.value, 10)
+                  if (isNaN(num) || num < 0) {
+                    num = pre
+                  }
+                  return num
+                })
+              }}
+              onFocus={(e) => {
+                requestAnimationFrame(() => {
+                  const val = e.target.value
+                  e.target.setSelectionRange(val.length, val.length)
+                })
+              }}
+              className="bg-transparent text-center w-full p-0 focus-visible:outline-none text-6xl font-bold"
+            />
+          </div>
+          <Label htmlFor="sats">{t('Sats')}</Label>
         </div>
-        <Label htmlFor="sats">{t('Sats')}</Label>
+
+        {/* Preset sats buttons */}
+        <div className="grid grid-cols-6 gap-2 px-4">
+          {presetAmounts.map(({ display, val }) => (
+            <Button variant="secondary" key={val} onClick={() => setSats(val)}>
+              {display}
+            </Button>
+          ))}
+        </div>
+
+        {/* Comment input */}
+        <div className="px-4">
+          <Label htmlFor="comment">{t('zapComment')}</Label>
+          <Input id="comment" value={comment} onChange={(e) => setComment(e.target.value)} />
+        </div>
       </div>
 
-      {/* Preset sats buttons */}
-      <div className="grid grid-cols-6 gap-2">
-        {presetAmounts.map(({ display, val }) => (
-          <Button variant="secondary" key={val} onClick={() => setSats(val)}>
-            {display}
-          </Button>
-        ))}
+      {/* Zap button - fixed at bottom */}
+      <div className="flex-shrink-0 bg-background pt-2 border-t border-border px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <Button onClick={handleZap} className="w-full">
+          {zapping && <Loader className="animate-spin" />} {t('Zap n sats', { n: sats })}
+        </Button>
       </div>
-
-      {/* Comment input */}
-      <div>
-        <Label htmlFor="comment">{t('zapComment')}</Label>
-        <Input id="comment" value={comment} onChange={(e) => setComment(e.target.value)} />
-      </div>
-
-      <Button onClick={handleZap}>
-        {zapping && <Loader className="animate-spin" />} {t('Zap n sats', { n: sats })}
-      </Button>
-    </>
+    </div>
   )
 }

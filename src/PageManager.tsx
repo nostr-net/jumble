@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import logger from '@/lib/logger'
 import { ChevronLeft } from 'lucide-react'
+import { NavigationService } from '@/services/navigation.service'
 import NoteListPage from '@/pages/primary/NoteListPage'
 import SecondaryNoteListPage from '@/pages/secondary/NoteListPage'
 // Page imports needed for primary note view
@@ -96,8 +97,8 @@ const PrimaryPageContext = createContext<TPrimaryPageContext | undefined>(undefi
 const SecondaryPageContext = createContext<TSecondaryPageContext | undefined>(undefined)
 
 const PrimaryNoteViewContext = createContext<{
-  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay') => void
-  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null
+  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings') => void
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings' | null
 } | undefined>(undefined)
 
 export function usePrimaryPage() {
@@ -139,30 +140,43 @@ export function useSmartNoteNavigation() {
   return { navigateToNote }
 }
 
-// Fixed: Relay navigation now uses primary note view since secondary panel is disabled
+// Fixed: Relay navigation now uses primary note view on mobile, secondary routing on desktop
 export function useSmartRelayNavigation() {
   const { setPrimaryNoteView } = usePrimaryNoteView()
+  const { push: pushSecondaryPage } = useSecondaryPage()
+  const { isSmallScreen } = useScreenSize()
   
   const navigateToRelay = (url: string) => {
-    // Use primary note view to show relay pages since secondary panel is disabled
-    // Extract relay URL from the URL (e.g., "/relays/wss://..." -> "wss://...")
-    const relayUrl = decodeURIComponent(url.replace('/relays/', ''))
-    window.history.pushState(null, '', url)
-    setPrimaryNoteView(<SecondaryRelayPage url={relayUrl} index={0} hideTitlebar={true} />, 'relay')
+    if (isSmallScreen) {
+      // Use primary note view on mobile
+      const relayUrl = decodeURIComponent(url.replace('/relays/', ''))
+      window.history.pushState(null, '', url)
+      setPrimaryNoteView(<SecondaryRelayPage url={relayUrl} index={0} hideTitlebar={true} />, 'relay')
+    } else {
+      // Use secondary routing on desktop
+      pushSecondaryPage(url)
+    }
   }
   
   return { navigateToRelay }
 }
 
-// Fixed: Profile navigation now uses primary note view since secondary panel is disabled
+// Fixed: Profile navigation now uses primary note view on mobile, secondary routing on desktop
 export function useSmartProfileNavigation() {
   const { setPrimaryNoteView } = usePrimaryNoteView()
+  const { push: pushSecondaryPage } = useSecondaryPage()
+  const { isSmallScreen } = useScreenSize()
   
   const navigateToProfile = (url: string) => {
-    // Use primary note view to show profiles since secondary panel is disabled
-    const profileId = url.replace('/users/', '')
-    window.history.pushState(null, '', url)
-    setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
+    if (isSmallScreen) {
+      // Use primary note view on mobile
+      const profileId = url.replace('/users/', '')
+      window.history.pushState(null, '', url)
+      setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
+    } else {
+      // Use secondary routing on desktop
+      pushSecondaryPage(url)
+    }
   }
   
   return { navigateToProfile }
@@ -181,42 +195,63 @@ export function useSmartHashtagNavigation() {
   return { navigateToHashtag }
 }
 
-// Fixed: Following list navigation now uses primary note view since secondary panel is disabled
+// Fixed: Following list navigation now uses primary note view on mobile, secondary routing on desktop
 export function useSmartFollowingListNavigation() {
   const { setPrimaryNoteView } = usePrimaryNoteView()
+  const { push: pushSecondaryPage } = useSecondaryPage()
+  const { isSmallScreen } = useScreenSize()
   
   const navigateToFollowingList = (url: string) => {
-    // Use primary note view to show following list since secondary panel is disabled
-    const profileId = url.replace('/users/', '').replace('/following', '')
-    window.history.pushState(null, '', url)
-    setPrimaryNoteView(<FollowingListPage id={profileId} index={0} hideTitlebar={true} />, 'profile')
+    if (isSmallScreen) {
+      // Use primary note view on mobile
+      const profileId = url.replace('/users/', '').replace('/following', '')
+      window.history.pushState(null, '', url)
+      setPrimaryNoteView(<FollowingListPage id={profileId} index={0} hideTitlebar={true} />, 'following')
+    } else {
+      // Use secondary routing on desktop
+      pushSecondaryPage(url)
+    }
   }
   
   return { navigateToFollowingList }
 }
 
-// Fixed: Mute list navigation now uses primary note view since secondary panel is disabled
+// Fixed: Mute list navigation now uses primary note view on mobile, secondary routing on desktop
 export function useSmartMuteListNavigation() {
   const { setPrimaryNoteView } = usePrimaryNoteView()
+  const { push: pushSecondaryPage } = useSecondaryPage()
+  const { isSmallScreen } = useScreenSize()
   
   const navigateToMuteList = (url: string) => {
-    // Use primary note view to show mute list since secondary panel is disabled
-    window.history.pushState(null, '', url)
-    setPrimaryNoteView(<MuteListPage index={0} hideTitlebar={true} />, 'settings')
+    if (isSmallScreen) {
+      // Use primary note view on mobile
+      window.history.pushState(null, '', url)
+      setPrimaryNoteView(<MuteListPage index={0} hideTitlebar={true} />, 'mute')
+    } else {
+      // Use secondary routing on desktop
+      pushSecondaryPage(url)
+    }
   }
   
   return { navigateToMuteList }
 }
 
-// Fixed: Others relay settings navigation now uses primary note view since secondary panel is disabled
+// Fixed: Others relay settings navigation now uses primary note view on mobile, secondary routing on desktop
 export function useSmartOthersRelaySettingsNavigation() {
   const { setPrimaryNoteView } = usePrimaryNoteView()
+  const { push: pushSecondaryPage } = useSecondaryPage()
+  const { isSmallScreen } = useScreenSize()
   
   const navigateToOthersRelaySettings = (url: string) => {
-    // Use primary note view to show others relay settings since secondary panel is disabled
-    const profileId = url.replace('/users/', '').replace('/relays', '')
-    window.history.pushState(null, '', url)
-    setPrimaryNoteView(<OthersRelaySettingsPage id={profileId} index={0} hideTitlebar={true} />, 'profile')
+    if (isSmallScreen) {
+      // Use primary note view on mobile
+      const profileId = url.replace('/users/', '').replace('/relays', '')
+      window.history.pushState(null, '', url)
+      setPrimaryNoteView(<OthersRelaySettingsPage id={profileId} index={0} hideTitlebar={true} />, 'others-relay-settings')
+    } else {
+      // Use secondary routing on desktop
+      pushSecondaryPage(url)
+    }
   }
   
   return { navigateToOthersRelaySettings }
@@ -255,29 +290,10 @@ export function useSmartSettingsNavigation() {
 // DEPRECATED: ConditionalHomePage removed - double-panel functionality disabled
 
 // Helper function to get page title based on view type and URL
-function getPageTitle(viewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null, pathname: string): string {
-  if (viewType === 'settings') return 'Settings'
-  if (viewType === 'settings-sub') {
-    if (pathname.includes('/general')) return 'General Settings'
-    if (pathname.includes('/relays')) return 'Relay Settings'
-    if (pathname.includes('/wallet')) return 'Wallet Settings'
-    if (pathname.includes('/posts')) return 'Post Settings'
-    if (pathname.includes('/translation')) return 'Translation Settings'
-    return 'Settings'
-  }
-  if (viewType === 'profile') {
-    if (pathname.includes('/following')) return 'Following'
-    if (pathname.includes('/relays')) return 'Relay Settings'
-    return 'Profile'
-  }
-  if (viewType === 'hashtag') return 'Hashtag'
-  if (viewType === 'relay') return 'Relay'
-  if (viewType === 'note') {
-    // For now, return a generic "Note" - this could be enhanced to detect specific types
-    // by fetching the event and checking its kind
-    return 'Note'
-  }
-  return 'Page'
+function getPageTitle(viewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings' | null, pathname: string): string {
+  // Create a temporary navigation service instance to use the getPageTitle method
+  const tempService = new NavigationService({ setPrimaryNoteView: () => {} })
+  return tempService.getPageTitle(viewType, pathname)
 }
 
 // DEPRECATED: Double-panel functionality removed - simplified to single column layout
@@ -291,7 +307,7 @@ function MainContentArea({
   primaryPages: { name: TPrimaryPageName; element: ReactNode; props?: any }[]
   currentPrimaryPage: TPrimaryPageName
   primaryNoteView: ReactNode | null
-  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null
+  primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings' | null
   goBack: () => void
 }) {
   logger.debug('MainContentArea rendering:', { 
@@ -379,10 +395,10 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   ])
   const [secondaryStack, setSecondaryStack] = useState<TStackItem[]>([])
   const [primaryNoteView, setPrimaryNoteViewState] = useState<ReactNode | null>(null)
-  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null>(null)
+  const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings' | null>(null)
   const [savedPrimaryPage, setSavedPrimaryPage] = useState<TPrimaryPageName | null>(null)
   
-  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay') => {
+  const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings') => {
     if (view && !primaryNoteView) {
       // Saving current primary page before showing overlay
       setSavedPrimaryPage(currentPrimaryPage)
@@ -403,6 +419,13 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     if (primaryViewType === 'settings-sub') {
       window.history.pushState(null, '', '/settings')
       setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
+    } else if (primaryViewType === 'following' || primaryViewType === 'mute' || primaryViewType === 'others-relay-settings') {
+      // Special handling for profile sub-pages - go back to main profile page
+      const currentPath = window.location.pathname
+      const profileId = currentPath.replace('/users/', '').replace('/following', '').replace('/muted', '').replace('/relays', '')
+      const profileUrl = `/users/${profileId}`
+      window.history.pushState(null, '', profileUrl)
+      setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
     } else {
       // Use browser's back functionality for other pages
       window.history.back()
@@ -553,8 +576,14 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     }
   }, [])
 
+
   const navigatePrimaryPage = (page: TPrimaryPageName, props?: any) => {
     const needScrollToTop = page === currentPrimaryPage
+    
+    // Clear any primary note view when navigating to a new primary page
+    setPrimaryNoteView(null)
+    
+    // Update primary pages and current page
     setPrimaryPages((prev) => {
       const exists = prev.find((p) => p.name === page)
       if (exists && props) {
@@ -567,9 +596,6 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     })
     setCurrentPrimaryPage(page)
     
-    // Clear any primary note view when navigating to a new primary page
-    setPrimaryNoteView(null)
-    
     // Update URL for primary pages (except home)
     const newUrl = page === 'home' ? '/' : `/?page=${page}`
     window.history.pushState(null, '', newUrl)
@@ -577,10 +603,15 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
     if (needScrollToTop) {
       PRIMARY_PAGE_REF_MAP[page].current?.scrollToTop('smooth')
     }
-    if (isSmallScreen) {
+    
+    // Always clear secondary pages when navigating to home (escape hatch behavior)
+    if (page === 'home') {
+      clearSecondaryPages()
+    } else if (isSmallScreen) {
       clearSecondaryPages()
     }
   }
+
 
   const pushSecondaryPage = (url: string, index?: number) => {
     setSecondaryStack((prevStack) => {

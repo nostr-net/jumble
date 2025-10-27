@@ -1,6 +1,6 @@
 {
-  "name": "jumble",
-  "version": "10.13.0",
+  "name": "jumble-imwald",
+  "version": "10.14.0",
   "description": "A user-friendly Nostr client focused on relay feed browsing and relay discovery, forked from Jumble",
   "private": true,
   "type": "module",

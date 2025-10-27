@@ -37,7 +37,7 @@ type TRootInfo =
 const LIMIT = 100
 const SHOW_COUNT = 10
 
-function ReplyNoteList({ index: _index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
+function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
   console.log('[ReplyNoteList] Component rendered for event:', event.id.substring(0, 8))
   
   const { t } = useTranslation()
@@ -304,8 +304,6 @@ function ReplyNoteList({ index: _index, event, sort = 'oldest' }: { index?: numb
             
             // For replies, always use a comprehensive relay list to ensure we find replies
             // Don't rely on currentFeedRelays as it might be limited to a single relay
-            let finalRelayUrls: string[]
-            
             console.log('[ReplyNoteList] Current feed relays:', currentFeedRelays)
             
             // Always build comprehensive relay list for replies to ensure we find them
@@ -320,7 +318,7 @@ function ReplyNoteList({ index: _index, event, sort = 'oldest' }: { index?: numb
               ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url),
             ]
             
-            finalRelayUrls = Array.from(new Set(allRelays.filter(Boolean)))
+            const finalRelayUrls = Array.from(new Set(allRelays.filter(Boolean)))
             console.log('[ReplyNoteList] Using comprehensive relay list for replies:', finalRelayUrls)
             
             logger.debug('[ReplyNoteList] Fetching replies for event:', {

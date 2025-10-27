@@ -68,7 +68,7 @@ export default function TrendingNotes() {
     logger.debug('[TrendingNotes] calculatePopularHashtags - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
     
     // Use cache events if available, otherwise fallback to trending notes
-    let eventsToAnalyze = cacheEvents.length > 0 ? cacheEvents : trendingNotes
+    const eventsToAnalyze = cacheEvents.length > 0 ? cacheEvents : trendingNotes
     
     if (eventsToAnalyze.length === 0) {
       return []
@@ -364,7 +364,7 @@ export default function TrendingNotes() {
     }
 
     initializeCache()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []) // Only run once on mount to prevent infinite loop
 
   const filteredEvents = useMemo(() => {
@@ -385,7 +385,7 @@ export default function TrendingNotes() {
     }
     
     
-    let filtered = sourceEvents.filter((evt) => {
+    const filtered = sourceEvents.filter((evt) => {
       if (isEventDeleted(evt)) return false
       if (hideUntrustedNotes && !isUserTrusted(evt.pubkey)) return false
 
