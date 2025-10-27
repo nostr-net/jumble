@@ -1,10 +1,10 @@
-import { forwardRef, useEffect, useState, useCallback, useMemo } from 'react'
+import { forwardRef, useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw } from 'lucide-react'
 import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { normalizeUrl } from '@/lib/url'
-import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
+import { FAST_READ_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
 import { Event } from 'nostr-tools'
 import { kinds } from 'nostr-tools'
@@ -44,10 +44,7 @@ const SimpleNoteFeed = forwardRef<
     const allRelays = [
       ...(myRelayList.read || []), // User's inboxes (kind 10002)
       ...(myRelayList.write || []), // User's outboxes (kind 10002)
-      ...(favoriteRelays || []), // User's favorite relays (kind 10012)
-      ...BIG_RELAY_URLS,         // Big relays
       ...FAST_READ_RELAY_URLS,   // Fast read relays
-      ...FAST_WRITE_RELAY_URLS   // Fast write relays
     ]
     
     // Normalize and deduplicate relay URLs
@@ -61,15 +58,17 @@ const SimpleNoteFeed = forwardRef<
 
   // Fetch events using the same pattern as Discussions
   const fetchEvents = useCallback(async () => {
-    if (loading && !isRefreshing) return
+    if (isRefreshing) return
     setLoading(true)
     setIsRefreshing(true)
     
     try {
+      console.log('🔄 [SimpleNoteFeed] Starting fetch...', { authors, kinds: requestedKinds, limit })
       logger.debug('[SimpleNoteFeed] Fetching events...', { authors, kinds: requestedKinds, limit })
       
       // Get comprehensive relay list
       const allRelays = await buildComprehensiveRelayList()
+      console.log('📡 [SimpleNoteFeed] Using relays:', allRelays.length)
       
       // Build filter
       const filter: any = {
@@ -81,15 +80,31 @@ const SimpleNoteFeed = forwardRef<
         filter.authors = authors
       }
       
+      console.log('🔍 [SimpleNoteFeed] Using filter:', filter)
       logger.debug('[SimpleNoteFeed] Using filter:', filter)
       
       // Fetch events
+      console.log('⏳ [SimpleNoteFeed] Calling client.fetchEvents...')
       const fetchedEvents = await client.fetchEvents(allRelays, [filter])
       
+      console.log('✅ [SimpleNoteFeed] Fetched', fetchedEvents.length, 'events')
       logger.debug('[SimpleNoteFeed] Fetched', fetchedEvents.length, 'events')
       
+      // Deduplicate events by ID (same event might come from different relays)
+      const seenIds = new Set<string>()
+      const uniqueEvents = fetchedEvents.filter(event => {
+        if (seenIds.has(event.id)) {
+          return false
+        }
+        seenIds.add(event.id)
+        return true
+      })
+      
+      console.log('🔗 [SimpleNoteFeed] Deduplicated to', uniqueEvents.length, 'unique events')
+      logger.debug('[SimpleNoteFeed] Deduplicated to', uniqueEvents.length, 'unique events')
+      
       // Filter events (basic filtering)
-      const filteredEvents = fetchedEvents.filter(event => {
+      const filteredEvents = uniqueEvents.filter(event => {
         // Skip deleted events
         if (event.content === '') return false
         
@@ -101,16 +116,18 @@ const SimpleNoteFeed = forwardRef<
         return true
       })
       
+      console.log('🎯 [SimpleNoteFeed] Filtered to', filteredEvents.length, 'events')
       logger.debug('[SimpleNoteFeed] Filtered to', filteredEvents.length, 'events')
       
       setEvents(filteredEvents)
     } catch (error) {
+      console.error('❌ [SimpleNoteFeed] Error fetching events:', error)
       logger.error('[SimpleNoteFeed] Error fetching events:', error)
     } finally {
       setLoading(false)
       setIsRefreshing(false)
     }
-  }, [authors, requestedKinds, limit, hideReplies, buildComprehensiveRelayList, loading, isRefreshing])
+  }, [authors, requestedKinds, limit, hideReplies, buildComprehensiveRelayList, isRefreshing])
 
   // Initial fetch
   useEffect(() => {

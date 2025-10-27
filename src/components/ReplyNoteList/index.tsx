@@ -252,26 +252,23 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
   }, [rootInfo, onNewReply])
 
   useEffect(() => {
-    if (loading || !rootInfo || currentIndex !== index) return
+    if (!rootInfo || currentIndex !== index) return
 
-        const init = async () => {
-          setLoading(true)
+    const init = async () => {
+      setLoading(true)
+      logger.debug('[ReplyNoteList] Fetching replies for root:', rootInfo)
 
-          try {
-            
-            // Privacy: Only use user's own relays + defaults, never connect to other users' relays
-            const userReadRelays = userRelayList?.read || []
-            const userWriteRelays = userRelayList?.write || []
-            const finalRelayUrls = Array.from(new Set([
-              ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
-              ...userReadRelays.map(url => normalizeUrl(url) || url), // User's read relays
-              ...userWriteRelays.map(url => normalizeUrl(url) || url) // User's write relays
-            ]))
-            
+      try {
+        // Privacy: Only use user's own relays + defaults, never connect to other users' relays
+        const userReadRelays = userRelayList?.read || []
+        const userWriteRelays = userRelayList?.write || []
+        const finalRelayUrls = Array.from(new Set([
+          ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
+          ...userReadRelays.map(url => normalizeUrl(url) || url), // User's read relays
+          ...userWriteRelays.map(url => normalizeUrl(url) || url) // User's write relays
+        ]))
 
-        const filters: (Omit<Filter, 'since' | 'until'> & {
-          limit: number
-        })[] = []
+        const filters: Filter[] = []
         if (rootInfo.type === 'E') {
           // Fetch all reply types for event-based replies
           filters.push({
@@ -312,55 +309,27 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
           }
         }
 
+        logger.debug('[ReplyNoteList] Using filters:', filters)
+        logger.debug('[ReplyNoteList] Using relays:', finalRelayUrls.length)
 
+        // Use fetchEvents instead of subscribeTimeline for one-time fetching
+        const allReplies = await client.fetchEvents(finalRelayUrls, filters)
         
-        const { closer, timelineKey } = await client.subscribeTimeline(
-          filters.map((filter) => ({
-            urls: finalRelayUrls, // Use all relays, don't slice
-            filter
-          })),
-          {
-              onEvents: (evts, eosed) => {
-                if (evts.length > 0) {
-                  const regularReplies = evts.filter((evt) => isReplyNoteEvent(evt))
-                  addReplies(regularReplies)
-                }
-              if (eosed) {
-                setUntil(evts.length >= LIMIT ? evts[evts.length - 1].created_at - 1 : undefined)
-                setLoading(false)
-              }
-            },
-            onNew: (evt) => {
-              if (isReplyNoteEvent(evt)) {
-                addReplies([evt])
-              }
-            }
-          }
-        )
+        logger.debug('[ReplyNoteList] Fetched', allReplies.length, 'replies')
         
-        // Add a fallback timeout to prevent infinite loading
-        const fallbackTimeout = setTimeout(() => {
-          if (loading) {
-            setLoading(false)
-            logger.debug('Reply loading timeout - stopping after 8 seconds')
-          }
-        }, 8000)
-        setTimelineKey(timelineKey)
-        return () => {
-          clearTimeout(fallbackTimeout)
-          closer?.()
-        }
-      } catch {
+        // Filter and add replies
+        const regularReplies = allReplies.filter((evt) => isReplyNoteEvent(evt))
+        addReplies(regularReplies)
+        
+        setLoading(false)
+      } catch (error) {
+        logger.error('[ReplyNoteList] Error fetching replies:', error)
         setLoading(false)
       }
-      return
     }
 
-    const promise = init()
-    return () => {
-      promise.then((closer) => closer?.())
-    }
-  }, [rootInfo, currentIndex, index, onNewReply])
+    init()
+  }, [rootInfo, currentIndex, index])
 
   useEffect(() => {
     if (replies.length === 0 && !loading && timelineKey) {

@@ -38,7 +38,6 @@ export default function DiscussionNoteStats({
             loading ? 'animate-pulse' : '',
             classNames?.buttonBar
           )}
-          onClick={(e) => e.stopPropagation()}
         >
           <VoteButtons event={event} />
         </div>
@@ -51,10 +50,9 @@ export default function DiscussionNoteStats({
       <div className="flex justify-between h-5 [&_svg]:size-4">
         <div
           className={cn('flex items-center gap-2', loading ? 'animate-pulse' : '')}
-          onClick={(e) => e.stopPropagation()}
         >
         </div>
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2">
           <VoteButtons event={event} />
         </div>
       </div>

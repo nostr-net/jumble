@@ -215,7 +215,10 @@ const NoteList = forwardRef(
       refreshCount 
     })
     logger.debug('NoteList useEffect:', { subRequests, subRequestsLength: subRequests.length })
-    if (!subRequests.length) return
+    if (!subRequests.length) {
+      console.log('❌ [NoteList] No subRequests, returning early')
+      return
+    }
 
     async function init() {
         console.log('🔄 [NoteList] Initializing feed...')

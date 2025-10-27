@@ -79,7 +79,6 @@ export default function NoteStats({
             loading ? 'animate-pulse' : '',
             classNames?.buttonBar
           )}
-          onClick={(e) => e.stopPropagation()}
         >
           <ReplyButton event={event} />
           {!isDiscussion && !isReplyToDiscussion && <RepostButton event={event} />}
@@ -103,14 +102,13 @@ export default function NoteStats({
       <div className="flex justify-between h-5 [&_svg]:size-4">
         <div
           className={cn('flex items-center', loading ? 'animate-pulse' : '')}
-          onClick={(e) => e.stopPropagation()}
         >
           <ReplyButton event={event} />
           {!isDiscussion && !isReplyToDiscussion && <RepostButton event={event} />}
           <LikeButton event={event} />
           <ZapButton event={event} />
         </div>
-        <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center">
           <BookmarkButton event={event} />
           <SeenOnButton event={event} />
         </div>
