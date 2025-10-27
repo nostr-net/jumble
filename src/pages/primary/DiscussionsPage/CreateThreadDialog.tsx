@@ -9,7 +9,8 @@ import { Slider } from '@/components/ui/slider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book, Network, Car, Eye, Edit3 } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Hash, X, Users, Code, Coins, Newspaper, BookOpen, Scroll, Cpu, Trophy, Film, Heart, TrendingUp, Utensils, MapPin, Home, PawPrint, Shirt, Image, Zap, Settings, Book, Network, Car, Eye, Edit3, ChevronDown, Check } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
@@ -114,19 +115,20 @@ export default function CreateThreadDialog({
   const [minPow, setMinPow] = useState(0)
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
   const [isLoadingRelays, setIsLoadingRelays] = useState(true)
-  
+  const [isTopicSelectorOpen, setIsTopicSelectorOpen] = useState(false)
+
   // Readings options state
   const [isReadingGroup, setIsReadingGroup] = useState(false)
   const [author, setAuthor] = useState('')
   const [subject, setSubject] = useState('')
   const [showReadingsPanel, setShowReadingsPanel] = useState(false)
 
-  // Create combined topics list (predefined + dynamic)
+  // Create combined topics list (predefined + dynamic) with hierarchy
   const allAvailableTopics = useMemo(() => {
     const combined = [...DISCUSSION_TOPICS]
     
     if (dynamicTopics) {
-      // Add dynamic main topics
+      // Add dynamic main topics first
       dynamicTopics.mainTopics.forEach(dynamicTopic => {
         combined.push({
           id: dynamicTopic.id,
@@ -135,13 +137,56 @@ export default function CreateThreadDialog({
         })
       })
       
-      // Add dynamic subtopics
+      // Add dynamic subtopics grouped under their main topics
       dynamicTopics.subtopics.forEach(dynamicTopic => {
-        combined.push({
-          id: dynamicTopic.id,
-          label: `${dynamicTopic.label} (${dynamicTopic.count}) 📌`,
-          icon: Hash // Use Hash icon for dynamic topics
-        })
+        // Try to find a related main topic
+        const predefinedMainTopic = DISCUSSION_TOPICS.find(pt => 
+          dynamicTopic.id.toLowerCase().includes(pt.id.toLowerCase()) || 
+          pt.id.toLowerCase().includes(dynamicTopic.id.toLowerCase())
+        )
+        
+        const relatedDynamicMainTopic = dynamicTopics.mainTopics.find(dt => 
+          dynamicTopic.id.toLowerCase().includes(dt.id.toLowerCase()) || 
+          dt.id.toLowerCase().includes(dynamicTopic.id.toLowerCase())
+        )
+        
+        const parentTopic = predefinedMainTopic?.id || relatedDynamicMainTopic?.id
+        
+        if (parentTopic) {
+          // Find the index of the parent topic and insert after it
+          const parentIndex = combined.findIndex(topic => topic.id === parentTopic)
+          if (parentIndex !== -1) {
+            combined.splice(parentIndex + 1, 0, {
+              id: dynamicTopic.id,
+              label: `  └─ ${dynamicTopic.label} (${dynamicTopic.count}) 📌`,
+              icon: Hash // Use Hash icon for dynamic topics
+            })
+          } else {
+            // Fallback: add at the end if parent not found
+            combined.push({
+              id: dynamicTopic.id,
+              label: `${dynamicTopic.label} (${dynamicTopic.count}) 📌`,
+              icon: Hash // Use Hash icon for dynamic topics
+            })
+          }
+        } else {
+          // No parent found, group under "General"
+          const generalIndex = combined.findIndex(topic => topic.id === 'general')
+          if (generalIndex !== -1) {
+            combined.splice(generalIndex + 1, 0, {
+              id: dynamicTopic.id,
+              label: `  └─ ${dynamicTopic.label} (${dynamicTopic.count}) 📌`,
+              icon: Hash // Use Hash icon for dynamic topics
+            })
+          } else {
+            // Fallback: add at the end if General not found
+            combined.push({
+              id: dynamicTopic.id,
+              label: `${dynamicTopic.label} (${dynamicTopic.count}) 📌`,
+              icon: Hash // Use Hash icon for dynamic topics
+            })
+          }
+        }
       })
     }
     
@@ -270,13 +315,70 @@ export default function CreateThreadDialog({
       
       // Only add topic tag if it's a specific topic (not 'all' or 'general')
       if (selectedTopic !== 'all' && selectedTopic !== 'general') {
-        tags.push(['t', normalizeTopic(selectedTopic)])
+        // Check if this is a dynamic subtopic
+        const selectedDynamicTopic = dynamicTopics?.allTopics.find(dt => dt.id === selectedTopic)
+        
+        if (selectedDynamicTopic?.isSubtopic) {
+          // For subtopics, we need to find the parent main topic
+          // First, try to find a predefined main topic that might be related
+          const predefinedMainTopic = DISCUSSION_TOPICS.find(pt => 
+            selectedTopic.toLowerCase().includes(pt.id.toLowerCase()) || 
+            pt.id.toLowerCase().includes(selectedTopic.toLowerCase())
+          )
+          
+          if (predefinedMainTopic) {
+            // Add the predefined main topic first, then the subtopic
+            tags.push(['t', normalizeTopic(predefinedMainTopic.id)])
+            tags.push(['t', normalizeTopic(selectedTopic)])
+          } else {
+            // If no predefined main topic found, try to find a dynamic main topic
+            const relatedDynamicMainTopic = dynamicTopics?.mainTopics.find(dt => 
+              selectedTopic.toLowerCase().includes(dt.id.toLowerCase()) || 
+              dt.id.toLowerCase().includes(selectedTopic.toLowerCase())
+            )
+            
+            if (relatedDynamicMainTopic) {
+              // Add the dynamic main topic first, then the subtopic
+              tags.push(['t', normalizeTopic(relatedDynamicMainTopic.id)])
+              tags.push(['t', normalizeTopic(selectedTopic)])
+            } else {
+              // Fallback: just add the subtopic and let the system categorize it under 'general'
+              // Don't add 'general' as a t-tag since it's the default fallback
+              tags.push(['t', normalizeTopic(selectedTopic)])
+            }
+          }
+        } else {
+          // Regular topic (predefined or dynamic main topic)
+          tags.push(['t', normalizeTopic(selectedTopic)])
+        }
       }
       
-      // Add hashtags as t-tags (deduplicate with selectedTopic if it's not 'all' or 'general')
-      const uniqueHashtags = (selectedTopic !== 'all' && selectedTopic !== 'general')
-        ? hashtags.filter(hashtag => hashtag !== normalizeTopic(selectedTopic))
-        : hashtags
+      // Add hashtags as t-tags (deduplicate with selectedTopic and any parent topics)
+      let uniqueHashtags = hashtags
+      if (selectedTopic !== 'all' && selectedTopic !== 'general') {
+        const selectedDynamicTopic = dynamicTopics?.allTopics.find(dt => dt.id === selectedTopic)
+        
+        if (selectedDynamicTopic?.isSubtopic) {
+          // For subtopics, deduplicate against both the subtopic and its potential parent
+          const predefinedMainTopic = DISCUSSION_TOPICS.find(pt => 
+            selectedTopic.toLowerCase().includes(pt.id.toLowerCase()) || 
+            pt.id.toLowerCase().includes(selectedTopic.toLowerCase())
+          )
+          const relatedDynamicMainTopic = dynamicTopics?.mainTopics.find(dt => 
+            selectedTopic.toLowerCase().includes(dt.id.toLowerCase()) || 
+            dt.id.toLowerCase().includes(selectedTopic.toLowerCase())
+          )
+          
+          const parentTopic = predefinedMainTopic?.id || relatedDynamicMainTopic?.id
+          uniqueHashtags = hashtags.filter(hashtag => 
+            hashtag !== normalizeTopic(selectedTopic) && 
+            (parentTopic ? hashtag !== normalizeTopic(parentTopic) : true)
+          )
+        } else {
+          // Regular topic
+          uniqueHashtags = hashtags.filter(hashtag => hashtag !== normalizeTopic(selectedTopic))
+        }
+      }
       for (const hashtag of uniqueHashtags) {
         tags.push(['t', hashtag])
       }
@@ -395,18 +497,49 @@ export default function CreateThreadDialog({
             {/* Topic Selection */}
             <div className="space-y-2">
               <Label htmlFor="topic">{t('Topic')}</Label>
-              <select
-                id="topic"
-                value={selectedTopic}
-                onChange={(e) => setSelectedTopic(e.target.value)}
-                className="w-full px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {allAvailableTopics.map((topic) => (
-                  <option key={topic.id} value={topic.id}>
-                    {topic.label}
-                  </option>
-                ))}
-              </select>
+              <Popover open={isTopicSelectorOpen} onOpenChange={setIsTopicSelectorOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={isTopicSelectorOpen}
+                    className="w-full justify-between"
+                  >
+                    {selectedTopicInfo?.label || t('Select topic...')}
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent 
+                  className="w-[--radix-popover-trigger-width] p-2 z-[10000]" 
+                  align="start"
+                  side="bottom"
+                  sideOffset={4}
+                >
+                  <div className="max-h-60 overflow-y-auto">
+                    {allAvailableTopics.map((topic) => {
+                      const Icon = topic.icon
+                      return (
+                        <div
+                          key={topic.id}
+                          className="flex items-center p-2 hover:bg-accent cursor-pointer rounded"
+                          onClick={() => {
+                            setSelectedTopic(topic.id)
+                            setIsTopicSelectorOpen(false)
+                          }}
+                        >
+                          <Check
+                            className={`mr-2 h-4 w-4 ${
+                              selectedTopic === topic.id ? 'opacity-100' : 'opacity-0'
+                            }`}
+                          />
+                          <Icon className="mr-2 h-4 w-4" />
+                          {topic.label}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <p className="text-sm text-muted-foreground">
                 {t('Threads are organized by topics. Choose a topic that best fits your discussion.')}
               </p>

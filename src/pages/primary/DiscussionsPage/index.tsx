@@ -14,6 +14,7 @@ import client from '@/services/client.service'
 import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 import ThreadCard from './ThreadCard'
 import CreateThreadDialog from './CreateThreadDialog'
+import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
 
 // Simple event map type
 type EventMapEntry = {
@@ -271,7 +272,17 @@ function getEnhancedTopicFromTags(allTopics: string[], predefinedTopicIds: strin
   return 'general'
 }
 
-const DiscussionsPage = forwardRef(() => {
+function DiscussionsPageTitlebar() {
+  const { t } = useTranslation()
+  
+  return (
+    <div className="flex items-center gap-2">
+      <h1 className="text-lg font-semibold">{t('Discussions')}</h1>
+    </div>
+  )
+}
+
+const DiscussionsPage = forwardRef((_, ref) => {
   const { t } = useTranslation()
   const { favoriteRelays, blockedRelays } = useFavoriteRelays()
   const { pubkey } = useNostr()
@@ -625,43 +636,45 @@ const DiscussionsPage = forwardRef(() => {
     }>()
     
     searchedEntries.forEach((entry) => {
-      const mainTopic = entry.categorizedTopic
-      
-      // Initialize main topic group if it doesn't exist
-      if (!mainTopicGroups.has(mainTopic)) {
-        mainTopicGroups.set(mainTopic, {
-          entries: [],
-          subtopics: new Map()
-        })
-      }
-      
-      const group = mainTopicGroups.get(mainTopic)!
-      
       // Check if this entry has any dynamic subtopics
       const entrySubtopics = entry.allTopics.filter(topic => {
         const dynamicTopic = dynamicTopics.allTopics.find(dt => dt.id === topic && dt.isSubtopic)
         return !!dynamicTopic
       })
       
-      // Debug logging for subtopic detection
-      // if (entrySubtopics.length > 0) {
-      //   console.log('Found subtopics for entry:', {
-      //     threadId: entry.event.id.substring(0, 8),
-      //     allTopics: entry.allTopics,
-      //     entrySubtopics,
-      //     dynamicTopics: dynamicTopics.allTopics.map(dt => ({ id: dt.id, isSubtopic: dt.isSubtopic }))
-      //   })
-      // }
-      
       if (entrySubtopics.length > 0) {
-        // Group under the first subtopic found
+        // This entry has subtopics - group under the main topic with the subtopic
+        const mainTopic = entry.categorizedTopic
         const subtopic = entrySubtopics[0]
+        
+        // Initialize main topic group if it doesn't exist
+        if (!mainTopicGroups.has(mainTopic)) {
+          mainTopicGroups.set(mainTopic, {
+            entries: [],
+            subtopics: new Map()
+          })
+        }
+        
+        const group = mainTopicGroups.get(mainTopic)!
+        
+        // Add to subtopic group
         if (!group.subtopics.has(subtopic)) {
           group.subtopics.set(subtopic, [])
         }
         group.subtopics.get(subtopic)!.push(entry)
       } else {
         // No subtopic, add to main topic
+        const mainTopic = entry.categorizedTopic
+        
+        // Initialize main topic group if it doesn't exist
+        if (!mainTopicGroups.has(mainTopic)) {
+          mainTopicGroups.set(mainTopic, {
+            entries: [],
+            subtopics: new Map()
+          })
+        }
+        
+        const group = mainTopicGroups.get(mainTopic)!
         group.entries.push(entry)
       }
     })
@@ -688,16 +701,13 @@ const DiscussionsPage = forwardRef(() => {
       group.subtopics.forEach((entries) => sortEntries(entries))
     })
     
-    // Convert to array format for rendering with proper hierarchy
-    const result: Array<[string, EventMapEntry[], Map<string, EventMapEntry[]>]> = []
-    
-    mainTopicGroups.forEach((group, mainTopic) => {
-      // Add main topic with its subtopics
-      result.push([mainTopic, group.entries, group.subtopics])
-    })
-    
     // Sort groups by most recent activity (newest first)
-    result.sort(([, aEntries], [, bEntries]) => {
+    const sortedGroups = new Map<string, { entries: EventMapEntry[], subtopics: Map<string, EventMapEntry[]> }>()
+    
+    const sortedEntries = Array.from(mainTopicGroups.entries()).sort(([, aGroup], [, bGroup]) => {
+      const aEntries = aGroup.entries
+      const bEntries = bGroup.entries
+      
       if (aEntries.length === 0 && bEntries.length === 0) return 0
       if (aEntries.length === 0) return 1
       if (bEntries.length === 0) return -1
@@ -716,7 +726,11 @@ const DiscussionsPage = forwardRef(() => {
       return bMostRecent - aMostRecent // Newest first
     })
     
-    return result
+    sortedEntries.forEach(([topic, group]) => {
+      sortedGroups.set(topic, group)
+    })
+    
+    return sortedGroups
   }, [searchedEntries, dynamicTopics])
   
   // Handle refresh
@@ -772,11 +786,14 @@ const DiscussionsPage = forwardRef(() => {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex flex-col gap-4 p-4 border-b">
+    <PrimaryPageLayout
+      ref={ref}
+      pageName="discussions"
+      titlebar={<DiscussionsPageTitlebar />}
+      displayScrollToTopButton
+    >
+      <div className="flex flex-col gap-4 p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h1 className="text-2xl font-bold">{t('Discussions')}</h1>
           <button
             onClick={() => setShowCreateDialog(true)}
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 w-full sm:w-auto"
@@ -845,35 +862,32 @@ const DiscussionsPage = forwardRef(() => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-2 sm:p-4">
+      <div className="p-2 sm:p-4 pb-20 sm:pb-4">
         {loading ? (
           <div className="text-center py-8">{t('Loading...')}</div>
         ) : isSearching ? (
           <div className="text-center py-8">{t('Searching...')}</div>
         ) : (
-          <div className="space-y-6">
-            {groupedEvents.map(([topic, events, subtopics]) => {
-              const topicInfo = availableTopics.find(t => t.topic === topic)
+          <div className="space-y-6 pb-8">
+            {Array.from(groupedEvents.entries()).map(([mainTopic, group]) => {
+              const topicInfo = availableTopics.find(t => t.topic === mainTopic)
               const isDynamicMain = topicInfo?.isDynamic && topicInfo?.isMainTopic
-              const isDynamicSubtopic = topicInfo?.isDynamic && topicInfo?.isSubtopic
               
               return (
-                <div key={topic} className="space-y-4">
+                <div key={mainTopic} className="space-y-4">
                   {/* Main Topic Header */}
                   <h2 className="text-lg font-semibold mb-3 capitalize flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                     <span className="flex items-center gap-2">
                       {isDynamicMain && <span className="text-orange-500">🔥</span>}
-                      {isDynamicSubtopic && <span className="text-blue-500">📌</span>}
-                      {topic} ({events.length} {events.length === 1 ? t('thread') : t('threads')})
+                      {mainTopic} ({group.entries.length + Array.from(group.subtopics.values()).reduce((sum, events) => sum + events.length, 0)} {group.entries.length + Array.from(group.subtopics.values()).reduce((sum, events) => sum + events.length, 0) === 1 ? t('thread') : t('threads')})
                     </span>
                     {isDynamicMain && <span className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 px-2 py-1 rounded w-fit">Main Topic</span>}
-                    {isDynamicSubtopic && <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded w-fit">Subtopic</span>}
                   </h2>
                   
                   {/* Main Topic Threads */}
-                  {events.length > 0 && (
+                  {group.entries.length > 0 && (
                     <div className="space-y-3">
-                      {events.map((entry) => (
+                      {group.entries.map((entry) => (
                         <ThreadCard
                           key={entry.event.id}
                           thread={entry.event}
@@ -888,9 +902,9 @@ const DiscussionsPage = forwardRef(() => {
                   )}
                   
                   {/* Subtopic Groups */}
-                  {subtopics.size > 0 && (
+                  {group.subtopics.size > 0 && (
                     <div className="ml-2 sm:ml-4 space-y-4">
-                      {Array.from(subtopics.entries()).map(([subtopic, subtopicEvents]) => {
+                      {Array.from(group.subtopics.entries()).map(([subtopic, subtopicEvents]) => {
                         const subtopicInfo = availableTopics.find(t => t.topic === subtopic)
                         const isSubtopicDynamic = subtopicInfo?.isDynamic && subtopicInfo?.isSubtopic
                         
@@ -939,7 +953,7 @@ const DiscussionsPage = forwardRef(() => {
           onThreadCreated={handleCreateThread} 
         />
       )}
-    </div>
+    </PrimaryPageLayout>
   )
 })
 

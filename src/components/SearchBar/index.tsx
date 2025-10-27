@@ -282,7 +282,7 @@ const SearchBar = forwardRef<
             className={cn(
               'bg-surface-background rounded-b-lg shadow-lg z-50',
               isSmallScreen
-                ? 'fixed top-12 inset-x-0'
+                ? 'absolute top-full -translate-y-1 inset-x-0 pt-1'
                 : 'absolute top-full -translate-y-1 inset-x-0 pt-1 '
             )}
             onMouseDown={(e) => e.preventDefault()}
