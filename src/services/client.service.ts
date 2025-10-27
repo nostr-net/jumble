@@ -623,6 +623,11 @@ class ClientService extends EventTarget {
               } else if (eosedCount >= threshold) {
                 clearTimeout(globalTimeout)
                 onEvents(events, eosedCount >= requestCount)
+              } else if (eosedCount >= requestCount && !hasCalledOnEvents) {
+                // All relays have finished but no events received - call onEvents to stop loading
+                hasCalledOnEvents = true
+                clearTimeout(globalTimeout)
+                onEvents(events, true)
               }
             },
             onNew: (evt) => {

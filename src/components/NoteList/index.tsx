@@ -219,6 +219,12 @@ const NoteList = forwardRef(
       console.log('❌ [NoteList] No subRequests, returning early')
       return
     }
+    
+    // Don't initialize if showKinds is empty (still loading from provider)
+    if (showKinds.length === 0) {
+      console.log('⏳ [NoteList] showKinds is empty, waiting for provider to initialize')
+      return
+    }
 
     async function init() {
         console.log('🔄 [NoteList] Initializing feed...')

@@ -175,7 +175,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
         return replyEvents.sort((a, b) => b.created_at - a.created_at)
     }
   }, [event.id, repliesMap, mutePubkeySet, hideContentMentioningMutedUsers, sort])
-  const [timelineKey, setTimelineKey] = useState<string | undefined>(undefined)
+  const [timelineKey] = useState<string | undefined>(undefined)
   const [until, setUntil] = useState<number | undefined>(undefined)
   const [loading, setLoading] = useState<boolean>(false)
   const [showCount, setShowCount] = useState(SHOW_COUNT)

@@ -3,7 +3,7 @@ import { checkAlgoRelay } from '@/lib/relay'
 import logger from '@/lib/logger'
 import { useFeed } from '@/providers/FeedProvider'
 import relayInfoService from '@/services/relay-info.service'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 export default function RelaysFeed() {
   logger.debug('RelaysFeed component rendering')
@@ -27,6 +27,9 @@ export default function RelaysFeed() {
     init()
   }, [relayUrls])
 
+  // Memoize subRequests before any early returns to avoid Rules of Hooks violation
+  const subRequests = useMemo(() => [{ urls: relayUrls, filter: {} }], [relayUrls])
+
   if (!isReady) {
     return null
   }
@@ -34,8 +37,6 @@ export default function RelaysFeed() {
   if (feedInfo.feedType !== 'relay' && feedInfo.feedType !== 'relays' && feedInfo.feedType !== 'all-favorites') {
     return null
   }
-
-  const subRequests = [{ urls: relayUrls, filter: {} }]
   console.log('[RelaysFeed] Rendering NormalFeed with:', { subRequests, relayUrls, areAlgoRelays })
 
   return (
