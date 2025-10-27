@@ -145,6 +145,8 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       setRelayUrls([normalizedUrl])
       console.log('[FeedProvider] Set relayUrls to:', [normalizedUrl])
       storage.setFeedInfo(newFeedInfo, pubkey)
+      // Reset note list mode to 'posts' when switching to relay feed to ensure main content is shown
+      storage.setNoteListMode('posts')
       setIsReady(true)
       console.log('[FeedProvider] Relay feed setup complete, isReady set to true')
       return
@@ -175,6 +177,8 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
         feedInfoRef.current = newFeedInfo
         setRelayUrls(relaySet.relayUrls)
         storage.setFeedInfo(newFeedInfo, pubkey)
+        // Reset note list mode to 'posts' when switching to relay set to ensure main content is shown
+        storage.setNoteListMode('posts')
         setIsReady(true)
       }
       setIsReady(true)
@@ -207,6 +211,8 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       feedInfoRef.current = newFeedInfo
       setRelayUrls(finalRelays)
       storage.setFeedInfo(newFeedInfo, pubkey)
+      // Reset note list mode to 'posts' when switching to all-favorites to ensure main content is shown
+      storage.setNoteListMode('posts')
       setIsReady(true)
       return
     }

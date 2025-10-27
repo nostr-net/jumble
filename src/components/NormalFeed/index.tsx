@@ -26,8 +26,12 @@ const NormalFeed = forwardRef<TNoteListRef, {
   const { showKinds } = useKindFilter()
   const [temporaryShowKinds, setTemporaryShowKinds] = useState(showKinds)
   const [listMode, setListMode] = useState<TNoteListMode>(() => {
+    // For main feed, always default to 'posts' (Notes tab) to show the main content
+    // Only use stored mode for non-main feeds
+    if (isMainFeed) {
+      return 'posts'
+    }
     const storedMode = storage.getNoteListMode()
-    // Default to 'posts' (Notes tab) for main feed, not replies
     return storedMode || 'posts'
   })
   const supportTouch = useMemo(() => isTouchDevice(), [])
