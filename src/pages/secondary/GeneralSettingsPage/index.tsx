@@ -6,7 +6,6 @@ import { LocalizedLanguageNames, TLanguage } from '@/i18n'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { cn, isSupportCheckConnectionType } from '@/lib/utils'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
-import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { useTheme } from '@/providers/ThemeProvider'
 import { useUserPreferences } from '@/providers/UserPreferencesProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
@@ -20,7 +19,6 @@ const GeneralSettingsPage = forwardRef(({ index, hideTitlebar = false }: { index
   const { t, i18n } = useTranslation()
   const [language, setLanguage] = useState<TLanguage>(i18n.language as TLanguage)
   const { themeSetting, setThemeSetting } = useTheme()
-  const { isSmallScreen } = useScreenSize()
   const {
     autoplay,
     setAutoplay,

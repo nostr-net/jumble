@@ -1,10 +1,10 @@
 import SearchInput from '@/components/SearchInput'
 import { useSearchProfiles } from '@/hooks'
-import { toNote } from '@/lib/link'
+import { toNote, toNoteList } from '@/lib/link'
 import { randomString } from '@/lib/random'
 import { normalizeUrl } from '@/lib/url'
 import { cn } from '@/lib/utils'
-import { useSmartNoteNavigation } from '@/PageManager'
+import { useSmartNoteNavigation, useSmartHashtagNavigation } from '@/PageManager'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import modalManager from '@/services/modal-manager.service'
 import { TSearchParams } from '@/types'
@@ -33,6 +33,7 @@ const SearchBar = forwardRef<
 >(({ input, setInput, onSearch }, ref) => {
   const { t } = useTranslation()
   const { navigateToNote } = useSmartNoteNavigation()
+  const { navigateToHashtag } = useSmartHashtagNavigation()
   const { isSmallScreen } = useScreenSize()
   const [debouncedInput, setDebouncedInput] = useState(input)
   const { profiles, isFetching: isFetchingProfiles } = useSearchProfiles(debouncedInput, 5)
@@ -89,6 +90,8 @@ const SearchBar = forwardRef<
 
     if (params.type === 'note') {
       navigateToNote(toNote(params.search))
+    } else if (params.type === 'hashtag') {
+      navigateToHashtag(toNoteList({ hashtag: params.search }))
     } else {
       onSearch(params)
     }

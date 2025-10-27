@@ -39,6 +39,7 @@ const SearchPage = forwardRef((_, ref) => {
     <PrimaryPageLayout
       ref={layoutRef}
       pageName="search"
+      titlebar={null}
       displayScrollToTopButton
     >
       <div className="px-4 pt-4">

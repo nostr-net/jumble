@@ -15,7 +15,12 @@ import { UserRound, Plus } from 'lucide-react'
 import React, { forwardRef, useEffect, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-const NoteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
+interface NoteListPageProps {
+  index?: number
+  hideTitlebar?: boolean
+}
+
+const NoteListPage = forwardRef<HTMLDivElement, NoteListPageProps>(({ index, hideTitlebar = false }, ref) => {
   const { t } = useTranslation()
   const { push } = useSecondaryPage()
   const { relayList, pubkey } = useNostr()
@@ -149,6 +154,40 @@ const NoteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: numb
     init()
   }, [])
 
+  // Listen for URL changes to re-initialize the page
+  useEffect(() => {
+    const handlePopState = () => {
+      const searchParams = new URLSearchParams(window.location.search)
+      const hashtag = searchParams.get('t')
+      if (hashtag) {
+        setData({ type: 'hashtag' })
+        setTitle(`# ${hashtag}`)
+        setSubRequests([
+          {
+            filter: { '#t': [hashtag] },
+            urls: BIG_RELAY_URLS
+          }
+        ])
+        // Set controls for hashtag subscribe button
+        if (pubkey) {
+          setControls(
+            <Button
+              variant="ghost"
+              className="h-10 [&_svg]:size-3"
+              onClick={handleSubscribeHashtag}
+              disabled={isHashtagSubscribed}
+            >
+              {isHashtagSubscribed ? t('Subscribed') : t('Subscribe')} <Plus />
+            </Button>
+          )
+        }
+      }
+    }
+    
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [pubkey, isHashtagSubscribed, t])
+
   // Update controls when subscription status changes
   useEffect(() => {
     if (data?.type === 'hashtag' && pubkey) {
@@ -183,9 +222,17 @@ const NoteListPage = forwardRef(({ index, hideTitlebar = false }: { index?: numb
       ref={ref}
       index={index}
       title={hideTitlebar ? undefined : title}
-      controls={controls}
+      controls={hideTitlebar ? undefined : controls}
       displayScrollToTopButton
     >
+      {hideTitlebar && data?.type === 'hashtag' && (
+        <div className="px-4 py-2 border-b">
+          <div className="flex items-center justify-between">
+            <div className="text-lg font-semibold">{title}</div>
+            {controls}
+          </div>
+        </div>
+      )}
       {content}
     </SecondaryPageLayout>
   )

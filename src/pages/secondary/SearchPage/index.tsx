@@ -1,15 +1,13 @@
 import SearchBar, { TSearchBarRef } from '@/components/SearchBar'
 import SearchResult from '@/components/SearchResult'
-import { Button } from '@/components/ui/button'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { toSearch } from '@/lib/link'
 import { useSecondaryPage } from '@/PageManager'
 import { TSearchParams } from '@/types'
-import { ChevronLeft } from 'lucide-react'
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
 
 const SearchPage = forwardRef(({ index, hideTitlebar = false }: { index?: number; hideTitlebar?: boolean }, ref) => {
-  const { push, pop } = useSecondaryPage()
+  const { push } = useSecondaryPage()
   const [input, setInput] = useState('')
   const searchBarRef = useRef<TSearchBarRef>(null)
   const searchParams = useMemo(() => {

@@ -317,15 +317,17 @@ export default function ProfileBookmarksAndHashtags({
       }
       
       return (
-        <div className="space-y-2">
-          {pinEvents.map((event) => (
-            <NoteCard
-              key={event.id}
-              className="w-full"
-              event={event}
-              filterMutedNotes={false}
-            />
-          ))}
+        <div className="min-h-screen">
+          <div className="space-y-2">
+            {pinEvents.map((event) => (
+              <NoteCard
+                key={event.id}
+                className="w-full"
+                event={event}
+                filterMutedNotes={false}
+              />
+            ))}
+          </div>
         </div>
       )
     }
@@ -350,15 +352,17 @@ export default function ProfileBookmarksAndHashtags({
       }
       
       return (
-        <div className="space-y-2">
-          {bookmarkEvents.map((event) => (
-            <NoteCard
-              key={event.id}
-              className="w-full"
-              event={event}
-              filterMutedNotes={false}
-            />
-          ))}
+        <div className="min-h-screen">
+          <div className="space-y-2">
+            {bookmarkEvents.map((event) => (
+              <NoteCard
+                key={event.id}
+                className="w-full"
+                event={event}
+                filterMutedNotes={false}
+              />
+            ))}
+          </div>
         </div>
       )
     }
@@ -383,15 +387,17 @@ export default function ProfileBookmarksAndHashtags({
       }
       
       return (
-        <div className="space-y-2">
-          {hashtagEvents.map((event) => (
-            <NoteCard
-              key={event.id}
-              className="w-full"
-              event={event}
-              filterMutedNotes={false}
-            />
-          ))}
+        <div className="min-h-screen">
+          <div className="space-y-2">
+            {hashtagEvents.map((event) => (
+              <NoteCard
+                key={event.id}
+                className="w-full"
+                event={event}
+                filterMutedNotes={false}
+              />
+            ))}
+          </div>
         </div>
       )
     }

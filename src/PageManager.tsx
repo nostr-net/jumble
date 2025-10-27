@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import logger from '@/lib/logger'
 import { ChevronLeft } from 'lucide-react'
 import NoteListPage from '@/pages/primary/NoteListPage'
+import SecondaryNoteListPage from '@/pages/secondary/NoteListPage'
 // Page imports needed for primary note view
 import SettingsPage from '@/pages/secondary/SettingsPage'
 import RelaySettingsPage from '@/pages/secondary/RelaySettingsPage'
@@ -131,7 +132,7 @@ export function useSmartNoteNavigation() {
     // Use primary note view to show notes since secondary panel is disabled
     // Extract note ID from URL (e.g., "/notes/note1..." -> "note1...")
     const noteId = url.replace('/notes/', '')
-    window.history.replaceState(null, '', url)
+    window.history.pushState(null, '', url)
     setPrimaryNoteView(<NotePage id={noteId} index={0} hideTitlebar={true} />, 'note')
   }
   
@@ -145,8 +146,8 @@ export function useSmartRelayNavigation() {
   const navigateToRelay = (url: string) => {
     // Use primary note view to show relay pages since secondary panel is disabled
     // Extract relay URL from the URL (e.g., "/relays/wss://..." -> "wss://...")
-    const relayUrl = url.replace('/relays/', '')
-    window.history.replaceState(null, '', url)
+    const relayUrl = decodeURIComponent(url.replace('/relays/', ''))
+    window.history.pushState(null, '', url)
     setPrimaryNoteView(<SecondaryRelayPage url={relayUrl} index={0} hideTitlebar={true} />, 'relay')
   }
   
@@ -160,7 +161,7 @@ export function useSmartProfileNavigation() {
   const navigateToProfile = (url: string) => {
     // Use primary note view to show profiles since secondary panel is disabled
     const profileId = url.replace('/users/', '')
-    window.history.replaceState(null, '', url)
+    window.history.pushState(null, '', url)
     setPrimaryNoteView(<SecondaryProfilePage id={profileId} index={0} hideTitlebar={true} />, 'profile')
   }
   
@@ -173,8 +174,8 @@ export function useSmartHashtagNavigation() {
   
   const navigateToHashtag = (url: string) => {
     // Use primary note view to show hashtag feed since secondary panel is disabled
-    window.history.replaceState(null, '', url)
-    setPrimaryNoteView(<NoteListPage />, 'hashtag')
+    window.history.pushState(null, '', url)
+    setPrimaryNoteView(<SecondaryNoteListPage hideTitlebar={true} />, 'hashtag')
   }
   
   return { navigateToHashtag }
@@ -187,7 +188,7 @@ export function useSmartFollowingListNavigation() {
   const navigateToFollowingList = (url: string) => {
     // Use primary note view to show following list since secondary panel is disabled
     const profileId = url.replace('/users/', '').replace('/following', '')
-    window.history.replaceState(null, '', url)
+    window.history.pushState(null, '', url)
     setPrimaryNoteView(<FollowingListPage id={profileId} index={0} hideTitlebar={true} />, 'profile')
   }
   
@@ -200,7 +201,7 @@ export function useSmartMuteListNavigation() {
   
   const navigateToMuteList = (url: string) => {
     // Use primary note view to show mute list since secondary panel is disabled
-    window.history.replaceState(null, '', url)
+    window.history.pushState(null, '', url)
     setPrimaryNoteView(<MuteListPage index={0} hideTitlebar={true} />, 'settings')
   }
   
@@ -214,7 +215,7 @@ export function useSmartOthersRelaySettingsNavigation() {
   const navigateToOthersRelaySettings = (url: string) => {
     // Use primary note view to show others relay settings since secondary panel is disabled
     const profileId = url.replace('/users/', '').replace('/relays', '')
-    window.history.replaceState(null, '', url)
+    window.history.pushState(null, '', url)
     setPrimaryNoteView(<OthersRelaySettingsPage id={profileId} index={0} hideTitlebar={true} />, 'profile')
   }
   
@@ -228,22 +229,22 @@ export function useSmartSettingsNavigation() {
   const navigateToSettings = (url: string) => {
     // Use primary note view to show settings since secondary panel is disabled
     if (url === '/settings') {
-      window.history.replaceState(null, '', url)
+      window.history.pushState(null, '', url)
       setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
     } else if (url === '/settings/relays') {
-      window.history.replaceState(null, '', url)
+      window.history.pushState(null, '', url)
       setPrimaryNoteView(<RelaySettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
     } else if (url === '/settings/wallet') {
-      window.history.replaceState(null, '', url)
+      window.history.pushState(null, '', url)
       setPrimaryNoteView(<WalletPage index={0} hideTitlebar={true} />, 'settings-sub')
     } else if (url === '/settings/posts') {
-      window.history.replaceState(null, '', url)
+      window.history.pushState(null, '', url)
       setPrimaryNoteView(<PostSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
     } else if (url === '/settings/general') {
-      window.history.replaceState(null, '', url)
+      window.history.pushState(null, '', url)
       setPrimaryNoteView(<GeneralSettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
     } else if (url === '/settings/translation') {
-      window.history.replaceState(null, '', url)
+      window.history.pushState(null, '', url)
       setPrimaryNoteView(<TranslationPage index={0} hideTitlebar={true} />, 'settings-sub')
     }
   }
@@ -285,13 +286,13 @@ function MainContentArea({
   currentPrimaryPage, 
   primaryNoteView,
   primaryViewType,
-  setPrimaryNoteView
+  goBack
 }: {
   primaryPages: { name: TPrimaryPageName; element: ReactNode; props?: any }[]
   currentPrimaryPage: TPrimaryPageName
   primaryNoteView: ReactNode | null
   primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | null
-  setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay') => void
+  goBack: () => void
 }) {
   logger.debug('MainContentArea rendering:', { 
     currentPrimaryPage, 
@@ -313,16 +314,7 @@ function MainContentArea({
                   variant="ghost"
                   size="titlebar-icon"
                   title="Back"
-                  onClick={() => {
-                    if (primaryViewType === 'settings-sub') {
-                      // For settings sub-pages, navigate back to main settings page
-                      window.history.replaceState(null, '', '/settings')
-                      setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
-                    } else {
-                      // For other pages, go back to feed
-                      setPrimaryNoteView(null)
-                    }
-                  }}
+                  onClick={goBack}
                 >
                   <ChevronLeft />
                   <div className="truncate text-lg font-semibold">
@@ -405,7 +397,36 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
       window.history.replaceState(null, '', newUrl)
     }
   }
+
+  const goBack = () => {
+    // Special handling for settings sub-pages - go back to main settings page
+    if (primaryViewType === 'settings-sub') {
+      window.history.pushState(null, '', '/settings')
+      setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
+    } else {
+      // Use browser's back functionality for other pages
+      window.history.back()
+    }
+  }
   const ignorePopStateRef = useRef(false)
+
+  // Handle browser back button
+  useEffect(() => {
+    const handlePopState = () => {
+      if (ignorePopStateRef.current) {
+        ignorePopStateRef.current = false
+        return
+      }
+      
+      // If we have a primary note view open, close it and go back to the main page
+      if (primaryNoteView) {
+        setPrimaryNoteView(null)
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [primaryNoteView])
 
   useEffect(() => {
     if (['/npub1', '/nprofile1'].some((prefix) => window.location.pathname.startsWith(prefix))) {
@@ -709,7 +730,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
                   currentPrimaryPage={currentPrimaryPage}
                   primaryNoteView={primaryNoteView}
                   primaryViewType={primaryViewType}
-                  setPrimaryNoteView={setPrimaryNoteView}
+                  goBack={goBack}
                 />
               </div>
             </div>
