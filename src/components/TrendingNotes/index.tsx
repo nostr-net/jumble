@@ -22,30 +22,27 @@ let cachedCustomEvents: {
   events: Array<{ event: NostrEvent; score: number }>
   timestamp: number
   hashtags: string[]
-  listEventIds: string[]
 } | null = null
 
 // Flag to prevent concurrent initialization
 let isInitializing = false
 
-type TrendingTab = 'band' | 'relays' | 'bookmarks' | 'hashtags'
+type TrendingTab = 'relays' | 'hashtags'
 type SortOrder = 'newest' | 'oldest' | 'most-popular' | 'least-popular'
-type BookmarkFilter = 'yours' | 'follows'
 type HashtagFilter = 'popular'
 
 export default function TrendingNotes() {
   const { t } = useTranslation()
   const { isEventDeleted } = useDeletedEvent()
   const { hideUntrustedNotes, isUserTrusted } = useUserTrust()
-  const { pubkey, relayList, bookmarkListEvent } = useNostr()
+  const { pubkey, relayList } = useNostr()
   const { favoriteRelays } = useFavoriteRelays()
   const { zapReplyThreshold } = useZap()
-  const [trendingNotes, setTrendingNotes] = useState<NostrEvent[]>([])
+  const [trendingNotes] = useState<NostrEvent[]>([])
   const [showCount, setShowCount] = useState(10)
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<TrendingTab>('band')
+  const [loading] = useState(true)
+  const [activeTab, setActiveTab] = useState<TrendingTab>('relays')
   const [sortOrder, setSortOrder] = useState<SortOrder>('most-popular')
-  const [bookmarkFilter] = useState<BookmarkFilter>('yours')
   const [hashtagFilter] = useState<HashtagFilter>('popular')
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null)
   const [popularHashtags, setPopularHashtags] = useState<string[]>([])
@@ -64,77 +61,7 @@ export default function TrendingNotes() {
   }, [cacheLoading])
 
 
-  // Extract event IDs from bookmark and pin lists (kinds 10003 and 10001)
-  const listEventIds = useMemo(() => {
-    const eventIds: string[] = []
-    
-    // Add bookmarks (kind 10003)
-    if (bookmarkListEvent) {
-      bookmarkListEvent.tags.forEach((tag) => {
-        if (tag[0] === 'e' && tag[1]) {
-          eventIds.push(tag[1])
-        }
-      })
-    }
-    
-    // Add pins (kind 10001) - fetch from client
-    // Note: We'll fetch pin list event separately since it's not in NostrProvider
-    
-    return eventIds
-  }, [bookmarkListEvent])
 
-  // Fetch bookmark/pin lists from follows
-  const [followsBookmarkEventIds, setFollowsBookmarkEventIds] = useState<string[]>([])
-  
-  useEffect(() => {
-    const fetchFollowsBookmarks = async () => {
-      if (!pubkey) return
-      
-      try {
-        // Get follows list
-        const followPubkeys = await client.fetchFollowings(pubkey)
-        if (!followPubkeys || followPubkeys.length === 0) return
-        
-        // Fetch bookmark and pin lists from follows
-        const bookmarkPromises = followPubkeys.map(async (followPubkey: string) => {
-          try {
-            const [bookmarkList, pinList] = await Promise.all([
-              client.fetchBookmarkListEvent(followPubkey),
-              client.fetchPinListEvent(followPubkey)
-            ])
-            
-            const eventIds: string[] = []
-            if (bookmarkList) {
-              bookmarkList.tags.forEach(tag => {
-                if (tag[0] === 'e' && tag[1]) {
-                  eventIds.push(tag[1])
-                }
-              })
-            }
-            if (pinList) {
-              pinList.tags.forEach(tag => {
-                if (tag[0] === 'e' && tag[1]) {
-                  eventIds.push(tag[1])
-                }
-              })
-            }
-            return eventIds
-          } catch (error) {
-            logger.error(`[TrendingNotes] Error fetching bookmarks for ${followPubkey}:`, error)
-            return []
-          }
-        })
-        
-        const allEventIds = await Promise.all(bookmarkPromises)
-        const flattenedIds = allEventIds.flat()
-        setFollowsBookmarkEventIds(flattenedIds)
-      } catch (error) {
-        logger.error('Error fetching follows bookmarks:', error)
-      }
-    }
-    
-    fetchFollowsBookmarks()
-  }, [pubkey])
 
   // Calculate popular hashtags from cache events (all events from relays)
   const calculatePopularHashtags = useMemo(() => {
@@ -321,44 +248,7 @@ export default function TrendingNotes() {
         
         allEvents.push(...recentEvents)
 
-        // 2. Fetch events from bookmark/pin lists (with rate limiting) - use full relay list
-        if (listEventIds.length > 0) {
-          try {
-            const bookmarkPinEvents = await client.fetchEvents(relays, {
-              ids: listEventIds,
-              limit: 500
-            })
-            allEvents.push(...bookmarkPinEvents)
-          } catch (error) {
-            logger.warn('[TrendingNotes] Error fetching bookmark/pin events:', error)
-          }
-        }
 
-        // 3. Fetch pin list if user is logged in - use full relay list
-        if (pubkey) {
-          try {
-            const pinListEvent = await client.fetchPinListEvent(pubkey)
-            if (pinListEvent) {
-              const pinEventIds = pinListEvent.tags
-                .filter(tag => tag[0] === 'e' && tag[1])
-                .map(tag => tag[1])
-              
-              if (pinEventIds.length > 0) {
-                try {
-                  const pinEvents = await client.fetchEvents(relays, {
-                    ids: pinEventIds,
-                    limit: 100
-                  })
-                  allEvents.push(...pinEvents)
-                } catch (error) {
-                  logger.warn('[TrendingNotes] Error fetching pin events:', error)
-                }
-              }
-            }
-          } catch (error) {
-            logger.error('[TrendingNotes] Error fetching pin list:', error)
-          }
-        }
 
         // Filter for top-level posts only (no replies or quotes)
         const topLevelEvents = allEvents.filter(event => {
@@ -457,8 +347,7 @@ export default function TrendingNotes() {
         cachedCustomEvents = {
           events: scoredEvents,
           timestamp: now,
-          hashtags: [],
-          listEventIds: listEventIds.slice()
+          hashtags: []
         }
 
         // Store ALL events from the cache for hashtag analysis
@@ -484,10 +373,7 @@ export default function TrendingNotes() {
     // Use appropriate data source based on tab and filter
     let sourceEvents: NostrEvent[] = []
     
-    if (activeTab === 'band') {
-      // "on Band" tab: use trending notes from nostr.band API
-      sourceEvents = trendingNotes
-    } else if (activeTab === 'relays') {
+    if (activeTab === 'relays') {
       // "on your relays" tab: use cache events from user's relays
       sourceEvents = cacheEvents
       logger.debug('[TrendingNotes] Relays tab - cacheEvents.length:', cacheEvents.length, 'cacheLoading:', cacheLoading)
@@ -523,9 +409,6 @@ export default function TrendingNotes() {
         }
       } else if (activeTab === 'relays') {
         // For "on your relays" tab, we'll show all events (they're already from user's relays)
-        // This is the default behavior, so no additional filtering needed
-      } else if (activeTab === 'band') {
-        // For "on Band" tab, we'll show all events (this is the general trending)
         // This is the default behavior, so no additional filtering needed
       }
 
@@ -583,55 +466,9 @@ export default function TrendingNotes() {
     })
 
     return filtered.slice(0, showCount)
-  }, [trendingNotes, hideUntrustedNotes, showCount, isEventDeleted, isUserTrusted, activeTab, listEventIds, bookmarkFilter, followsBookmarkEventIds, hashtagFilter, selectedHashtag, sortOrder, zapReplyThreshold, cacheEvents])
+  }, [trendingNotes, hideUntrustedNotes, showCount, isEventDeleted, isUserTrusted, activeTab, hashtagFilter, selectedHashtag, sortOrder, zapReplyThreshold, cacheEvents])
 
 
-  useEffect(() => {
-    const fetchTrendingPosts = async () => {
-      setLoading(true)
-      const events = await client.fetchTrendingNotes()
-      
-      // Apply the same NSFW and content warning filtering
-      const filteredEvents = events.filter(event => {
-        // Check for NSFW in 't' tags
-        const hasNsfwTag = event.tags.some(tag => 
-          tag[0] === 't' && tag[1] && tag[1].toLowerCase() === 'nsfw'
-        )
-        
-        // Check for sensitive content tag
-        const hasSensitiveTag = event.tags.some(tag => 
-          tag[0] === 't' && tag[1] && tag[1].toLowerCase() === 'sensitive'
-        )
-        
-        // Check for #NSFW hashtag in content
-        const hasNsfwHashtag = event.content.toLowerCase().includes('#nsfw')
-        
-        // Check for content-warning tag (NIP-36)
-        const hasContentWarning = event.tags.some(tag => 
-          tag[0] === 'content-warning'
-        )
-        
-        // Check for L tag with content-warning namespace
-        const hasContentWarningL = event.tags.some(tag => 
-          tag[0] === 'L' && tag[1] && tag[1].toLowerCase() === 'content-warning'
-        )
-        
-        // Check for l tag with content-warning namespace
-        const hasContentWarningl = event.tags.some(tag => 
-          tag[0] === 'l' && tag[1] && tag[1].toLowerCase() === 'content-warning'
-        )
-        
-        // Filter out if any NSFW or content warning indicators are found
-        return !hasNsfwTag && !hasSensitiveTag && !hasNsfwHashtag && 
-               !hasContentWarning && !hasContentWarningL && !hasContentWarningl
-      })
-      
-      setTrendingNotes(filteredEvents)
-      setLoading(false)
-    }
-
-    fetchTrendingPosts()
-  }, [])
 
   // Reset showCount when tab changes
   useEffect(() => {
@@ -640,9 +477,7 @@ export default function TrendingNotes() {
 
   // Reset filters when switching tabs
   useEffect(() => {
-    if (activeTab === 'band') {
-      setSortOrder('most-popular')
-    } else if (activeTab === 'relays') {
+    if (activeTab === 'relays') {
       setSortOrder('most-popular')
       // If cache is empty and not loading, log the issue for debugging
       if (cacheEvents.length === 0 && !cacheLoading && !isInitializing) {
@@ -654,12 +489,6 @@ export default function TrendingNotes() {
     }
   }, [activeTab, pubkey, cacheEvents.length, cacheLoading])
 
-  // Handle case where bookmarks tab is not available
-  useEffect(() => {
-    if (!pubkey && activeTab === 'bookmarks') {
-      setActiveTab('band')
-    }
-  }, [pubkey, activeTab])
 
   useEffect(() => {
     if (showCount >= trendingNotes.length) return
@@ -698,16 +527,6 @@ export default function TrendingNotes() {
         <div className="flex items-center gap-2 px-4 pb-2">
           <span className="text-sm font-medium text-muted-foreground">Trending:</span>
           <div className="flex gap-1">
-            <button
-              onClick={() => setActiveTab('band')}
-              className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                activeTab === 'band'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-              }`}
-            >
-              on Band
-            </button>
             <button
               onClick={() => setActiveTab('relays')}
               className={`px-3 py-1 text-sm rounded-md transition-colors ${
@@ -824,8 +643,7 @@ export default function TrendingNotes() {
       ))}
       {(() => {
         // Determine the current data source length based on active tab
-        const currentDataLength = activeTab === 'band' ? trendingNotes.length : 
-                                   activeTab === 'relays' || activeTab === 'hashtags' ? cacheEvents.length : 
+        const currentDataLength = activeTab === 'relays' || activeTab === 'hashtags' ? cacheEvents.length : 
                                    trendingNotes.length
         
         // Show loading if:

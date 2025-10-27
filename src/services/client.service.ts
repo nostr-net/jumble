@@ -24,9 +24,7 @@ import {
   kinds,
   Event as NEvent,
   nip19,
-  Relay,
   SimplePool,
-  validateEvent,
   VerifiedEvent
 } from 'nostr-tools'
 import { AbstractRelay } from 'nostr-tools/abstract-relay'
@@ -57,7 +55,6 @@ class ClientService extends EventTarget {
     (ids) => Promise.all(ids.map((id) => this._fetchEvent(id))),
     { cacheMap: this.eventCacheMap }
   )
-  private trendingNotesCache: NEvent[] | null = null
   private requestThrottle = new Map<string, number>() // Track request timestamps per relay
   private readonly REQUEST_COOLDOWN = 3000 // 3 second cooldown between requests to prevent "too many REQs"
   private failureCount = new Map<string, number>() // Track consecutive failures per relay
@@ -1145,38 +1142,6 @@ class ClientService extends EventTarget {
     return true
   }
 
-  async fetchTrendingNotes() {
-    if (this.trendingNotesCache) {
-      return this.trendingNotesCache
-    }
-
-    try {
-      const response = await fetch('https://api.nostr.band/v0/trending/notes')
-      const data = await response.json()
-      const events: NEvent[] = []
-      for (const note of data.notes ?? []) {
-        if (validateEvent(note.event)) {
-          events.push(note.event)
-          this.addEventToCache(note.event)
-          if (note.relays?.length) {
-            note.relays.map((r: string) => {
-              try {
-                const relay = new Relay(r)
-                this.trackEventSeenOn(note.event.id, relay)
-              } catch {
-                return null
-              }
-            })
-          }
-        }
-      }
-      this.trendingNotesCache = events
-      return this.trendingNotesCache
-    } catch (error) {
-      console.error('fetchTrendingNotes error', error)
-      return []
-    }
-  }
 
   addEventToCache(event: NEvent) {
     this.eventDataLoader.prime(event.id, Promise.resolve(event))

@@ -26,7 +26,7 @@ export default function RepostButton({ event }: { event: Event }) {
   const { isSmallScreen } = useScreenSize()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
   const { publish, checkLogin, pubkey } = useNostr()
-  const noteStats = useNoteStatsById(event.id)
+  const noteStats = useNoteStatsById(event.id) as import('@/services/note-stats.service').TNoteStats | undefined
   const [reposting, setReposting] = useState(false)
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
@@ -51,10 +51,9 @@ export default function RepostButton({ event }: { event: Event }) {
         const hasReposted = noteStats?.repostPubkeySet?.has(pubkey)
         if (hasReposted) return
         if (!noteStats?.updatedAt) {
-          const fetchedNoteStats = await noteStatsService.fetchNoteStats(event, pubkey)
-          if (fetchedNoteStats?.repostPubkeySet?.has(pubkey)) {
-            return
-          }
+          await noteStatsService.fetchNoteStats(event, pubkey)
+          // Note: fetchNoteStats doesn't return the stats, it updates them asynchronously
+          // The updated stats will be available through the useNoteStatsById hook
         }
 
         const repost = createRepostDraftEvent(event)
