@@ -70,6 +70,11 @@ export function getParentETag(event?: Event) {
     return event.tags.find(tagNameEquals('e')) ?? event.tags.find(tagNameEquals('E'))
   }
 
+  // Handle DISCUSSION events (kind 11) - they use e tag for parent reference
+  if (event.kind === ExtendedKind.DISCUSSION) {
+    return event.tags.find(tagNameEquals('e')) ?? event.tags.find(tagNameEquals('E'))
+  }
+
   if (event.kind !== kinds.ShortTextNote) return undefined
 
   let tag = event.tags.find(([tagName, , , marker]) => {
@@ -91,7 +96,7 @@ export function getParentETag(event?: Event) {
 export function getParentATag(event?: Event) {
   if (
     !event ||
-    ![kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT].includes(event.kind)
+    ![kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT, ExtendedKind.DISCUSSION].includes(event.kind)
   ) {
     return undefined
   }
@@ -123,6 +128,11 @@ export function getRootETag(event?: Event) {
     return event.tags.find(tagNameEquals('E'))
   }
 
+  // Handle DISCUSSION events (kind 11) - they use E tag for root reference
+  if (event.kind === ExtendedKind.DISCUSSION) {
+    return event.tags.find(tagNameEquals('E'))
+  }
+
   if (event.kind !== kinds.ShortTextNote) return undefined
 
   let tag = event.tags.find(([tagName, , , marker]) => {
@@ -140,7 +150,7 @@ export function getRootETag(event?: Event) {
 export function getRootATag(event?: Event) {
   if (
     !event ||
-    ![kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT].includes(event.kind)
+    ![kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT, ExtendedKind.DISCUSSION].includes(event.kind)
   ) {
     return undefined
   }

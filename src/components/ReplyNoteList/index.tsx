@@ -13,14 +13,12 @@ import logger from '@/lib/logger'
 import { toNote } from '@/lib/link'
 import { generateBech32IdFromETag, tagNameEquals } from '@/lib/tag'
 import { normalizeUrl } from '@/lib/url'
-import { useSmartNoteNavigation } from '@/PageManager'
+import { useSmartNoteNavigation, useSecondaryPage } from '@/PageManager'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
-import { useFeed } from '@/providers/FeedProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
-// DEPRECATED: useUserPreferences removed - double-panel functionality disabled
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
 import { Filter, Event as NEvent, kinds } from 'nostr-tools'
@@ -37,17 +35,14 @@ type TRootInfo =
 const LIMIT = 100
 const SHOW_COUNT = 10
 
-function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
-  console.log('[ReplyNoteList] Component rendered for event:', event.id.substring(0, 8))
-  
+function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
   const { t } = useTranslation()
   const { navigateToNote } = useSmartNoteNavigation()
+  const { currentIndex } = useSecondaryPage()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
   const { mutePubkeySet } = useMuteList()
   const { hideContentMentioningMutedUsers } = useContentPolicy()
   const { relayList: userRelayList } = useNostr()
-  const { relayUrls: currentFeedRelays } = useFeed()
-  // DEPRECATED: showRecommendedRelaysPanel removed - double-panel functionality disabled
   const [rootInfo, setRootInfo] = useState<TRootInfo | undefined>(undefined)
   const { repliesMap, addReplies } = useReply()
 
@@ -98,41 +93,45 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
       : event.id
     // For replaceable events, also check the event ID in case replies are stored there
     const eventIdKey = event.id
-    const parentEventKeys = [currentEventKey]
+    let parentEventKeys = [currentEventKey]
     if (isReplaceableEvent(event.kind) && currentEventKey !== eventIdKey) {
       parentEventKeys.push(eventIdKey)
     }
 
-    // FIXED: Only fetch direct replies to the original event, don't traverse reply chains
-    // This prevents the doom loop that was causing "too many concurrent REQS"
-    const events = parentEventKeys.flatMap((id) => repliesMap.get(id)?.events || [])
     
-    console.log('🔍 [ReplyNoteList] Processing replies:', {
-      eventId: event.id.substring(0, 8),
-      parentEventKeys,
-      eventsFromMap: events.length,
-      repliesMapSize: repliesMap.size,
-      repliesMapKeys: Array.from(repliesMap.keys()).map(k => k.substring(0, 8))
-    })
+    const processedEventIds = new Set<string>() // Prevent infinite loops
+    let iterationCount = 0
+    const MAX_ITERATIONS = 10 // Prevent infinite loops
     
-    events.forEach((evt) => {
-      if (replyIdSet.has(evt.id)) {
-        console.log('🔍 [ReplyNoteList] Skipping duplicate event:', evt.id.substring(0, 8))
-        return
-      }
-      if (mutePubkeySet.has(evt.pubkey)) {
-        console.log('🔍 [ReplyNoteList] Skipping muted user event:', evt.id.substring(0, 8), 'pubkey:', evt.pubkey.substring(0, 8))
-        return
-      }
-      if (hideContentMentioningMutedUsers && isMentioningMutedUsers(evt, mutePubkeySet)) {
-        console.log('🔍 [ReplyNoteList] Skipping event mentioning muted users:', evt.id.substring(0, 8))
-        return
-      }
+    while (parentEventKeys.length > 0 && iterationCount < MAX_ITERATIONS) {
+      iterationCount++
+      const events = parentEventKeys.flatMap((id) => repliesMap.get(id)?.events || [])
+      
+      events.forEach((evt) => {
+        if (replyIdSet.has(evt.id)) return
+        if (mutePubkeySet.has(evt.pubkey)) {
+          return
+        }
+        if (hideContentMentioningMutedUsers && isMentioningMutedUsers(evt, mutePubkeySet)) {
+          return
+        }
 
-      replyIdSet.add(evt.id)
-      replyEvents.push(evt)
-      console.log('✅ [ReplyNoteList] Added reply event:', evt.id.substring(0, 8), 'kind:', evt.kind)
-    })
+        replyIdSet.add(evt.id)
+        replyEvents.push(evt)
+      })
+      
+      // Prevent infinite loops by tracking processed event IDs
+      const newParentEventKeys = events
+        .map((evt) => evt.id)
+        .filter((id) => !processedEventIds.has(id))
+      
+      newParentEventKeys.forEach((id) => processedEventIds.add(id))
+      parentEventKeys = newParentEventKeys
+    }
+    
+    if (iterationCount >= MAX_ITERATIONS) {
+      logger.warn('ReplyNoteList: Maximum iterations reached, possible circular reference in replies')
+    }
     
 
 
@@ -176,9 +175,6 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
         return replyEvents.sort((a, b) => b.created_at - a.created_at)
     }
   }, [event.id, repliesMap, mutePubkeySet, hideContentMentioningMutedUsers, sort])
-  
-  // Debug the final replies count
-  console.log('📊 [ReplyNoteList] Final replies count:', replies.length)
   const [timelineKey, setTimelineKey] = useState<string | undefined>(undefined)
   const [until, setUntil] = useState<number | undefined>(undefined)
   const [loading, setLoading] = useState<boolean>(false)
@@ -186,10 +182,8 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
   const [highlightReplyId, setHighlightReplyId] = useState<string | undefined>(undefined)
   const replyRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const bottomRef = useRef<HTMLDivElement | null>(null)
-  const requestTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-    console.log('[ReplyNoteList] fetchRootEvent useEffect triggered for event:', event.id.substring(0, 8))
     const fetchRootEvent = async () => {
       let root: TRootInfo
       
@@ -231,12 +225,6 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
           root = { type: 'I', id: rootITag[1] }
         }
       }
-      logger.debug('[ReplyNoteList] Root info determined:', {
-        eventId: event.id.substring(0, 8),
-        rootInfo: root,
-        eventKind: event.kind
-      })
-      console.log('🏗️ [ReplyNoteList] Setting rootInfo:', root)
       setRootInfo(root)
     }
     fetchRootEvent()
@@ -264,69 +252,22 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
   }, [rootInfo, onNewReply])
 
   useEffect(() => {
-    console.log('⚡ [ReplyNoteList] Main useEffect triggered:', {
-      loading,
-      hasRootInfo: !!rootInfo,
-      shouldInit: !loading && !!rootInfo,
-      rootInfo
-    })
-    
-    if (loading || !rootInfo) {
-      console.log('❌ [ReplyNoteList] Early return - conditions not met:', {
-        loading,
-        hasRootInfo: !!rootInfo,
-        rootInfo
-      })
-      return
-    }
-    
-    console.log('✅ [ReplyNoteList] All conditions met, starting reply fetch...')
-    
-    // Clear any existing timeout to prevent multiple simultaneous requests
-    if (requestTimeoutRef.current) {
-      clearTimeout(requestTimeoutRef.current)
-    }
-    
-    // Debounce the request to prevent rapid successive calls
-    requestTimeoutRef.current = setTimeout(() => {
-      console.log('[ReplyNoteList] Debounced request starting...')
-      
-      // Check if we're already loading to prevent duplicate requests
-      if (loading) {
-        console.log('[ReplyNoteList] Already loading, skipping request')
-        return
-      }
+    if (loading || !rootInfo || currentIndex !== index) return
 
         const init = async () => {
           setLoading(true)
 
           try {
             
-            // For replies, always use a comprehensive relay list to ensure we find replies
-            // Don't rely on currentFeedRelays as it might be limited to a single relay
-            console.log('[ReplyNoteList] Current feed relays:', currentFeedRelays)
-            
-            // Always build comprehensive relay list for replies to ensure we find them
+            // Privacy: Only use user's own relays + defaults, never connect to other users' relays
             const userReadRelays = userRelayList?.read || []
             const userWriteRelays = userRelayList?.write || []
-            const eventHints = client.getEventHints(event.id)
+            const finalRelayUrls = Array.from(new Set([
+              ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
+              ...userReadRelays.map(url => normalizeUrl(url) || url), // User's read relays
+              ...userWriteRelays.map(url => normalizeUrl(url) || url) // User's write relays
+            ]))
             
-            const allRelays = [
-              ...userReadRelays.map(url => normalizeUrl(url) || url),
-              ...userWriteRelays.map(url => normalizeUrl(url) || url),
-              ...eventHints.map(url => normalizeUrl(url) || url),
-              ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url),
-            ]
-            
-            const finalRelayUrls = Array.from(new Set(allRelays.filter(Boolean)))
-            console.log('[ReplyNoteList] Using comprehensive relay list for replies:', finalRelayUrls)
-            
-            logger.debug('[ReplyNoteList] Fetching replies for event:', {
-              eventId: event.id.substring(0, 8),
-              rootInfo,
-              finalRelayUrls: finalRelayUrls.slice(0, 5), // Log first 5 relays
-              totalRelays: finalRelayUrls.length
-            })
 
         const filters: (Omit<Filter, 'since' | 'until'> & {
           limit: number
@@ -375,27 +316,14 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
         
         const { closer, timelineKey } = await client.subscribeTimeline(
           filters.map((filter) => ({
-            urls: finalRelayUrls, // Use current feed's relay selection
+            urls: finalRelayUrls, // Use all relays, don't slice
             filter
           })),
           {
               onEvents: (evts, eosed) => {
-                logger.debug('[ReplyNoteList] Received events:', {
-                  totalEvents: evts.length,
-                  eosed,
-                  eventIds: evts.map(e => e.id.substring(0, 8))
-                })
-                console.log('📥 [ReplyNoteList] Received events:', evts.length, 'eosed:', eosed)
                 if (evts.length > 0) {
                   const regularReplies = evts.filter((evt) => isReplyNoteEvent(evt))
-                  console.log('🔍 [ReplyNoteList] Filtered replies:', {
-                    replyCount: regularReplies.length,
-                    replyIds: regularReplies.map(r => r.id.substring(0, 8))
-                  })
-                  console.log('➕ [ReplyNoteList] Adding replies to map:', regularReplies.length)
                   addReplies(regularReplies)
-                } else {
-                  console.log('❌ [ReplyNoteList] No events received')
                 }
               if (eosed) {
                 setUntil(evts.length >= LIMIT ? evts[evts.length - 1].created_at - 1 : undefined)
@@ -432,30 +360,13 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
     return () => {
       promise.then((closer) => closer?.())
     }
-    }, 500) // 500ms debounce delay
-    
-    return () => {
-      if (requestTimeoutRef.current) {
-        clearTimeout(requestTimeoutRef.current)
-      }
-    }
-  }, [rootInfo, onNewReply, loading])
+  }, [rootInfo, currentIndex, index, onNewReply])
 
   useEffect(() => {
-    // Only try to load more if we have no replies, not loading, have a timeline key, and haven't reached the end
-    if (replies.length === 0 && !loading && timelineKey && until !== undefined) {
+    if (replies.length === 0 && !loading && timelineKey) {
       loadMore()
     }
-  }, [replies.length, loading, timelineKey, until])
-  
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (requestTimeoutRef.current) {
-        clearTimeout(requestTimeoutRef.current)
-      }
-    }
-  }, []) // Added until to prevent infinite loops
+  }, [replies.length, loading, timelineKey]) // More specific dependencies to prevent infinite loops
 
   useEffect(() => {
     const options = {
@@ -536,16 +447,6 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
           const parentETag = getParentETag(reply)
           const parentEventHexId = parentETag?.[1]
           const parentEventId = parentETag ? generateBech32IdFromETag(parentETag) : undefined
-          
-          // Debug logging for parent event detection
-          logger.debug('[ReplyNoteList] Reply parent info:', {
-            replyId: reply.id.substring(0, 8),
-            parentETag,
-            parentEventHexId: parentEventHexId?.substring(0, 8),
-            parentEventId: parentEventId?.substring(0, 8),
-            isDifferentFromCurrent: event.id !== parentEventHexId,
-            currentEventId: event.id.substring(0, 8)
-          })
           return (
             <div
               ref={(el) => (replyRefs.current[reply.id] = el)}
@@ -556,47 +457,12 @@ function ReplyNoteList({ event, sort = 'oldest' }: { index?: number; event: NEve
                 event={reply}
                 parentEventId={event.id !== parentEventHexId ? parentEventId : undefined}
                 onClickParent={() => {
-                  logger.debug('[ReplyNoteList] onClickParent called:', {
-                    parentEventHexId: parentEventHexId?.substring(0, 8),
-                    parentEventId: parentEventId?.substring(0, 8),
-                    repliesCount: replies.length,
-                    parentInReplies: !replies.every((r) => r.id !== parentEventHexId)
-                  })
-                  
-                  if (!parentEventHexId) {
-                    logger.debug('[ReplyNoteList] No parentEventHexId, returning early')
+                  if (!parentEventHexId) return
+                  if (replies.every((r) => r.id !== parentEventHexId)) {
+                    navigateToNote(toNote(parentEventId ?? parentEventHexId))
                     return
                   }
-                  
-                  // First, try to highlight the parent if it's already in the replies
-                  if (!replies.every((r) => r.id !== parentEventHexId)) {
-                    logger.debug('[ReplyNoteList] Parent found in replies, highlighting:', parentEventHexId.substring(0, 8))
-                    highlightReply(parentEventHexId)
-                    return
-                  }
-                  
-                  // DEPRECATED: Double-panel logic removed - always expand thread to show parent
-                  // Fetch and add the parent to the thread to expand the current thread
-                  logger.debug('[ReplyNoteList] Fetching parent event to expand thread')
-                  const fetchAndAddParent = async () => {
-                    try {
-                      logger.debug('[ReplyNoteList] Fetching parent event:', parentEventId ?? parentEventHexId)
-                      const parentEvent = await client.fetchEvent(parentEventId ?? parentEventHexId)
-                      if (parentEvent) {
-                        logger.debug('[ReplyNoteList] Parent event fetched, adding to replies:', parentEvent.id.substring(0, 8))
-                        addReplies([parentEvent])
-                        // Highlight the parent after it's added
-                        setTimeout(() => highlightReply(parentEvent.id), 100)
-                      } else {
-                        logger.debug('[ReplyNoteList] Parent event not found')
-                      }
-                    } catch (error) {
-                      logger.debug('[ReplyNoteList] Failed to fetch parent event:', error)
-                      // Fallback to navigation if fetch fails
-                      navigateToNote(toNote(parentEventId ?? parentEventHexId))
-                    }
-                  }
-                  fetchAndAddParent()
+                  highlightReply(parentEventHexId)
                 }}
                 highlight={highlightReplyId === reply.id}
               />
