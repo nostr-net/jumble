@@ -10,7 +10,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useZap } from '@/providers/ZapProvider'
 import noteStatsService from '@/services/note-stats.service'
-import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS } from '@/constants'
+import { FAST_READ_RELAY_URLS } from '@/constants'
 import logger from '@/lib/logger'
 import { normalizeUrl } from '@/lib/url'
 
@@ -197,9 +197,13 @@ export default function TrendingNotes() {
       if (relayList?.read) {
         relays.push(...relayList.read)
       }
+      
+      // If user has no favorites and no read relays, fallback to FAST_READ_RELAY_URLS
+      if (relays.length === 0) {
+        relays.push(...FAST_READ_RELAY_URLS)
+      }
     } else {
-      // User is not logged in: BIG_RELAY_URLS + FAST_READ_RELAY_URLS
-      relays.push(...BIG_RELAY_URLS)
+      // User is not logged in: use FAST_READ_RELAY_URLS (includes all BIG_RELAY_URLS)
       relays.push(...FAST_READ_RELAY_URLS)
     }
 
@@ -278,9 +282,13 @@ export default function TrendingNotes() {
         
         logger.debug('[TrendingNotes] Starting cache initialization with', relays.length, 'relays:', relays)
         
-        // 1. Fetch top-level posts from last 24 hours - batch requests to avoid overwhelming relays
+        // 1. Fetch top-level posts from last 24 hours from ALL relays for comprehensive statistics
+        // Relay list: If user logged in = favoriteRelays + user's read relays (fallback to FAST_READ_RELAY_URLS), else = FAST_READ_RELAY_URLS
         const batchSize = 3 // Process 3 relays at a time
         const recentEvents: NostrEvent[] = []
+        
+        logger.debug('[TrendingNotes] Using full relay set for comprehensive statistics:', relays.length, 'relays')
+        logger.debug('[TrendingNotes] Relay source:', pubkey ? 'user favorites + read relays (or FAST_READ_RELAY_URLS fallback)' : 'FAST_READ_RELAY_URLS')
         
         for (let i = 0; i < relays.length; i += batchSize) {
           const batch = relays.slice(i, i + batchSize)
@@ -307,13 +315,13 @@ export default function TrendingNotes() {
           
           // Add a small delay between batches to be respectful to relays
           if (i + batchSize < relays.length) {
-            await new Promise(resolve => setTimeout(resolve, 100))
+            await new Promise(resolve => setTimeout(resolve, 200))
           }
         }
         
         allEvents.push(...recentEvents)
 
-        // 2. Fetch events from bookmark/pin lists (with rate limiting)
+        // 2. Fetch events from bookmark/pin lists (with rate limiting) - use full relay list
         if (listEventIds.length > 0) {
           try {
             const bookmarkPinEvents = await client.fetchEvents(relays, {
@@ -326,7 +334,7 @@ export default function TrendingNotes() {
           }
         }
 
-        // 3. Fetch pin list if user is logged in
+        // 3. Fetch pin list if user is logged in - use full relay list
         if (pubkey) {
           try {
             const pinListEvent = await client.fetchPinListEvent(pubkey)

@@ -160,11 +160,16 @@ const NoteList = forwardRef(
     useImperativeHandle(ref, () => ({ scrollToTop, refresh }), [])
 
   useEffect(() => {
+    console.log('🚀 [NoteList] useEffect triggered:', { 
+      subRequests: subRequests.length, 
+      showKinds: showKinds.length,
+      refreshCount 
+    })
     logger.debug('NoteList useEffect:', { subRequests, subRequestsLength: subRequests.length })
     if (!subRequests.length) return
 
     async function init() {
-        
+        console.log('🔄 [NoteList] Initializing feed...')
         setLoading(true)
         setEvents([])
         setNewEvents([])
@@ -197,8 +202,15 @@ const NoteList = forwardRef(
           })),
           {
             onEvents: (events, eosed) => {
+              console.log('📥 [NoteList] Received events:', { 
+                eventsCount: events.length, 
+                eosed,
+                loading,
+                hasMore 
+              })
               logger.debug('NoteList received events:', { eventsCount: events.length, eosed })
               if (events.length > 0) {
+                console.log('✅ [NoteList] Setting events and stopping loading')
                 setEvents(events)
                 // Stop loading as soon as we have events, don't wait for all relays
                 setLoading(false)
@@ -207,6 +219,7 @@ const NoteList = forwardRef(
                 setHasMore(false)
               }
               if (eosed) {
+                console.log('🏁 [NoteList] EOSED - setting loading false, hasMore:', events.length > 0)
                 setLoading(false)
                 setHasMore(events.length > 0)
               }
@@ -329,6 +342,14 @@ const NoteList = forwardRef(
       }, 0)
     }
 
+    console.log('🎨 [NoteList] Rendering with state:', {
+      eventsCount: events.length,
+      filteredEventsCount: filteredEvents.length,
+      loading,
+      hasMore,
+      showKinds: showKinds.length
+    })
+
     const list = (
       <div className="min-h-screen">
         {customHeader}
@@ -349,6 +370,7 @@ const NoteList = forwardRef(
         ) : (
           <div className="flex justify-center w-full mt-2">
             <Button size="lg" onClick={() => {
+              console.log('🔄 [NoteList] Reload button clicked, refreshing feed')
               // Clear relay connection state to force fresh connections
               const relayUrls = subRequests.flatMap(req => req.urls)
               client.clearRelayConnectionState(relayUrls)

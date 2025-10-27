@@ -25,7 +25,11 @@ const NormalFeed = forwardRef<TNoteListRef, {
   const { hideUntrustedNotes } = useUserTrust()
   const { showKinds } = useKindFilter()
   const [temporaryShowKinds, setTemporaryShowKinds] = useState(showKinds)
-  const [listMode, setListMode] = useState<TNoteListMode>(() => storage.getNoteListMode())
+  const [listMode, setListMode] = useState<TNoteListMode>(() => {
+    const storedMode = storage.getNoteListMode()
+    // Default to 'posts' (Notes tab) for main feed, not replies
+    return storedMode || 'posts'
+  })
   const supportTouch = useMemo(() => isTouchDevice(), [])
   const internalNoteListRef = useRef<TNoteListRef>(null)
   const noteListRef = ref || internalNoteListRef

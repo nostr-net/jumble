@@ -13,13 +13,14 @@ import logger from '@/lib/logger'
 import { toNote } from '@/lib/link'
 import { generateBech32IdFromETag, tagNameEquals } from '@/lib/tag'
 import { normalizeUrl } from '@/lib/url'
-import { useSmartNoteNavigation, useSecondaryPage } from '@/PageManager'
+import { useSmartNoteNavigation } from '@/PageManager'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import { useFeed } from '@/providers/FeedProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
+import { useUserPreferences } from '@/providers/UserPreferencesProvider'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
 import { Filter, Event as NEvent, kinds } from 'nostr-tools'
@@ -36,17 +37,17 @@ type TRootInfo =
 const LIMIT = 100
 const SHOW_COUNT = 10
 
-function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
+function ReplyNoteList({ index: _index, event, sort = 'oldest' }: { index?: number; event: NEvent; sort?: 'newest' | 'oldest' | 'top' | 'controversial' | 'most-zapped' }) {
   console.log('[ReplyNoteList] Component rendered for event:', event.id.substring(0, 8))
   
   const { t } = useTranslation()
   const { navigateToNote } = useSmartNoteNavigation()
-  const { currentIndex } = useSecondaryPage()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
   const { mutePubkeySet } = useMuteList()
   const { hideContentMentioningMutedUsers } = useContentPolicy()
   const { relayList: userRelayList } = useNostr()
   const { relayUrls: currentFeedRelays } = useFeed()
+  const { showRecommendedRelaysPanel } = useUserPreferences()
   const [rootInfo, setRootInfo] = useState<TRootInfo | undefined>(undefined)
   const { repliesMap, addReplies } = useReply()
 
@@ -106,7 +107,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     // This prevents the doom loop that was causing "too many concurrent REQS"
     const events = parentEventKeys.flatMap((id) => repliesMap.get(id)?.events || [])
     
-    logger.debug('[ReplyNoteList] Processing replies:', {
+    console.log('🔍 [ReplyNoteList] Processing replies:', {
       eventId: event.id.substring(0, 8),
       parentEventKeys,
       eventsFromMap: events.length,
@@ -115,16 +116,22 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     })
     
     events.forEach((evt) => {
-      if (replyIdSet.has(evt.id)) return
+      if (replyIdSet.has(evt.id)) {
+        console.log('🔍 [ReplyNoteList] Skipping duplicate event:', evt.id.substring(0, 8))
+        return
+      }
       if (mutePubkeySet.has(evt.pubkey)) {
+        console.log('🔍 [ReplyNoteList] Skipping muted user event:', evt.id.substring(0, 8), 'pubkey:', evt.pubkey.substring(0, 8))
         return
       }
       if (hideContentMentioningMutedUsers && isMentioningMutedUsers(evt, mutePubkeySet)) {
+        console.log('🔍 [ReplyNoteList] Skipping event mentioning muted users:', evt.id.substring(0, 8))
         return
       }
 
       replyIdSet.add(evt.id)
       replyEvents.push(evt)
+      console.log('✅ [ReplyNoteList] Added reply event:', evt.id.substring(0, 8), 'kind:', evt.kind)
     })
     
 
@@ -169,6 +176,9 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
         return replyEvents.sort((a, b) => b.created_at - a.created_at)
     }
   }, [event.id, repliesMap, mutePubkeySet, hideContentMentioningMutedUsers, sort])
+  
+  // Debug the final replies count
+  console.log('📊 [ReplyNoteList] Final replies count:', replies.length)
   const [timelineKey, setTimelineKey] = useState<string | undefined>(undefined)
   const [until, setUntil] = useState<number | undefined>(undefined)
   const [loading, setLoading] = useState<boolean>(false)
@@ -226,6 +236,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
         rootInfo: root,
         eventKind: event.kind
       })
+      console.log('🏗️ [ReplyNoteList] Setting rootInfo:', root)
       setRootInfo(root)
     }
     fetchRootEvent()
@@ -253,26 +264,23 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
   }, [rootInfo, onNewReply])
 
   useEffect(() => {
-    console.log('[ReplyNoteList] Main useEffect triggered:', {
+    console.log('⚡ [ReplyNoteList] Main useEffect triggered:', {
       loading,
       hasRootInfo: !!rootInfo,
-      currentIndex,
-      index,
-      shouldInit: !loading && !!rootInfo && currentIndex === index
+      shouldInit: !loading && !!rootInfo,
+      rootInfo
     })
     
-    if (loading || !rootInfo || currentIndex !== index) {
-      console.log('[ReplyNoteList] Early return - conditions not met:', {
+    if (loading || !rootInfo) {
+      console.log('❌ [ReplyNoteList] Early return - conditions not met:', {
         loading,
         hasRootInfo: !!rootInfo,
-        currentIndex,
-        index,
         rootInfo
       })
       return
     }
     
-    console.log('[ReplyNoteList] All conditions met, starting reply fetch...')
+    console.log('✅ [ReplyNoteList] All conditions met, starting reply fetch...')
     
     // Clear any existing timeout to prevent multiple simultaneous requests
     if (requestTimeoutRef.current) {
@@ -294,31 +302,26 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
 
           try {
             
-            // Use current feed's relay selection - if user selected a specific relay, use only that
+            // For replies, always use a comprehensive relay list to ensure we find replies
+            // Don't rely on currentFeedRelays as it might be limited to a single relay
             let finalRelayUrls: string[]
             
             console.log('[ReplyNoteList] Current feed relays:', currentFeedRelays)
             
-            if (currentFeedRelays.length > 0) {
-              // Use the current feed's relay selection (respects user's choice of single relay)
-              finalRelayUrls = currentFeedRelays.map(url => normalizeUrl(url) || url).filter(Boolean)
-              console.log('[ReplyNoteList] Using current feed relays:', finalRelayUrls)
-            } else {
-              // Fallback: build comprehensive relay list only if no feed relays are set
-              const userReadRelays = userRelayList?.read || []
-              const userWriteRelays = userRelayList?.write || []
-              const eventHints = client.getEventHints(event.id)
-              
-              const allRelays = [
-                ...userReadRelays.map(url => normalizeUrl(url) || url),
-                ...userWriteRelays.map(url => normalizeUrl(url) || url),
-                ...eventHints.map(url => normalizeUrl(url) || url),
-                ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url),
-              ]
-              
-              finalRelayUrls = Array.from(new Set(allRelays.filter(Boolean)))
-              console.log('[ReplyNoteList] Using fallback relay list:', finalRelayUrls)
-            }
+            // Always build comprehensive relay list for replies to ensure we find them
+            const userReadRelays = userRelayList?.read || []
+            const userWriteRelays = userRelayList?.write || []
+            const eventHints = client.getEventHints(event.id)
+            
+            const allRelays = [
+              ...userReadRelays.map(url => normalizeUrl(url) || url),
+              ...userWriteRelays.map(url => normalizeUrl(url) || url),
+              ...eventHints.map(url => normalizeUrl(url) || url),
+              ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url),
+            ]
+            
+            finalRelayUrls = Array.from(new Set(allRelays.filter(Boolean)))
+            console.log('[ReplyNoteList] Using comprehensive relay list for replies:', finalRelayUrls)
             
             logger.debug('[ReplyNoteList] Fetching replies for event:', {
               eventId: event.id.substring(0, 8),
@@ -384,13 +387,17 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
                   eosed,
                   eventIds: evts.map(e => e.id.substring(0, 8))
                 })
+                console.log('📥 [ReplyNoteList] Received events:', evts.length, 'eosed:', eosed)
                 if (evts.length > 0) {
                   const regularReplies = evts.filter((evt) => isReplyNoteEvent(evt))
-                  logger.debug('[ReplyNoteList] Filtered replies:', {
+                  console.log('🔍 [ReplyNoteList] Filtered replies:', {
                     replyCount: regularReplies.length,
                     replyIds: regularReplies.map(r => r.id.substring(0, 8))
                   })
+                  console.log('➕ [ReplyNoteList] Adding replies to map:', regularReplies.length)
                   addReplies(regularReplies)
+                } else {
+                  console.log('❌ [ReplyNoteList] No events received')
                 }
               if (eosed) {
                 setUntil(evts.length >= LIMIT ? evts[evts.length - 1].created_at - 1 : undefined)
@@ -434,7 +441,7 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
         clearTimeout(requestTimeoutRef.current)
       }
     }
-  }, [rootInfo, currentIndex, index, onNewReply])
+  }, [rootInfo, onNewReply, loading])
 
   useEffect(() => {
     // Only try to load more if we have no replies, not loading, have a timeline key, and haven't reached the end
@@ -531,6 +538,16 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
           const parentETag = getParentETag(reply)
           const parentEventHexId = parentETag?.[1]
           const parentEventId = parentETag ? generateBech32IdFromETag(parentETag) : undefined
+          
+          // Debug logging for parent event detection
+          logger.debug('[ReplyNoteList] Reply parent info:', {
+            replyId: reply.id.substring(0, 8),
+            parentETag,
+            parentEventHexId: parentEventHexId?.substring(0, 8),
+            parentEventId: parentEventId?.substring(0, 8),
+            isDifferentFromCurrent: event.id !== parentEventHexId,
+            currentEventId: event.id.substring(0, 8)
+          })
           return (
             <div
               ref={(el) => (replyRefs.current[reply.id] = el)}
@@ -541,12 +558,57 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
                 event={reply}
                 parentEventId={event.id !== parentEventHexId ? parentEventId : undefined}
                 onClickParent={() => {
-                  if (!parentEventHexId) return
-                  if (replies.every((r) => r.id !== parentEventHexId)) {
-                    navigateToNote(toNote(parentEventId ?? parentEventHexId))
+                  logger.debug('[ReplyNoteList] onClickParent called:', {
+                    parentEventHexId: parentEventHexId?.substring(0, 8),
+                    parentEventId: parentEventId?.substring(0, 8),
+                    showRecommendedRelaysPanel,
+                    repliesCount: replies.length,
+                    parentInReplies: !replies.every((r) => r.id !== parentEventHexId)
+                  })
+                  
+                  if (!parentEventHexId) {
+                    logger.debug('[ReplyNoteList] No parentEventHexId, returning early')
                     return
                   }
-                  highlightReply(parentEventHexId)
+                  
+                  // First, try to highlight the parent if it's already in the replies
+                  if (!replies.every((r) => r.id !== parentEventHexId)) {
+                    logger.debug('[ReplyNoteList] Parent found in replies, highlighting:', parentEventHexId.substring(0, 8))
+                    highlightReply(parentEventHexId)
+                    return
+                  }
+                  
+                  // If parent is not in current replies, we need to fetch it
+                  // In single-panel mode, we should expand the thread to show the parent
+                  // rather than navigating away from the current thread
+                  if (!showRecommendedRelaysPanel) {
+                    // Single-panel mode: fetch and add the parent to the thread
+                    // This will expand the current thread to show the parent
+                    logger.debug('[ReplyNoteList] Single-panel mode: fetching parent event')
+                    const fetchAndAddParent = async () => {
+                      try {
+                        logger.debug('[ReplyNoteList] Fetching parent event:', parentEventId ?? parentEventHexId)
+                        const parentEvent = await client.fetchEvent(parentEventId ?? parentEventHexId)
+                        if (parentEvent) {
+                          logger.debug('[ReplyNoteList] Parent event fetched, adding to replies:', parentEvent.id.substring(0, 8))
+                          addReplies([parentEvent])
+                          // Highlight the parent after it's added
+                          setTimeout(() => highlightReply(parentEvent.id), 100)
+                        } else {
+                          logger.debug('[ReplyNoteList] Parent event not found')
+                        }
+                      } catch (error) {
+                        logger.debug('[ReplyNoteList] Failed to fetch parent event:', error)
+                        // Fallback to navigation if fetch fails
+                        navigateToNote(toNote(parentEventId ?? parentEventHexId))
+                      }
+                    }
+                    fetchAndAddParent()
+                  } else {
+                    // Double-panel mode: navigate to parent in secondary panel
+                    logger.debug('[ReplyNoteList] Double-panel mode: navigating to parent')
+                    navigateToNote(toNote(parentEventId ?? parentEventHexId))
+                  }
                 }}
                 highlight={highlightReplyId === reply.id}
               />

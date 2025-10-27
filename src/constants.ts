@@ -73,6 +73,8 @@ export const FAST_READ_RELAY_URLS = [
   'wss://theforest.nostr1.com',
   'wss://orly-relay.imwald.eu',
   'wss://nostr.wine',
+  'wss://nostr.land',
+  'wss://nostr21.com',
   'wss://thecitadel.nostr1.com',
   'wss://aggr.nostr.land'
 ]

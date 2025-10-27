@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind, SEARCHABLE_RELAY_URLS, FAST_READ_RELAY_URLS } from '@/constants'
+import { ExtendedKind, FAST_READ_RELAY_URLS } from '@/constants'
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
 import { getZapInfoFromEvent } from '@/lib/event-metadata'
 import logger from '@/lib/logger'
@@ -29,8 +29,14 @@ class NoteStatsService {
   static instance: NoteStatsService
   private noteStatsMap: Map<string, Partial<TNoteStats>> = new Map()
   private noteStatsSubscribers = new Map<string, Set<() => void>>()
-  private processingCache = new Set<string>() // Prevent duplicate processing
-  private lastProcessedTime = new Map<string, number>() // Rate limiting
+  private processingCache = new Set<string>()
+  private lastProcessedTime = new Map<string, number>()
+  
+  // Batch processing
+  private pendingEvents = new Set<string>()
+  private batchTimeout: NodeJS.Timeout | null = null
+  private readonly BATCH_DELAY = 1000 // 1 second batch delay
+  private readonly MAX_BATCH_SIZE = 10 // Process up to 10 events at once
 
   constructor() {
     if (!NoteStatsService.instance) {
@@ -39,87 +45,126 @@ class NoteStatsService {
     return NoteStatsService.instance
   }
 
-  async fetchNoteStats(event: Event, pubkey?: string | null, favoriteRelays?: string[]) {
+  async fetchNoteStats(event: Event, _pubkey?: string | null, _favoriteRelays?: string[]) {
     const eventId = event.id
     
-    // Rate limiting: Don't process the same event more than once per 5 seconds
+    // Rate limiting: Don't process the same event more than once per 10 seconds
     const now = Date.now()
     const lastProcessed = this.lastProcessedTime.get(eventId)
-    if (lastProcessed && now - lastProcessed < 5000) {
+    if (lastProcessed && now - lastProcessed < 10000) {
       logger.debug('[NoteStats] Skipping duplicate fetch for event', eventId.substring(0, 8), 'too soon')
       return
     }
     
-    // Prevent concurrent processing of the same event
+    // Add to batch processing queue
+    this.pendingEvents.add(eventId)
+    this.lastProcessedTime.set(eventId, now)
+    
+    // Clear existing timeout and set new one
+    if (this.batchTimeout) {
+      clearTimeout(this.batchTimeout)
+    }
+    
+    this.batchTimeout = setTimeout(() => {
+      this.processBatch()
+    }, this.BATCH_DELAY)
+    
+    // If we have enough events or this is urgent, process immediately
+    if (this.pendingEvents.size >= this.MAX_BATCH_SIZE) {
+      this.processBatch()
+    }
+  }
+
+  private async processBatch() {
+    if (this.pendingEvents.size === 0) return
+    
+    const eventsToProcess = Array.from(this.pendingEvents).slice(0, this.MAX_BATCH_SIZE)
+    this.pendingEvents.clear()
+    
+    if (this.batchTimeout) {
+      clearTimeout(this.batchTimeout)
+      this.batchTimeout = null
+    }
+    
+    console.log('[NoteStats] Processing batch of', eventsToProcess.length, 'events')
+    
+    // Process all events in the batch
+    await Promise.all(eventsToProcess.map(eventId => this.processSingleEvent(eventId)))
+  }
+
+  private async processSingleEvent(eventId: string) {
     if (this.processingCache.has(eventId)) {
       logger.debug('[NoteStats] Skipping concurrent fetch for event', eventId.substring(0, 8))
       return
     }
     
     this.processingCache.add(eventId)
-    this.lastProcessedTime.set(eventId, now)
     
     try {
+      // Get the event from cache or fetch it
+      const event = await this.getEventById(eventId)
+      if (!event) {
+        logger.debug('[NoteStats] Event not found:', eventId.substring(0, 8))
+        return
+      }
+
       const oldStats = this.noteStatsMap.get(eventId)
       let since: number | undefined
       if (oldStats?.updatedAt) {
         since = oldStats.updatedAt
       }
-    // Privacy: Only use current user's relays + defaults, never connect to other users' relays
-    const [relayList, authorProfile] = await Promise.all([
-      pubkey ? client.fetchRelayList(pubkey) : Promise.resolve({ write: [], read: [] }),
-      client.fetchProfile(event.pubkey)
-    ])
 
-    // Build comprehensive relay list: user's inboxes + user's favorite relays + big relays
-    // For anonymous users, also include fast read relays for better coverage
-    const allRelays = [
-      ...(relayList.read || []), // User's inboxes (kind 10002)
-      ...(favoriteRelays || []), // User's favorite relays (kind 10012)
-      ...BIG_RELAY_URLS,         // Big relays
-      ...(pubkey ? [] : [...SEARCHABLE_RELAY_URLS, ...FAST_READ_RELAY_URLS]) // Fast read relays for anonymous users only
-    ]
-    
-    // Normalize and deduplicate relay URLs
-    const normalizedRelays = allRelays
+      // Use optimized relay selection - fewer relays, better performance
+      const finalRelayUrls = this.getOptimizedRelayList()
+      
+      const replaceableCoordinate = isReplaceableEvent(event.kind)
+        ? getReplaceableCoordinateFromEvent(event)
+        : undefined
+
+      const filters: Filter[] = this.buildFilters(event, replaceableCoordinate, since)
+
+      const events: Event[] = []
+      logger.debug('[NoteStats] Fetching stats for event', event.id.substring(0, 8), 'from', finalRelayUrls.length, 'relays')
+      
+      await client.fetchEvents(finalRelayUrls, filters, {
+        onevent: (evt) => {
+          this.updateNoteStatsByEvents([evt], event.pubkey)
+          events.push(evt)
+        }
+      })
+      
+      logger.debug('[NoteStats] Fetched', events.length, 'events for stats')
+      
+      this.noteStatsMap.set(event.id, {
+        ...(this.noteStatsMap.get(event.id) ?? {}),
+        updatedAt: dayjs().unix()
+      })
+      
+    } finally {
+      this.processingCache.delete(eventId)
+    }
+  }
+
+  private getOptimizedRelayList(): string[] {
+    // Use only FAST_READ_RELAY_URLS for optimal performance
+    const normalizedRelays = FAST_READ_RELAY_URLS
       .map(url => normalizeUrl(url))
       .filter((url): url is string => !!url)
     
-    const finalRelayUrls = Array.from(new Set(normalizedRelays))
-    const relayTypes = pubkey 
-      ? 'inboxes kind 10002 + favorites kind 10012 + big relays'
-      : 'big relays + fast read relays + searchable relays (anonymous user)'
-    logger.debug('[NoteStats] Using', finalRelayUrls.length, 'relays for stats (' + relayTypes + '):', finalRelayUrls)
+    return Array.from(new Set(normalizedRelays))
+  }
 
-    const replaceableCoordinate = isReplaceableEvent(event.kind)
-      ? getReplaceableCoordinateFromEvent(event)
-      : undefined
-
+  private buildFilters(event: Event, replaceableCoordinate?: string, since?: number): Filter[] {
     const filters: Filter[] = [
       {
         '#e': [event.id],
-        kinds: [kinds.Reaction],
-        limit: 100
-      },
-      {
-        '#e': [event.id],
-        kinds: [kinds.Repost],
-        limit: 100
-      },
-      {
-        '#e': [event.id],
-        kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-        limit: 100
+        kinds: [kinds.Reaction, kinds.Repost, kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT, kinds.Highlights],
+        limit: 50 // Reduced limit for better performance
       },
       {
         '#q': [event.id],
         kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-        limit: 100
-      },
-      {
-        '#e': [event.id],
-        kinds: [kinds.Highlights],
-        limit: 100
+        limit: 50
       }
     ]
 
@@ -127,78 +172,15 @@ class NoteStatsService {
       filters.push(
         {
           '#a': [replaceableCoordinate],
-          kinds: [kinds.Reaction],
-          limit: 100
-        },
-        {
-          '#a': [replaceableCoordinate],
-          kinds: [kinds.Repost],
-          limit: 100
-        },
-        {
-          '#a': [replaceableCoordinate],
-          kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-          limit: 100
+          kinds: [kinds.Reaction, kinds.Repost, kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT, kinds.Highlights],
+          limit: 50
         },
         {
           '#q': [replaceableCoordinate],
           kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-          limit: 100
-        },
-        {
-          '#a': [replaceableCoordinate],
-          kinds: [kinds.Highlights],
-          limit: 100
+          limit: 50
         }
       )
-    }
-
-    if (authorProfile?.lightningAddress) {
-      filters.push({
-        '#e': [event.id],
-        kinds: [kinds.Zap],
-        limit: 100
-      })
-
-      if (replaceableCoordinate) {
-        filters.push({
-          '#a': [replaceableCoordinate],
-          kinds: [kinds.Zap],
-          limit: 100
-        })
-      }
-    }
-
-    if (pubkey) {
-      filters.push({
-        '#e': [event.id],
-        authors: [pubkey],
-        kinds: [kinds.Reaction, kinds.Repost]
-      })
-
-      if (replaceableCoordinate) {
-        filters.push({
-          '#a': [replaceableCoordinate],
-          authors: [pubkey],
-          kinds: [kinds.Reaction, kinds.Repost]
-        })
-      }
-
-      if (authorProfile?.lightningAddress) {
-        filters.push({
-          '#e': [event.id],
-          '#P': [pubkey],
-          kinds: [kinds.Zap]
-        })
-
-        if (replaceableCoordinate) {
-          filters.push({
-            '#a': [replaceableCoordinate],
-            '#P': [pubkey],
-            kinds: [kinds.Zap]
-          })
-        }
-      }
     }
 
     if (since) {
@@ -206,31 +188,14 @@ class NoteStatsService {
         filter.since = since
       })
     }
-    const events: Event[] = []
-    logger.debug('[NoteStats] Fetching stats for event', event.id.substring(0, 8), 'from', finalRelayUrls.length, 'relays')
-    await client.fetchEvents(finalRelayUrls, filters, {
-      onevent: (evt) => {
-        this.updateNoteStatsByEvents([evt], event.pubkey)
-        events.push(evt)
-      }
-    })
-    logger.debug('[NoteStats] Fetched', events.length, 'events for stats')
-    
-    // Debug: Count events by kind
-    const eventsByKind = events.reduce((acc, evt) => {
-      acc[evt.kind] = (acc[evt.kind] || 0) + 1
-      return acc
-    }, {} as Record<number, number>)
-    logger.debug('[NoteStats] Events by kind:', eventsByKind)
-    this.noteStatsMap.set(event.id, {
-      ...(this.noteStatsMap.get(event.id) ?? {}),
-      updatedAt: dayjs().unix()
-    })
-    return this.noteStatsMap.get(event.id) ?? {}
-    } finally {
-      // Clean up processing cache
-      this.processingCache.delete(eventId)
-    }
+
+    return filters
+  }
+
+  private async getEventById(eventId: string): Promise<Event | null> {
+    // Fetch the event
+    const event = await client.fetchEvent(eventId)
+    return event || null
   }
 
   subscribeNoteStats(noteId: string, callback: () => void) {
@@ -257,7 +222,6 @@ class NoteStatsService {
     return this.noteStatsMap.get(id)
   }
 
-
   addZap(
     pubkey: string,
     eventId: string,
@@ -283,32 +247,45 @@ class NoteStatsService {
 
   updateNoteStatsByEvents(events: Event[], originalEventAuthor?: string) {
     const updatedEventIdSet = new Set<string>()
-    events.forEach((evt) => {
-      let updatedEventId: string | undefined
-      if (evt.kind === kinds.Reaction) {
-        updatedEventId = this.addLikeByEvent(evt, originalEventAuthor)
-      } else if (evt.kind === kinds.Repost) {
-        updatedEventId = this.addRepostByEvent(evt, originalEventAuthor)
-      } else if (evt.kind === kinds.Zap) {
-        updatedEventId = this.addZapByEvent(evt, originalEventAuthor)
-      } else if (evt.kind === kinds.ShortTextNote || evt.kind === ExtendedKind.COMMENT || evt.kind === ExtendedKind.VOICE_COMMENT) {
-        // Check if it's a reply or quote
-        const isQuote = this.isQuoteByEvent(evt)
-        if (isQuote) {
-          updatedEventId = this.addQuoteByEvent(evt, originalEventAuthor)
-        } else {
-          updatedEventId = this.addReplyByEvent(evt, originalEventAuthor)
+    
+    // Process events in batches for better performance
+    const batchSize = 50
+    for (let i = 0; i < events.length; i += batchSize) {
+      const batch = events.slice(i, i + batchSize)
+      batch.forEach((evt) => {
+        const updatedEventId = this.processEvent(evt, originalEventAuthor)
+        if (updatedEventId) {
+          updatedEventIdSet.add(updatedEventId)
         }
-      } else if (evt.kind === kinds.Highlights) {
-        updatedEventId = this.addHighlightByEvent(evt, originalEventAuthor)
-      }
-      if (updatedEventId) {
-        updatedEventIdSet.add(updatedEventId)
-      }
-    })
+      })
+    }
+    
     updatedEventIdSet.forEach((eventId) => {
       this.notifyNoteStats(eventId)
     })
+  }
+
+  private processEvent(evt: Event, originalEventAuthor?: string): string | undefined {
+    let updatedEventId: string | undefined
+    
+    if (evt.kind === kinds.Reaction) {
+      updatedEventId = this.addLikeByEvent(evt, originalEventAuthor)
+    } else if (evt.kind === kinds.Repost) {
+      updatedEventId = this.addRepostByEvent(evt, originalEventAuthor)
+    } else if (evt.kind === kinds.Zap) {
+      updatedEventId = this.addZapByEvent(evt, originalEventAuthor)
+    } else if (evt.kind === kinds.ShortTextNote || evt.kind === ExtendedKind.COMMENT || evt.kind === ExtendedKind.VOICE_COMMENT) {
+      const isQuote = this.isQuoteByEvent(evt)
+      if (isQuote) {
+        updatedEventId = this.addQuoteByEvent(evt, originalEventAuthor)
+      } else {
+        updatedEventId = this.addReplyByEvent(evt, originalEventAuthor)
+      }
+    } else if (evt.kind === kinds.Highlights) {
+      updatedEventId = this.addHighlightByEvent(evt, originalEventAuthor)
+    }
+    
+    return updatedEventId
   }
 
   private addLikeByEvent(evt: Event, originalEventAuthor?: string) {
@@ -320,9 +297,7 @@ class NoteStatsService {
     const likes = old.likes || []
     if (likeIdSet.has(evt.id)) return
 
-    // Skip self-interactions - don't count likes from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      // console.log('[NoteStats] Skipping self-like from', evt.pubkey, 'to event', targetEventId)
       return
     }
 
@@ -369,9 +344,7 @@ class NoteStatsService {
     const reposts = old.reposts || []
     if (repostPubkeySet.has(evt.pubkey)) return
 
-    // Skip self-interactions - don't count reposts from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      // console.log('[NoteStats] Skipping self-repost from', evt.pubkey, 'to event', eventId)
       return
     }
 
@@ -387,9 +360,7 @@ class NoteStatsService {
     const { originalEventId, senderPubkey, invoice, amount, comment } = info
     if (!originalEventId || !senderPubkey) return
 
-    // Skip self-interactions - don't count zaps from the original event author
     if (originalEventAuthor && originalEventAuthor === senderPubkey) {
-      // console.log('[NoteStats] Skipping self-zap from', senderPubkey, 'to event', originalEventId)
       return
     }
 
@@ -405,53 +376,38 @@ class NoteStatsService {
   }
 
   private addReplyByEvent(evt: Event, originalEventAuthor?: string) {
-    // Use the same logic as isReplyNoteEvent to identify replies
     let originalEventId: string | undefined
 
-    // For kind 1111 and 1244, always consider them replies and look for parent event
     if (evt.kind === ExtendedKind.COMMENT || evt.kind === ExtendedKind.VOICE_COMMENT) {
       const eTag = evt.tags.find(tagNameEquals('e')) ?? evt.tags.find(tagNameEquals('E'))
       originalEventId = eTag?.[1]
-    }
-    // For kind 1 (ShortTextNote), check if it's actually a reply
-    else if (evt.kind === kinds.ShortTextNote) {
-      // Check for parent E tag (reply or root marker)
+    } else if (evt.kind === kinds.ShortTextNote) {
       const parentETag = evt.tags.find(([tagName, , , marker]) => {
         return tagName === 'e' && (marker === 'reply' || marker === 'root')
       })
       if (parentETag) {
         originalEventId = parentETag[1]
-        logger.debug('[NoteStats] Found reply with root/reply marker:', evt.id, '->', originalEventId)
       } else {
-        // Look for the last E tag that's not a mention
-        const embeddedEventIds = this.getEmbeddedNoteBech32Ids(evt)
         const lastETag = evt.tags.findLast(
           ([tagName, tagValue, , marker]) =>
             tagName === 'e' &&
             !!tagValue &&
-            marker !== 'mention' &&
-            !embeddedEventIds.includes(tagValue)
+            marker !== 'mention'
         )
         if (lastETag) {
           originalEventId = lastETag[1]
-          console.log('[NoteStats] Found reply with last E tag:', evt.id, '->', originalEventId)
         }
       }
       
-      // Also check for parent A tag
       if (!originalEventId) {
         const aTag = evt.tags.find(tagNameEquals('a'))
         if (aTag) {
           originalEventId = aTag[1]
-          console.log('[NoteStats] Found reply with A tag:', evt.id, '->', originalEventId)
         }
       }
     }
 
-    if (!originalEventId) {
-      console.log('[NoteStats] No original event ID found for potential reply:', evt.id, 'tags:', evt.tags)
-      return
-    }
+    if (!originalEventId) return
 
     const old = this.noteStatsMap.get(originalEventId) || {}
     const replyIdSet = old.replyIdSet || new Set()
@@ -459,26 +415,21 @@ class NoteStatsService {
 
     if (replyIdSet.has(evt.id)) return
 
-    // Skip self-interactions - don't count replies from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      logger.debug('[NoteStats] Skipping self-reply from', evt.pubkey, 'to event', originalEventId)
       return
     }
 
     replyIdSet.add(evt.id)
     replies.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
     this.noteStatsMap.set(originalEventId, { ...old, replyIdSet, replies })
-    logger.debug('[NoteStats] Added reply:', evt.id, 'to event:', originalEventId, 'total replies:', replies.length)
     return originalEventId
   }
 
   private isQuoteByEvent(evt: Event): boolean {
-    // A quote has a 'q' tag (quoted event)
     return evt.tags.some(tag => tag[0] === 'q' && tag[1])
   }
 
   private addQuoteByEvent(evt: Event, originalEventAuthor?: string) {
-    // Find the quoted event ID from 'q' tag
     const quotedEventId = evt.tags.find(tag => tag[0] === 'q')?.[1]
     if (!quotedEventId) return
 
@@ -488,9 +439,7 @@ class NoteStatsService {
 
     if (quoteIdSet.has(evt.id)) return
 
-    // Skip self-interactions - don't count quotes from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      // console.log('[NoteStats] Skipping self-quote from', evt.pubkey, 'to event', quotedEventId)
       return
     }
 
@@ -501,7 +450,6 @@ class NoteStatsService {
   }
 
   private addHighlightByEvent(evt: Event, originalEventAuthor?: string) {
-    // Find the event ID from 'e' tag
     const highlightedEventId = evt.tags.find(tag => tag[0] === 'e')?.[1]
     if (!highlightedEventId) return
 
@@ -511,9 +459,7 @@ class NoteStatsService {
 
     if (highlightIdSet.has(evt.id)) return
 
-    // Skip self-interactions - don't count highlights from the original event author
     if (originalEventAuthor && originalEventAuthor === evt.pubkey) {
-      // console.log('[NoteStats] Skipping self-highlight from', evt.pubkey, 'to event', highlightedEventId)
       return
     }
 
@@ -521,20 +467,6 @@ class NoteStatsService {
     highlights.push({ id: evt.id, pubkey: evt.pubkey, created_at: evt.created_at })
     this.noteStatsMap.set(highlightedEventId, { ...old, highlightIdSet, highlights })
     return highlightedEventId
-  }
-
-  private getEmbeddedNoteBech32Ids(event: Event): string[] {
-    // Simple implementation - in practice, this should match the logic in lib/event.ts
-    const embeddedIds: string[] = []
-    const content = event.content || ''
-    const matches = content.match(/nostr:(note1|nevent1)[a-zA-Z0-9]+/g)
-    if (matches) {
-      matches.forEach(match => {
-        const id = match.replace('nostr:', '')
-        embeddedIds.push(id)
-      })
-    }
-    return embeddedIds
   }
 }
 

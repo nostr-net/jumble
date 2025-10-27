@@ -238,13 +238,13 @@ function analyzeDynamicTopics(entries: EventMapEntry[]): {
   
   const allTopics = [...mainTopics, ...subtopics]
   
-  // Debug logging
-  console.log('Dynamic topics analysis:', {
-    hashtagCounts: Object.fromEntries(hashtagCounts),
-    mainTopics: mainTopics.map(t => ({ id: t.id, count: t.count })),
-    subtopics: subtopics.map(t => ({ id: t.id, count: t.count })),
-    allTopics: allTopics.map(t => ({ id: t.id, count: t.count, isMainTopic: t.isMainTopic, isSubtopic: t.isSubtopic }))
-  })
+  // Debug logging (commented out to reduce console spam)
+  // console.log('Dynamic topics analysis:', {
+  //   hashtagCounts: Object.fromEntries(hashtagCounts),
+  //   mainTopics: mainTopics.map(t => ({ id: t.id, count: t.count })),
+  //   subtopics: subtopics.map(t => ({ id: t.id, count: t.count })),
+  //   allTopics: allTopics.map(t => ({ id: t.id, count: t.count, isMainTopic: t.isMainTopic, isSubtopic: t.isSubtopic }))
+  // })
   
   return { mainTopics, subtopics, allTopics }
 }
@@ -440,9 +440,12 @@ const DiscussionsPage = forwardRef(() => {
         }
       })
       
-      // Analyze dynamic topics
-      const dynamicTopicsAnalysis = analyzeDynamicTopics(Array.from(newEventMap.values()))
-      setDynamicTopics(dynamicTopicsAnalysis)
+      // Analyze dynamic topics only if we have new data
+      let dynamicTopicsAnalysis: { mainTopics: DynamicTopic[]; subtopics: DynamicTopic[]; allTopics: DynamicTopic[] } = { mainTopics: [], subtopics: [], allTopics: [] }
+      if (newEventMap.size > 0) {
+        dynamicTopicsAnalysis = analyzeDynamicTopics(Array.from(newEventMap.values()))
+        setDynamicTopics(dynamicTopicsAnalysis)
+      }
       
       // Update event map with enhanced topic categorization
       const updatedEventMap = new Map<string, EventMapEntry>()
