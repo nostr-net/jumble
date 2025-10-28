@@ -1,4 +1,4 @@
-import { useSecondaryPage } from '@/PageManager'
+import { useSecondaryPage, useSmartNoteNavigation } from '@/PageManager'
 import { ExtendedKind } from '@/constants'
 import ContentPreview from '@/components/ContentPreview'
 import Note from '@/components/Note'
@@ -155,7 +155,10 @@ function ExternalRoot({ value }: { value: string }) {
     <div>
       <Card
         className="flex space-x-1 px-1.5 py-1 items-center clickable text-sm text-muted-foreground hover:text-foreground"
-        onClick={() => push(toNoteList({ externalContentId: value }))}
+        onClick={() => {
+          // For external content, we still use secondary page navigation
+          push(toNoteList({ externalContentId: value }))
+        }}
       >
         <div className="truncate">{value}</div>
       </Card>
@@ -175,7 +178,7 @@ function ParentNote({
   isFetching: boolean
   isConsecutive?: boolean
 }) {
-  const { push } = useSecondaryPage()
+  const { navigateToNote } = useSmartNoteNavigation()
 
   if (isFetching) {
     return (
@@ -199,7 +202,7 @@ function ParentNote({
           event && 'hover:text-foreground'
         )}
         onClick={() => {
-          push(toNote(event ?? eventBech32Id))
+          navigateToNote(toNote(event ?? eventBech32Id))
         }}
       >
         {event && <UserAvatar userId={event.pubkey} size="tiny" className="shrink-0" />}
