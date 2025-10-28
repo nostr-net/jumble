@@ -2,6 +2,7 @@ import { buildATag, buildETag, createBookmarkDraftEvent } from '@/lib/draft-even
 import { getReplaceableCoordinateFromEvent, isReplaceableEvent } from '@/lib/event'
 import { normalizeUrl } from '@/lib/url'
 import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
+import logger from '@/lib/logger'
 import client from '@/services/client.service'
 import { Event } from 'nostr-tools'
 import { createContext, useCallback, useContext } from 'react'
@@ -71,7 +72,7 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
     
     // Use the same comprehensive relay list as pins for publishing
     const comprehensiveRelays = await buildComprehensiveRelayList()
-    console.log('[BookmarksProvider] Publishing to comprehensive relays:', comprehensiveRelays)
+    logger.component('BookmarksProvider', 'Publishing to comprehensive relays', { count: comprehensiveRelays.length })
     
     const newBookmarkEvent = await publish(newBookmarkDraftEvent, {
       specifiedRelayUrls: comprehensiveRelays
@@ -97,7 +98,7 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
     
     // Use the same comprehensive relay list as pins for publishing
     const comprehensiveRelays = await buildComprehensiveRelayList()
-    console.log('[BookmarksProvider] Publishing to comprehensive relays:', comprehensiveRelays)
+    logger.component('BookmarksProvider', 'Publishing to comprehensive relays', { count: comprehensiveRelays.length })
     
     const newBookmarkEvent = await publish(newBookmarkDraftEvent, {
       specifiedRelayUrls: comprehensiveRelays

@@ -37,7 +37,11 @@ export default function RelaysFeed() {
   if (feedInfo.feedType !== 'relay' && feedInfo.feedType !== 'relays' && feedInfo.feedType !== 'all-favorites') {
     return null
   }
-  console.log('[RelaysFeed] Rendering NormalFeed with:', { subRequests, relayUrls, areAlgoRelays })
+  logger.component('RelaysFeed', 'Rendering NormalFeed', { 
+    subRequests: subRequests.length, 
+    relayUrls: relayUrls.length, 
+    areAlgoRelays 
+  })
 
   return (
     <NormalFeed

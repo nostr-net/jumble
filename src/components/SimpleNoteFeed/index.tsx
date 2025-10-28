@@ -63,12 +63,11 @@ const SimpleNoteFeed = forwardRef<
     setIsRefreshing(true)
     
     try {
-      console.log('🔄 [SimpleNoteFeed] Starting fetch...', { authors, kinds: requestedKinds, limit })
-      logger.debug('[SimpleNoteFeed] Fetching events...', { authors, kinds: requestedKinds, limit })
+      logger.component('SimpleNoteFeed', 'Starting fetch', { authors, kinds: requestedKinds, limit })
       
       // Get comprehensive relay list
       const allRelays = await buildComprehensiveRelayList()
-      console.log('📡 [SimpleNoteFeed] Using relays:', allRelays.length)
+      logger.component('SimpleNoteFeed', 'Using relays', { count: allRelays.length })
       
       // Build filter
       const filter: any = {
@@ -80,15 +79,13 @@ const SimpleNoteFeed = forwardRef<
         filter.authors = authors
       }
       
-      console.log('🔍 [SimpleNoteFeed] Using filter:', filter)
-      logger.debug('[SimpleNoteFeed] Using filter:', filter)
+      logger.component('SimpleNoteFeed', 'Using filter', filter)
       
       // Fetch events
-      console.log('⏳ [SimpleNoteFeed] Calling client.fetchEvents...')
+      logger.component('SimpleNoteFeed', 'Calling client.fetchEvents')
       const fetchedEvents = await client.fetchEvents(allRelays, [filter])
       
-      console.log('✅ [SimpleNoteFeed] Fetched', fetchedEvents.length, 'events')
-      logger.debug('[SimpleNoteFeed] Fetched', fetchedEvents.length, 'events')
+      logger.component('SimpleNoteFeed', 'Fetched events', { count: fetchedEvents.length })
       
       // Deduplicate events by ID (same event might come from different relays)
       const seenIds = new Set<string>()
@@ -100,8 +97,7 @@ const SimpleNoteFeed = forwardRef<
         return true
       })
       
-      console.log('🔗 [SimpleNoteFeed] Deduplicated to', uniqueEvents.length, 'unique events')
-      logger.debug('[SimpleNoteFeed] Deduplicated to', uniqueEvents.length, 'unique events')
+      logger.component('SimpleNoteFeed', 'Deduplicated events', { count: uniqueEvents.length })
       
       // Filter events (basic filtering)
       const filteredEvents = uniqueEvents.filter(event => {
@@ -116,13 +112,11 @@ const SimpleNoteFeed = forwardRef<
         return true
       })
       
-      console.log('🎯 [SimpleNoteFeed] Filtered to', filteredEvents.length, 'events')
-      logger.debug('[SimpleNoteFeed] Filtered to', filteredEvents.length, 'events')
+      logger.component('SimpleNoteFeed', 'Filtered events', { count: filteredEvents.length })
       
       setEvents(filteredEvents)
     } catch (error) {
-      console.error('❌ [SimpleNoteFeed] Error fetching events:', error)
-      logger.error('[SimpleNoteFeed] Error fetching events:', error)
+      logger.component('SimpleNoteFeed', 'Error fetching events', { error: (error as Error).message })
     } finally {
       setLoading(false)
       setIsRefreshing(false)

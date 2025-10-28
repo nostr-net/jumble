@@ -1,6 +1,7 @@
 import { ExtendedKind } from '@/constants'
 import { getNoteBech32Id, isProtectedEvent, getRootEventHexId } from '@/lib/event'
 import { toNjump } from '@/lib/link'
+import logger from '@/lib/logger'
 import { pubkeyToNpub } from '@/lib/pubkey'
 import { normalizeUrl, simplifyUrl } from '@/lib/url'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
@@ -97,7 +98,7 @@ export function useMenuActions({
           })
           pinListEvent = pinListEvents[0] || null
         } catch (error) {
-          console.warn('[PinStatus] Error fetching pin list from comprehensive relays, falling back to default method:', error)
+          logger.component('PinStatus', 'Error fetching pin list from comprehensive relays, falling back to default method', { error: (error as Error).message })
           pinListEvent = await client.fetchPinListEvent(pubkey)
         }
         
@@ -106,7 +107,7 @@ export function useMenuActions({
           setIsPinned(isEventPinned)
         }
       } catch (error) {
-        console.error('Error checking pin status:', error)
+        logger.component('PinStatus', 'Error checking pin status', { error: (error as Error).message })
       }
     }
     checkIfPinned()
@@ -141,11 +142,11 @@ export function useMenuActions({
         })
         pinListEvent = pinListEvents[0] || null
       } catch (error) {
-        console.warn('[PinNote] Error fetching pin list from comprehensive relays, falling back to default method:', error)
+        logger.component('PinNote', 'Error fetching pin list from comprehensive relays, falling back to default method', { error: (error as Error).message })
         pinListEvent = await client.fetchPinListEvent(pubkey)
       }
       
-      console.log('[PinNote] Current pin list event:', pinListEvent)
+      logger.component('PinNote', 'Current pin list event', { hasEvent: !!pinListEvent })
       
       // Get existing event IDs, excluding the one we're toggling
       const existingEventIds = (pinListEvent?.tags || [])
@@ -153,9 +154,9 @@ export function useMenuActions({
         .map(tag => tag[1])
         .filter(id => id !== event.id)
       
-      console.log('[PinNote] Existing event IDs (excluding current):', existingEventIds)
-      console.log('[PinNote] Current event ID:', event.id)
-      console.log('[PinNote] Is currently pinned:', isPinned)
+      logger.component('PinNote', 'Existing event IDs (excluding current)', { count: existingEventIds.length })
+      logger.component('PinNote', 'Current event ID', { eventId: event.id })
+      logger.component('PinNote', 'Is currently pinned', { isPinned })
       
       let newTags: string[][]
       let successMessage: string
@@ -164,17 +165,16 @@ export function useMenuActions({
         // Unpin: just keep the existing tags without this event
         newTags = existingEventIds.map(id => ['e', id])
         successMessage = t('Note unpinned')
-        console.log('[PinNote] Unpinning - new tags:', newTags)
+        logger.component('PinNote', 'Unpinning - new tags', { count: newTags.length })
       } else {
         // Pin: add this event to the existing list
         newTags = [...existingEventIds.map(id => ['e', id]), ['e', event.id]]
         successMessage = t('Note pinned')
-        console.log('[PinNote] Pinning - new tags:', newTags)
+        logger.component('PinNote', 'Pinning - new tags', { count: newTags.length })
       }
       
       // Create and publish the new pin list event
-      console.log('[PinNote] Publishing new pin list event with', newTags.length, 'tags')
-      console.log('[PinNote] Publishing to comprehensive relays:', comprehensiveRelays)
+      logger.component('PinNote', 'Publishing new pin list event', { tagCount: newTags.length, relayCount: comprehensiveRelays.length })
       await publish({
         kind: 10001,
         tags: newTags,
@@ -189,7 +189,7 @@ export function useMenuActions({
       toast.success(successMessage)
       closeDrawer()
     } catch (error) {
-      console.error('Error pinning/unpinning note:', error)
+      logger.component('PinNote', 'Error pinning/unpinning note', { error: (error as Error).message })
       toast.error(t('Failed to pin note'))
     }
   }

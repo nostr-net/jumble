@@ -74,7 +74,7 @@ export default function ProfileBookmarksAndHashtags({
         })
         bookmarkList = bookmarkListEvents[0] || null
       } catch (error) {
-        console.warn('[ProfileBookmarksAndHashtags] Error fetching bookmark list from comprehensive relays, falling back to default method:', error)
+        logger.component('ProfileBookmarksAndHashtags', 'Error fetching bookmark list from comprehensive relays, falling back to default method', { error: (error as Error).message })
         bookmarkList = await client.fetchBookmarkListEvent(pubkey)
       }
       
@@ -110,7 +110,7 @@ export default function ProfileBookmarksAndHashtags({
         setBookmarkEvents([])
       }
     } catch (error) {
-      console.error('[ProfileBookmarksAndHashtags] Error fetching bookmarks:', error)
+      logger.component('ProfileBookmarksAndHashtags', 'Error fetching bookmarks', { error: (error as Error).message })
       setBookmarkEvents([])
     } finally {
       setLoadingBookmarks(false)
@@ -133,7 +133,7 @@ export default function ProfileBookmarksAndHashtags({
         })
         interestList = interestListEvents[0] || null
       } catch (error) {
-        console.warn('[ProfileBookmarksAndHashtags] Error fetching interest list from comprehensive relays, falling back to default method:', error)
+        logger.component('ProfileBookmarksAndHashtags', 'Error fetching interest list from comprehensive relays, falling back to default method', { error: (error as Error).message })
         interestList = await client.fetchInterestListEvent(pubkey)
       }
       
@@ -143,8 +143,8 @@ export default function ProfileBookmarksAndHashtags({
       if (interestList && interestList.tags.length > 0) {
         // Extract hashtags from interest list
         const hashtags = interestList.tags
-          .filter(tag => tag[0] === 't' && tag[1])
-          .map(tag => tag[1])
+          .filter((tag: string[]) => tag[0] === 't' && tag[1])
+          .map((tag: string[]) => tag[1])
         
         // console.log('[ProfileBookmarksAndHashtags] Found', hashtags.length, 'interest hashtags:', hashtags)
         
@@ -159,7 +159,7 @@ export default function ProfileBookmarksAndHashtags({
             // console.log('[ProfileBookmarksAndHashtags] Fetched', events.length, 'hashtag events')
             setHashtagEvents(events)
           } catch (error) {
-            console.warn('[ProfileBookmarksAndHashtags] Error fetching hashtag events:', error)
+            logger.component('ProfileBookmarksAndHashtags', 'Error fetching hashtag events', { error: (error as Error).message })
             setHashtagEvents([])
           }
         } else {
@@ -169,7 +169,7 @@ export default function ProfileBookmarksAndHashtags({
         setHashtagEvents([])
       }
     } catch (error) {
-      console.error('[ProfileBookmarksAndHashtags] Error fetching hashtags:', error)
+      logger.component('ProfileBookmarksAndHashtags', 'Error fetching hashtags', { error: (error as Error).message })
       setHashtagEvents([])
     } finally {
       setLoadingHashtags(false)
@@ -192,7 +192,7 @@ export default function ProfileBookmarksAndHashtags({
         })
         pinList = pinListEvents[0] || null
       } catch (error) {
-        console.warn('[ProfileBookmarksAndHashtags] Error fetching pin list from comprehensive relays, falling back to default method:', error)
+        logger.component('ProfileBookmarksAndHashtags', 'Error fetching pin list from comprehensive relays, falling back to default method', { error: (error as Error).message })
         pinList = await client.fetchPinListEvent(pubkey)
       }
       
@@ -228,7 +228,7 @@ export default function ProfileBookmarksAndHashtags({
         setPinEvents([])
       }
     } catch (error) {
-      console.error('[ProfileBookmarksAndHashtags] Error fetching pins:', error)
+      logger.component('ProfileBookmarksAndHashtags', 'Error fetching pins', { error: (error as Error).message })
       setPinEvents([])
     } finally {
       setLoadingPins(false)

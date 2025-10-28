@@ -150,6 +150,7 @@ class NoteStatsService {
     const normalizedRelays = FAST_READ_RELAY_URLS
       .map(url => normalizeUrl(url))
       .filter((url): url is string => !!url)
+      .slice(0, 2) // Limit to 2 relays for better performance and reduced load
     
     return Array.from(new Set(normalizedRelays))
   }

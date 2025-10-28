@@ -83,22 +83,8 @@ const NoteList = forwardRef(
         // Check if this is a profile feed
         const isProfileFeed = subRequests.some(req => req.filter.authors && req.filter.authors.length === 1)
         
-        console.log('🔍 [NoteList] Checking shouldHideEvent for:', { 
-          id: evt.id, 
-          kind: evt.kind, 
-          pubkey: evt.pubkey.substring(0, 8),
-          isDeleted: isEventDeleted(evt),
-          isReply: isReplyNoteEvent(evt),
-          isTrusted: isUserTrusted(evt.pubkey),
-          isMuted: mutePubkeySet.has(evt.pubkey),
-          hideReplies,
-          hideUntrustedNotes,
-          filterMutedNotes,
-          isProfileFeed
-        })
-        
         if (isEventDeleted(evt)) {
-          console.log('❌ [NoteList] Event deleted:', evt.id)
+          logger.component('NoteList', 'Event filtered: deleted', { id: evt.id, kind: evt.kind })
           return true
         }
         
@@ -109,20 +95,24 @@ const NoteList = forwardRef(
           // For profile feeds, show all zaps from the profile owner
           // For timeline feeds, filter by threshold
           if (!isProfileFeed && zapInfo && zapInfo.amount < zapReplyThreshold) {
-            console.log('❌ [NoteList] Zap below threshold:', { id: evt.id, amount: zapInfo.amount, threshold: zapReplyThreshold })
+            logger.component('NoteList', 'Event filtered: zap below threshold', { 
+              id: evt.id, 
+              amount: zapInfo.amount, 
+              threshold: zapReplyThreshold 
+            })
             return true
           }
         } else if (hideReplies && isReplyNoteEvent(evt)) {
-          console.log('❌ [NoteList] Reply hidden:', evt.id)
+          logger.component('NoteList', 'Event filtered: reply hidden', { id: evt.id, kind: evt.kind })
           return true
         }
         
         if (hideUntrustedNotes && !isUserTrusted(evt.pubkey)) {
-          console.log('❌ [NoteList] Untrusted user:', evt.id)
+          logger.component('NoteList', 'Event filtered: untrusted user', { id: evt.id, pubkey: evt.pubkey.substring(0, 8) })
           return true
         }
         if (filterMutedNotes && mutePubkeySet.has(evt.pubkey)) {
-          console.log('❌ [NoteList] Muted user:', evt.id)
+          logger.component('NoteList', 'Event filtered: muted user', { id: evt.id, pubkey: evt.pubkey.substring(0, 8) })
           return true
         }
         if (
@@ -130,11 +120,10 @@ const NoteList = forwardRef(
           hideContentMentioningMutedUsers &&
           isMentioningMutedUsers(evt, mutePubkeySet)
         ) {
-          console.log('❌ [NoteList] Mentions muted users:', evt.id)
+          logger.component('NoteList', 'Event filtered: mentions muted users', { id: evt.id, kind: evt.kind })
           return true
         }
 
-        console.log('✅ [NoteList] Event passed all filters:', evt.id)
         return false
       },
       [hideReplies, hideUntrustedNotes, mutePubkeySet, isEventDeleted, zapReplyThreshold, subRequests]
@@ -142,34 +131,30 @@ const NoteList = forwardRef(
 
     const filteredEvents = useMemo(() => {
       const idSet = new Set<string>()
-      
-      console.log('🔍 [NoteList] Filtering events:', {
-        totalEvents: events.length,
-        showCount,
-        eventKinds: events.map(e => e.kind).slice(0, 10)
-      })
+      const startTime = performance.now()
 
       const filtered = events.slice(0, showCount).filter((evt) => {
         if (shouldHideEvent(evt)) {
-          console.log('❌ [NoteList] Event hidden:', { id: evt.id, kind: evt.kind, reason: 'shouldHideEvent' })
           return false
         }
 
         const id = isReplaceableEvent(evt.kind) ? getReplaceableCoordinateFromEvent(evt) : evt.id
         if (idSet.has(id)) {
-          console.log('❌ [NoteList] Event hidden:', { id: evt.id, kind: evt.kind, reason: 'duplicate' })
+          logger.component('NoteList', 'Event filtered: duplicate', { id: evt.id, kind: evt.kind })
           return false
         }
         idSet.add(id)
         return true
       })
-      
-      console.log('✅ [NoteList] Filtered events result:', { 
-        total: events.length, 
-        filtered: filtered.length,
-        showCount 
+
+      const endTime = performance.now()
+      logger.perfComponent('NoteList', 'Event filtering completed', {
+        totalEvents: events.length,
+        filteredEvents: filtered.length,
+        showCount,
+        duration: `${(endTime - startTime).toFixed(2)}ms`
       })
-      
+
       return filtered
     }, [events, showCount, shouldHideEvent])
 
@@ -200,7 +185,7 @@ const NoteList = forwardRef(
       scrollToTop()
       // Clear relay connection state to force fresh connections
       const relayUrls = subRequests.flatMap(req => req.urls)
-      client.clearRelayConnectionState(relayUrls)
+      relayUrls.forEach(url => client.clearRelayConnectionState(url))
       setTimeout(() => {
         setRefreshCount((count) => count + 1)
       }, 500)
@@ -209,32 +194,32 @@ const NoteList = forwardRef(
     useImperativeHandle(ref, () => ({ scrollToTop, refresh }), [])
 
   useEffect(() => {
-    console.log('🚀 [NoteList] useEffect triggered:', { 
+    logger.component('NoteList', 'useEffect triggered', { 
       subRequests: subRequests.length, 
       showKinds: showKinds.length,
       refreshCount 
     })
-    logger.debug('NoteList useEffect:', { subRequests, subRequestsLength: subRequests.length })
+    
     if (!subRequests.length) {
-      console.log('❌ [NoteList] No subRequests, returning early')
+      logger.component('NoteList', 'No subRequests, returning early')
       return
     }
     
     // Don't initialize if showKinds is empty (still loading from provider)
     if (showKinds.length === 0) {
-      console.log('⏳ [NoteList] showKinds is empty, waiting for provider to initialize')
+      logger.component('NoteList', 'showKinds is empty, waiting for provider to initialize')
       return
     }
 
     async function init() {
-        console.log('🔄 [NoteList] Initializing feed...')
+        logger.component('NoteList', 'Initializing feed')
         setLoading(true)
         setEvents([])
         setNewEvents([])
         setHasMore(true)
 
         if (showKinds.length === 0) {
-          logger.warn('NoteList: showKinds is empty, no events will be displayed')
+          logger.component('NoteList', 'showKinds is empty, no events will be displayed')
           setLoading(false)
           setHasMore(false)
           return () => {}
@@ -249,24 +234,17 @@ const NoteList = forwardRef(
           }
         }))
         
-        console.log('[NoteList] Subscribing to timeline with:', finalFilters)
-        console.log('[NoteList] showKinds:', showKinds)
-        
         const { closer, timelineKey } = await client.subscribeTimeline(
           finalFilters,
           {
             onEvents: (events, eosed) => {
-              console.log('📥 [NoteList] Received events:', { 
+              logger.component('NoteList', 'Received events from relay', { 
                 eventsCount: events.length, 
                 eosed,
-                loading,
-                hasMore,
-                eventKinds: events.map(e => e.kind).slice(0, 10), // First 10 event kinds
-                showKinds
+                eventKinds: [...new Set(events.map(e => e.kind))].slice(0, 5)
               })
-              logger.debug('NoteList received events:', { eventsCount: events.length, eosed })
+              
               if (events.length > 0) {
-                console.log('✅ [NoteList] Accumulating events from relay')
                 setEvents(prevEvents => {
                   // For profile feeds, accumulate events from all relays
                   // For timeline feeds, replace events
@@ -276,16 +254,19 @@ const NoteList = forwardRef(
                     // Accumulate events, removing duplicates
                     const existingIds = new Set(prevEvents.map(e => e.id))
                     const newEvents = events.filter(e => !existingIds.has(e.id))
-                    const combined = [...prevEvents, ...newEvents]
-                    console.log('📊 [NoteList] Profile feed - accumulated:', { 
-                      previous: prevEvents.length, 
-                      new: events.length, 
+                    logger.component('NoteList', 'Profile feed - accumulating events', {
+                      previous: prevEvents.length,
+                      new: events.length,
                       unique: newEvents.length,
-                      total: combined.length 
+                      total: prevEvents.length + newEvents.length
                     })
-                    return combined
+                    return [...prevEvents, ...newEvents]
                   } else {
                     // Timeline feed - replace events
+                    logger.component('NoteList', 'Timeline feed - replacing events', {
+                      previous: prevEvents.length,
+                      new: events.length
+                    })
                     return events
                   }
                 })
@@ -296,7 +277,10 @@ const NoteList = forwardRef(
                 setHasMore(false)
               }
               if (eosed) {
-                console.log('🏁 [NoteList] EOSED - setting loading false, hasMore:', events.length > 0)
+                logger.component('NoteList', 'EOSED - all relays finished', {
+                  eventsCount: events.length,
+                  hasMore: events.length > 0
+                })
                 setLoading(false)
                 setHasMore(events.length > 0)
               }
@@ -315,7 +299,7 @@ const NoteList = forwardRef(
               }
             },
             onClose: (url, reason) => {
-              logger.debug('Relay connection closed:', { url, reason })
+              logger.component('NoteList', 'Relay connection closed', { url, reason })
               if (!showRelayCloseReason) return
               // ignore reasons from nostr-tools
               if (
@@ -344,7 +328,7 @@ const NoteList = forwardRef(
         const fallbackTimeout = setTimeout(() => {
           if (loading) {
             setLoading(false)
-            logger.debug('NoteList loading timeout - stopping after 15 seconds')
+            logger.component('NoteList', 'Loading timeout - stopping after 15 seconds')
           }
         }, 15000)
         
@@ -419,7 +403,7 @@ const NoteList = forwardRef(
       }, 0)
     }
 
-    console.log('🎨 [NoteList] Rendering with state:', {
+    logger.component('NoteList', 'Rendering with state', {
       eventsCount: events.length,
       filteredEventsCount: filteredEvents.length,
       loading,
@@ -447,10 +431,10 @@ const NoteList = forwardRef(
         ) : (
           <div className="flex justify-center w-full mt-2">
             <Button size="lg" onClick={() => {
-              console.log('🔄 [NoteList] Reload button clicked, refreshing feed')
+              logger.component('NoteList', 'Reload button clicked, refreshing feed')
               // Clear relay connection state to force fresh connections
               const relayUrls = subRequests.flatMap(req => req.urls)
-              client.clearRelayConnectionState(relayUrls)
+              relayUrls.forEach(url => client.clearRelayConnectionState(url))
               setRefreshCount((count) => count + 1)
             }}>
               {t('reload notes')}

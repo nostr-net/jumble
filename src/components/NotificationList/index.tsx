@@ -1,5 +1,6 @@
 import { ExtendedKind, NOTIFICATION_LIST_STYLE, FAST_READ_RELAY_URLS } from '@/constants'
 import { compareEvents } from '@/lib/event'
+import logger from '@/lib/logger'
 import { usePrimaryPage } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import { useNotification } from '@/providers/NotificationProvider'
@@ -134,43 +135,35 @@ const NotificationList = forwardRef((_, ref) => {
       if (userReadRelays.length > 0) {
         // Priority 1: User's read/inbox relays (kind 10002)
         primaryRelays = userReadRelays.slice(0, 5)
-        console.debug('[NotificationList] Using user read relays:', primaryRelays.length, 'relays')
+        logger.component('NotificationList', 'Using user read relays', { 
+          count: primaryRelays.length, 
+          relays: primaryRelays.slice(0, 3) // Show first 3 for brevity
+        })
       } else if (userFavoriteRelays.length > 0) {
         // Priority 2: User's favorite relays (kind 10012)
         primaryRelays = userFavoriteRelays.slice(0, 5)
-        console.debug('[NotificationList] Using user favorite relays:', primaryRelays.length, 'relays')
+        logger.component('NotificationList', 'Using user favorite relays', { 
+          count: primaryRelays.length, 
+          relays: primaryRelays.slice(0, 3) // Show first 3 for brevity
+        })
       } else {
         // Priority 3: Fast read relays (reliable defaults)
         primaryRelays = FAST_READ_RELAY_URLS.slice(0, 5)
-        console.debug('[NotificationList] Using fast read relays fallback:', primaryRelays.length, 'relays')
+        logger.component('NotificationList', 'Using fast read relays fallback', { 
+          count: primaryRelays.length, 
+          relays: primaryRelays.slice(0, 3) // Show first 3 for brevity
+        })
       }
 
-      // Create separate subscriptions for different notification types
-      const subscriptions = []
-      
-      // Subscription for mentions (events where user is in p-tags)
-      const mentionKinds = filterKinds.filter(kind => kind !== 11)
-      if (mentionKinds.length > 0) {
-        subscriptions.push({
-          urls: primaryRelays,
-          filter: {
-            '#p': [pubkey],
-            kinds: mentionKinds,
-            limit: LIMIT
-          }
-        })
-      }
-      
-      // Separate subscription for discussion notifications (kind 11) - no p-tag requirement
-      if (filterKinds.includes(11)) {
-        subscriptions.push({
-          urls: primaryRelays,
-          filter: {
-            kinds: [11],
-            limit: LIMIT
-          }
-        })
-      }
+      // Create a single optimized subscription for all notification types
+      const subscriptions = [{
+        urls: primaryRelays,
+        filter: {
+          kinds: filterKinds,
+          limit: LIMIT,
+          '#p': [pubkey] // Always filter for mentions to the current user
+        }
+      }]
 
       const { closer, timelineKey } = await client.subscribeTimeline(
         subscriptions,

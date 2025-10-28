@@ -614,15 +614,18 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
 
 
   const pushSecondaryPage = (url: string, index?: number) => {
-    console.log('pushSecondaryPage called with:', url)
+    logger.component('PageManager', 'pushSecondaryPage called', { url })
     setSecondaryStack((prevStack) => {
-      console.log('Current secondary stack length:', prevStack.length)
+      logger.component('PageManager', 'Current secondary stack length', { length: prevStack.length })
       
       // For relay pages, clear the stack and start fresh to avoid confusion
       if (url.startsWith('/relays/')) {
-        console.log('Clearing stack for relay navigation')
+        logger.component('PageManager', 'Clearing stack for relay navigation')
         const { newStack, newItem } = pushNewPageToStack([], url, maxStackSize, 0)
-        console.log('New stack length:', newStack.length, 'New item:', !!newItem)
+        logger.component('PageManager', 'New stack created', { 
+          newStackLength: newStack.length, 
+          hasNewItem: !!newItem 
+        })
         if (newItem) {
           window.history.pushState({ index: newItem.index, url }, '', url)
         }
@@ -630,7 +633,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
       }
       
       if (isCurrentPage(prevStack, url)) {
-        console.log('Page already exists, scrolling to top')
+        logger.component('PageManager', 'Page already exists, scrolling to top')
         const currentItem = prevStack[prevStack.length - 1]
         if (currentItem?.ref?.current) {
           currentItem.ref.current.scrollToTop('instant')
@@ -638,9 +641,12 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
         return prevStack
       }
 
-      console.log('Creating new page for URL:', url)
+      logger.component('PageManager', 'Creating new page for URL', { url })
       const { newStack, newItem } = pushNewPageToStack(prevStack, url, maxStackSize, index)
-      console.log('New stack length:', newStack.length, 'New item:', !!newItem)
+      logger.component('PageManager', 'New page created', { 
+        newStackLength: newStack.length, 
+        hasNewItem: !!newItem 
+      })
       if (newItem) {
         window.history.pushState({ index: newItem.index, url }, '', url)
       }
@@ -715,7 +721,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
                 {!!secondaryStack.length &&
                   secondaryStack.map((item, index) => {
                     const isLast = index === secondaryStack.length - 1
-                    console.log('Rendering secondary stack item:', { 
+                    logger.component('PageManager', 'Rendering secondary stack item', { 
                       index, 
                       isLast, 
                       url: item.url, 
@@ -788,7 +794,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
                   <div className="flex-1 overflow-auto">
                     {secondaryStack.map((item, index) => {
                       const isLast = index === secondaryStack.length - 1
-                      console.log('Rendering desktop secondary stack item:', { 
+                      logger.component('PageManager', 'Rendering desktop secondary stack item', { 
                         index, 
                         isLast, 
                         url: item.url, 
@@ -861,21 +867,21 @@ function isCurrentPage(stack: TStackItem[], url: string) {
   const currentPage = stack[stack.length - 1]
   if (!currentPage) return false
 
-  console.log('isCurrentPage check:', { currentUrl: currentPage.url, newUrl: url, match: currentPage.url === url })
+  logger.component('PageManager', 'isCurrentPage check', { currentUrl: currentPage.url, newUrl: url, match: currentPage.url === url })
   return currentPage.url === url
 }
 
 function findAndCreateComponent(url: string, index: number) {
   const path = url.split('?')[0].split('#')[0]
-  console.log('findAndCreateComponent called with:', { url, path, routes: routes.length })
+  logger.component('PageManager', 'findAndCreateComponent called', { url, path, routes: routes.length })
   
   for (const { matcher, element } of routes) {
     const match = matcher(path)
-    console.log('Trying route matcher, match result:', !!match)
+    logger.component('PageManager', 'Trying route matcher', { matchResult: !!match })
     if (!match) continue
 
     if (!element) {
-      console.log('No element for this route')
+      logger.component('PageManager', 'No element for this route')
       return {}
     }
     const ref = createRef<TPageRef>()
@@ -884,13 +890,13 @@ function findAndCreateComponent(url: string, index: number) {
     const params = { ...match.params }
     if (params.url && typeof params.url === 'string') {
       params.url = decodeURIComponent(params.url)
-      console.log('Decoded URL parameter:', params.url)
+      logger.component('PageManager', 'Decoded URL parameter', { url: params.url })
     }
     
-    console.log('Creating component with params:', params)
+    logger.component('PageManager', 'Creating component with params', params)
     return { component: cloneElement(element, { ...params, index, ref } as any), ref }
   }
-  console.log('No matching route found for:', path)
+  logger.component('PageManager', 'No matching route found', { path })
   return {}
 }
 

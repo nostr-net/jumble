@@ -25,12 +25,12 @@ export function EmbeddedNote({ noteId, className }: { noteId: string; className?
       setRetryCount(prev => prev + 1)
       
       client.fetchEventForceRetry(noteId)
-        .then((retryResult) => {
+        .then((retryResult: any) => {
           if (retryResult) {
             setRetryEvent(retryResult)
           }
         })
-        .catch((error) => {
+        .catch((error: any) => {
           console.warn(`Retry ${retryCount + 1}/${maxRetries} failed for event:`, noteId, error)
         })
         .finally(() => {
@@ -137,7 +137,7 @@ function EmbeddedNoteNotFound({
     
     setIsSearchingExternal(true)
     try {
-      const event = await client.fetchEventWithExternalRelays(noteId)
+      const event = await client.fetchEventWithExternalRelays(noteId, [])
       if (event && onEventFound) {
         onEventFound(event)
       }

@@ -76,10 +76,10 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       if (feedInfo.feedType === 'relay') {
         // Check if the stored relay is blocked, if so use first visible relay instead
         if (feedInfo.id && blockedRelays.includes(feedInfo.id)) {
-          console.log('[FeedProvider] Stored relay is blocked, using first visible relay instead')
+          logger.component('FeedProvider', 'Stored relay is blocked, using first visible relay instead')
           feedInfo.id = visibleRelays[0] ?? DEFAULT_FAVORITE_RELAYS[0]
         }
-        console.log('[FeedProvider] Initial relay setup, calling switchFeed with:', feedInfo.id)
+        logger.component('FeedProvider', 'Initial relay setup, calling switchFeed', { relayId: feedInfo.id })
         return await switchFeed('relay', { relay: feedInfo.id })
       }
 
@@ -139,16 +139,16 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       }
 
       const newFeedInfo = { feedType, id: normalizedUrl }
-      console.log('[FeedProvider] Setting relay feed info:', newFeedInfo)
+      logger.component('FeedProvider', 'Setting relay feed info', newFeedInfo)
       setFeedInfo(newFeedInfo)
       feedInfoRef.current = newFeedInfo
       setRelayUrls([normalizedUrl])
-      console.log('[FeedProvider] Set relayUrls to:', [normalizedUrl])
+      logger.component('FeedProvider', 'Set relayUrls', { relayUrls: [normalizedUrl] })
       storage.setFeedInfo(newFeedInfo, pubkey)
       // Reset note list mode to 'posts' when switching to relay feed to ensure main content is shown
       storage.setNoteListMode('posts')
       setIsReady(true)
-      console.log('[FeedProvider] Relay feed setup complete, isReady set to true')
+      logger.component('FeedProvider', 'Relay feed setup complete, isReady set to true')
       return
     }
     if (feedType === 'relays') {

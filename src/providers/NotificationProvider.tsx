@@ -1,5 +1,6 @@
 import { ExtendedKind, FAST_READ_RELAY_URLS } from '@/constants'
 import { compareEvents } from '@/lib/event'
+import logger from '@/lib/logger'
 import { notificationFilter } from '@/lib/notification'
 import { usePrimaryPage } from '@/PageManager'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
@@ -119,15 +120,24 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (userReadRelays.length > 0) {
           // Priority 1: User's read/inbox relays (kind 10002)
           notificationRelays = userReadRelays.slice(0, 5)
-          console.debug('[NotificationProvider] Using user read relays:', notificationRelays.length, 'relays')
+          logger.component('NotificationProvider', 'Using user read relays', { 
+            count: notificationRelays.length, 
+            relays: notificationRelays.slice(0, 3) // Show first 3 for brevity
+          })
         } else if (userFavoriteRelays.length > 0) {
           // Priority 2: User's favorite relays (kind 10012)
           notificationRelays = userFavoriteRelays.slice(0, 5)
-          console.debug('[NotificationProvider] Using user favorite relays:', notificationRelays.length, 'relays')
+          logger.component('NotificationProvider', 'Using user favorite relays', { 
+            count: notificationRelays.length, 
+            relays: notificationRelays.slice(0, 3) // Show first 3 for brevity
+          })
         } else {
           // Priority 3: Fast read relays (reliable defaults)
           notificationRelays = FAST_READ_RELAY_URLS.slice(0, 5)
-          console.debug('[NotificationProvider] Using fast read relays fallback:', notificationRelays.length, 'relays')
+          logger.component('NotificationProvider', 'Using fast read relays fallback', { 
+            count: notificationRelays.length, 
+            relays: notificationRelays.slice(0, 3) // Show first 3 for brevity
+          })
         }
         
         // Subscribe to discussion notifications (kind 11)

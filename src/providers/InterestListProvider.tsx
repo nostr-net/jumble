@@ -2,6 +2,7 @@ import { createInterestListDraftEvent } from '@/lib/draft-event'
 import { normalizeTopic } from '@/lib/discussion-topics'
 import { normalizeUrl } from '@/lib/url'
 import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
+import logger from '@/lib/logger'
 import client from '@/services/client.service'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -88,7 +89,7 @@ export function InterestListProvider({ children }: { children: React.ReactNode }
     
     // Use the same comprehensive relay list as pins for publishing
     const comprehensiveRelays = await buildComprehensiveRelayList()
-    console.log('[InterestListProvider] Publishing to comprehensive relays:', comprehensiveRelays)
+    logger.component('InterestListProvider', 'Publishing to comprehensive relays', { count: comprehensiveRelays.length })
     
     const publishedEvent = await publish(newInterestListEvent, {
       specifiedRelayUrls: comprehensiveRelays
@@ -97,46 +98,46 @@ export function InterestListProvider({ children }: { children: React.ReactNode }
   }
 
   const subscribe = async (topic: string) => {
-    console.log('[InterestListProvider] subscribe called:', { topic, accountPubkey, changing })
+    logger.component('InterestListProvider', 'subscribe called', { topic, accountPubkey, changing })
     if (!accountPubkey || changing) return
 
     const normalizedTopic = normalizeTopic(topic)
     if (subscribedTopics.has(normalizedTopic)) {
-      console.log('[InterestListProvider] Already subscribed to topic')
+      logger.component('InterestListProvider', 'Already subscribed to topic')
       return
     }
 
     setChanging(true)
     try {
-      console.log('[InterestListProvider] Fetching existing interest list event')
+      logger.component('InterestListProvider', 'Fetching existing interest list event')
       const interestListEvent = await client.fetchInterestListEvent(accountPubkey)
-      console.log('[InterestListProvider] Existing interest list event:', interestListEvent)
+      logger.component('InterestListProvider', 'Existing interest list event', { hasEvent: !!interestListEvent })
       
       const currentTopics = interestListEvent
         ? interestListEvent.tags
-            .filter(tag => tag[0] === 't' && tag[1])
-            .map(tag => normalizeTopic(tag[1]))
+            .filter((tag: string[]) => tag[0] === 't' && tag[1])
+            .map((tag: string[]) => normalizeTopic(tag[1]))
         : []
 
-      console.log('[InterestListProvider] Current topics:', currentTopics)
+      logger.component('InterestListProvider', 'Current topics', { topics: currentTopics })
 
       if (currentTopics.includes(normalizedTopic)) {
-        console.log('[InterestListProvider] Already subscribed to topic (from event)')
+        logger.component('InterestListProvider', 'Already subscribed to topic (from event)')
         return
       }
 
       const newTopics = [...currentTopics, normalizedTopic]
-      console.log('[InterestListProvider] Creating new interest list with topics:', newTopics)
+      logger.component('InterestListProvider', 'Creating new interest list with topics', { topics: newTopics })
       
       const newInterestListEvent = await publishNewInterestListEvent(newTopics)
-      console.log('[InterestListProvider] Published new interest list event:', newInterestListEvent)
+      logger.component('InterestListProvider', 'Published new interest list event', { hasEvent: !!newInterestListEvent })
       
       await updateInterestListEvent(newInterestListEvent)
-      console.log('[InterestListProvider] Updated interest list event in state')
+      logger.component('InterestListProvider', 'Updated interest list event in state')
       
       toast.success(t('Subscribed to topic'))
     } catch (error) {
-      console.error('Failed to publish interest list event:', error)
+      logger.component('InterestListProvider', 'Failed to publish interest list event', { error: (error as Error).message })
       // Even if publishing fails, the subscription worked locally, so show success
       // The user can still see their hashtag feed working
       toast.success(t('Subscribed to topic (local)'))
@@ -159,10 +160,10 @@ export function InterestListProvider({ children }: { children: React.ReactNode }
       if (!interestListEvent) return
 
       const currentTopics = interestListEvent.tags
-        .filter(tag => tag[0] === 't' && tag[1])
-        .map(tag => normalizeTopic(tag[1]))
+        .filter((tag: string[]) => tag[0] === 't' && tag[1])
+        .map((tag: string[]) => normalizeTopic(tag[1]))
 
-      const newTopics = currentTopics.filter(t => t !== normalizedTopic)
+      const newTopics = currentTopics.filter((t: string) => t !== normalizedTopic)
       
       if (newTopics.length === currentTopics.length) {
         // Topic wasn't in the list
@@ -174,7 +175,7 @@ export function InterestListProvider({ children }: { children: React.ReactNode }
       
       toast.success(t('Unsubscribed from topic'))
     } catch (error) {
-      console.error('Failed to unsubscribe from topic:', error)
+      logger.component('InterestListProvider', 'Failed to unsubscribe from topic', { error: (error as Error).message })
       toast.error(t('Failed to unsubscribe from topic') + ': ' + (error as Error).message)
     } finally {
       setChanging(false)

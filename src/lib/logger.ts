@@ -40,9 +40,29 @@ class Logger {
     return messageLevelIndex >= currentLevelIndex
   }
 
+  private getCallerInfo(): string {
+    const stack = new Error().stack
+    if (!stack) return 'unknown'
+    
+    const lines = stack.split('\n')
+    // Skip the first 3 lines (Error, getCallerInfo, formatMessage)
+    // Look for the first line that contains a file path
+    for (let i = 3; i < lines.length; i++) {
+      const line = lines[i]
+      const match = line.match(/at\s+(.+?)\s+\((.+?):(\d+):(\d+)\)/)
+      if (match) {
+        const [, functionName, filePath] = match
+        const fileName = filePath.split('/').pop()?.replace('.tsx', '').replace('.ts', '') || 'unknown'
+        return `${fileName}:${functionName}`
+      }
+    }
+    return 'unknown'
+  }
+
   private formatMessage(level: LogLevel, message: string, ...args: any[]): [string, ...any[]] {
     const timestamp = new Date().toISOString().substring(11, 23) // HH:mm:ss.SSS
-    const prefix = `[${timestamp}] [${level.toUpperCase()}]`
+    const caller = this.getCallerInfo()
+    const prefix = `[${timestamp}] [${level.toUpperCase()}] [${caller}]`
     return [`${prefix} ${message}`, ...args]
   }
 
@@ -100,6 +120,22 @@ class Logger {
   // Check if debug mode is enabled
   isDebugEnabled(): boolean {
     return this.config.enableDebug
+  }
+
+  // Context-aware logging for components
+  component(componentName: string, message: string, ...args: any[]): void {
+    if (!this.config.enableDebug) return
+    const timestamp = new Date().toISOString().substring(11, 23)
+    const caller = this.getCallerInfo()
+    console.log(`[${timestamp}] [COMPONENT] [${componentName}] [${caller}] ${message}`, ...args)
+  }
+
+  // Performance logging with context
+  perfComponent(componentName: string, operation: string, ...args: any[]): void {
+    if (!this.config.enablePerformance) return
+    const timestamp = new Date().toISOString().substring(11, 23)
+    const caller = this.getCallerInfo()
+    console.log(`[${timestamp}] [PERF] [${componentName}] [${caller}] ${operation}`, ...args)
   }
 }
 

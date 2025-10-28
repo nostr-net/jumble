@@ -25,7 +25,7 @@ export default function NotFound({
 
     const getExternalRelays = async () => {
       // Get all relays that would be tried in tiers 1-3 (already tried)
-      const alreadyTriedRelays = await client.getAlreadyTriedRelays()
+      const alreadyTriedRelays: string[] = await client.getAlreadyTriedRelays()
       
       let externalRelays: string[] = []
       
@@ -72,7 +72,7 @@ export default function NotFound({
     
     setIsSearchingExternal(true)
     try {
-      const event = await client.fetchEventWithExternalRelays(bech32Id)
+      const event = await client.fetchEventWithExternalRelays(bech32Id, externalRelays)
       if (event && onEventFound) {
         onEventFound(event)
       }

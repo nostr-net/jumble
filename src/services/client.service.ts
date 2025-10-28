@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, DEFAULT_FAVORITE_RELAYS, ExtendedKind, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS, PROFILE_FETCH_RELAY_URLS, PROFILE_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind } from '@/constants'
 import {
   compareEvents,
   getReplaceableCoordinate,
@@ -6,14 +6,12 @@ import {
   isReplaceableEvent
 } from '@/lib/event'
 import { getProfileFromEvent, getRelayListFromEvent } from '@/lib/event-metadata'
-import logger from '@/lib/logger'
 import { formatPubkey, isValidPubkey, pubkeyToNpub, userIdToPubkey } from '@/lib/pubkey'
-import { getPubkeysFromPTags, getServersFromServerTags } from '@/lib/tag'
-import { isWebsocketUrl, normalizeUrl } from '@/lib/url'
+import { getPubkeysFromPTags, getServersFromServerTags, tagNameEquals } from '@/lib/tag'
+import { isLocalNetworkUrl, isWebsocketUrl, normalizeUrl } from '@/lib/url'
 import { isSafari } from '@/lib/utils'
-import storage from '@/services/local-storage.service'
 import { ISigner, TProfile, TPublishOptions, TRelayList, TSubRequestFilter } from '@/types'
-import { sha256 } from '@noble/hashes/sha256'
+import { sha256 } from '@noble/hashes/sha2'
 import DataLoader from 'dataloader'
 import dayjs from 'dayjs'
 import FlexSearch from 'flexsearch'
@@ -22,9 +20,12 @@ import {
   EventTemplate,
   Filter,
   kinds,
+  matchFilters,
   Event as NEvent,
   nip19,
+  Relay,
   SimplePool,
+  validateEvent,
   VerifiedEvent
 } from 'nostr-tools'
 import { AbstractRelay } from 'nostr-tools/abstract-relay'
@@ -55,18 +56,11 @@ class ClientService extends EventTarget {
     (ids) => Promise.all(ids.map((id) => this._fetchEvent(id))),
     { cacheMap: this.eventCacheMap }
   )
-  private requestThrottle = new Map<string, number>() // Track request timestamps per relay
-  private readonly REQUEST_COOLDOWN = 1000 // 1 second cooldown between requests (reduced from 3s)
-  private failureCount = new Map<string, number>() // Track consecutive failures per relay
-  private readonly MAX_FAILURES = 3 // Max failures before exponential backoff (increased from 1 for better reliability)
-  private circuitBreaker = new Map<string, number>() // Track when relays are temporarily disabled
-  private readonly CIRCUIT_BREAKER_TIMEOUT = 30000 // 30 second timeout for circuit breaker (reduced from 60s)
-  private concurrentRequests = new Map<string, number>() // Track concurrent requests per relay
-  private readonly MAX_CONCURRENT_REQUESTS = 2 // Max concurrent requests per relay (increased from 1)
-  private globalRequestThrottle = 0 // Global request throttle to prevent overwhelming all relays
-  private readonly GLOBAL_REQUEST_COOLDOWN = 500 // 0.5 second global cooldown (reduced from 1s)
-  private blacklistedRelays = new Map<string, number>() // Temporarily blacklist problematic relays
-  private readonly BLACKLIST_TIMEOUT = 300000 // 5 minutes blacklist timeout
+  private fetchEventFromBigRelaysDataloader = new DataLoader<string, NEvent | undefined>(
+    this.fetchEventsFromBigRelays.bind(this),
+    { cache: false, batchScheduleFn: (callback) => setTimeout(callback, 50) }
+  )
+  private trendingNotesCache: NEvent[] | null = null
 
   private userIndex = new FlexSearch.Index({
     tokenize: 'forward'
@@ -94,32 +88,19 @@ class ClientService extends EventTarget {
     event: NEvent,
     { specifiedRelayUrls, additionalRelayUrls }: TPublishOptions = {}
   ) {
-    let relays: string[]
-    
-    // Check if this is a discussion thread or reply to a discussion
-    const isDiscussionRelated = event.kind === ExtendedKind.DISCUSSION || 
-      event.tags.some(tag => tag[0] === 'k' && tag[1] === String(ExtendedKind.DISCUSSION))
-    
-    // Special handling for discussion-related events: try specified relay first, then fallback
-    if (specifiedRelayUrls?.length && (event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT)) {
-      // For discussion replies, try ONLY the specified relay first
-      // The fallback will be handled in the publishing logic if this fails
-      // But still filter blocked relays from specified relays
-      if (this.pubkey) {
-        const blockedRelays = await this.fetchBlockedRelays(this.pubkey)
-        relays = this.filterBlockedRelays(specifiedRelayUrls, blockedRelays)
-      } else {
-        relays = specifiedRelayUrls
+    if (event.kind === kinds.Report) {
+      const targetEventId = event.tags.find(tagNameEquals('e'))?.[1]
+      if (targetEventId) {
+        return this.getSeenEventRelayUrls(targetEventId)
       }
-      return relays
-    } else if (specifiedRelayUrls?.length) {
-      // For non-discussion events, use specified relays (will be filtered below)
+    }
+
+    let relays: string[]
+    if (specifiedRelayUrls?.length) {
       relays = specifiedRelayUrls
     } else {
       const _additionalRelayUrls: string[] = additionalRelayUrls ?? []
-      
-      // Publish to mentioned users' inboxes for all events EXCEPT discussions
-      if (!isDiscussionRelated) {
+      if (!specifiedRelayUrls?.length && ![kinds.Contacts, kinds.Mutelist].includes(event.kind)) {
         const mentions: string[] = []
         event.tags.forEach(([tagName, tagValue]) => {
           if (
@@ -138,368 +119,94 @@ class ClientService extends EventTarget {
           })
         }
       }
-      
       if (
         [
           kinds.RelayList,
           kinds.Contacts,
           ExtendedKind.FAVORITE_RELAYS,
           ExtendedKind.BLOSSOM_SERVER_LIST,
-          ExtendedKind.RELAY_REVIEW,
-          ExtendedKind.BLOCKED_RELAYS,
-          kinds.Pinlist,
-          kinds.Mutelist,
-          kinds.BookmarkList,
-          kinds.InterestsList,
-          ExtendedKind.FAVORITE_RELAYS,
+          ExtendedKind.RELAY_REVIEW
         ].includes(event.kind)
       ) {
-        _additionalRelayUrls.push(...PROFILE_RELAY_URLS, ...FAST_WRITE_RELAY_URLS)
+        _additionalRelayUrls.push(...BIG_RELAY_URLS)
       }
 
-      // Use current user's relay list
-      const relayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
-      const senderWriteRelays = relayList?.write.slice(0, 6) ?? []
-      const recipientReadRelays = Array.from(new Set(_additionalRelayUrls))
-      // Normalize and deduplicate the combined relay list
-      const normalizedSenderRelays = senderWriteRelays.map(url => normalizeUrl(url) || url)
-      const normalizedRecipientRelays = recipientReadRelays.map(url => normalizeUrl(url) || url)
-      relays = Array.from(new Set(normalizedSenderRelays.concat(normalizedRecipientRelays)))
-    }
- 
-    if (!relays.length) {
-      relays.push(...FAST_WRITE_RELAY_URLS)
+      const relayList = await this.fetchRelayList(event.pubkey)
+      relays = (relayList?.write.slice(0, 10) ?? []).concat(
+        Array.from(new Set(_additionalRelayUrls)) ?? []
+      )
     }
 
-    // Filter out blocked relays
-    if (this.pubkey) {
-      const blockedRelays = await this.fetchBlockedRelays(this.pubkey)
-      relays = this.filterBlockedRelays(relays, blockedRelays)
+    if (!relays.length) {
+      relays.push(...BIG_RELAY_URLS)
     }
 
     return relays
   }
 
-  async publishEvent(relayUrls: string[], event: NEvent, options: { disableFallbacks?: boolean } = {}): Promise<{
-    success: boolean
-    relayStatuses: Array<{
-      url: string
-      success: boolean
-      error?: string
-      authAttempted?: boolean
-    }>
-    successCount: number
-    totalCount: number
-  }> {
-    // Special handling for discussion events: try relay hint first, then fallback
-    // BUT: if disableFallbacks is true (user explicitly selected relays), don't use fallbacks
-    if ((event.kind === ExtendedKind.DISCUSSION || event.kind === ExtendedKind.COMMENT) && relayUrls.length === 1 && !options.disableFallbacks) {
-      try {
-        // Try publishing to the relay hint first
-        const result = await this._publishToRelays(relayUrls, event)
-        
-        // If successful, return the result
-        if (result.success) {
-          return result
-        }
-        
-        // If failed, try fallback relays (filtering out blocked relays)
-        const userRelays = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
-        const blockedRelays = this.pubkey ? await this.fetchBlockedRelays(this.pubkey) : []
-        let fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
-        fallbackRelays = this.filterBlockedRelays(fallbackRelays, blockedRelays)
-        
-        logger.debug('Relay hint failed, trying fallback relays:', fallbackRelays)
-        const fallbackResult = await this._publishToRelays(fallbackRelays, event)
-        
-        // Combine relay statuses from both attempts
-        const combinedRelayStatuses = [...result.relayStatuses, ...fallbackResult.relayStatuses]
-        const combinedSuccessCount = combinedRelayStatuses.filter(s => s.success).length
-        
-        return {
-          success: combinedSuccessCount > 0,
-          relayStatuses: combinedRelayStatuses,
-          successCount: combinedSuccessCount,
-          totalCount: combinedRelayStatuses.length
-        }
-      } catch (error) {
-        // If relay hint throws an error, try fallback relays
-        logger.debug('Relay hint threw error, trying fallback relays:', error)
-        
-        // Extract relay statuses from the error if available
-        let hintRelayStatuses: any[] = []
-        if (error instanceof AggregateError && (error as any).relayStatuses) {
-          hintRelayStatuses = (error as any).relayStatuses
-        }
-        
-        const userRelays = this.pubkey ? await this.fetchRelayList(this.pubkey) : { write: [], read: [] }
-        const blockedRelays = this.pubkey ? await this.fetchBlockedRelays(this.pubkey) : []
-        let fallbackRelays = userRelays.write.length > 0 ? userRelays.write.slice(0, 3) : FAST_WRITE_RELAY_URLS
-        fallbackRelays = this.filterBlockedRelays(fallbackRelays, blockedRelays)
-        
-        logger.debug('Trying fallback relays:', fallbackRelays)
-        const fallbackResult = await this._publishToRelays(fallbackRelays, event)
-        
-        // Combine relay statuses from both attempts
-        const combinedRelayStatuses = [...hintRelayStatuses, ...fallbackResult.relayStatuses]
-        const combinedSuccessCount = combinedRelayStatuses.filter(s => s.success).length
-        
-        return {
-          success: combinedSuccessCount > 0,
-          relayStatuses: combinedRelayStatuses,
-          successCount: combinedSuccessCount,
-          totalCount: combinedRelayStatuses.length
-        }
-      }
-    }
+  async publishEvent(relayUrls: string[], event: NEvent) {
+    const uniqueRelayUrls = Array.from(new Set(relayUrls))
+    const relayStatuses: { url: string; success: boolean; error?: string }[] = []
     
-    // For non-discussion events, use normal publishing
-    return await this._publishToRelays(relayUrls, event)
-  }
-
-  private async _publishToRelays(relayUrls: string[], event: NEvent): Promise<{
-    success: boolean
-    relayStatuses: Array<{
-      url: string
-      success: boolean
-      error?: string
-      authAttempted?: boolean
-    }>
-    successCount: number
-    totalCount: number
-  }> {
-    const uniqueRelayUrls = this.optimizeRelaySelection(Array.from(new Set(relayUrls)))
-    
-    // Handle case where no relays are available (all filtered out)
-    if (uniqueRelayUrls.length === 0) {
-      const error = new Error('No relays available for publishing - all relays may be blocked or unavailable')
-      ;(error as any).relayStatuses = []
-      throw error
-    }
-    
-    const relayStatuses: Array<{
-      url: string
-      success: boolean
-      error?: string
-      authAttempted?: boolean
-    }> = []
-    
-    const result = await new Promise<{
-      success: boolean
-      relayStatuses: typeof relayStatuses
-      successCount: number
-      totalCount: number
-    }>((resolve, reject) => {
+    return new Promise<{ success: boolean; relayStatuses: typeof relayStatuses; successCount: number; totalCount: number }>((resolve) => {
       let successCount = 0
       let finishedCount = 0
       const errors: { url: string; error: any }[] = []
-      let resolved = false
-      
-      const checkCompletion = () => {
-        if (resolved) return
-        
-        // Wait for all relays to complete before resolving (don't complete early)
-        // This ensures we show the full relay status information
-        if (finishedCount >= uniqueRelayUrls.length && !resolved) {
-          const isSuccess = successCount > 0
-          if (isSuccess) {
-            this.emitNewEvent(event)
-          }
-          resolved = true
-          resolve({
-            success: isSuccess,
-            relayStatuses,
-            successCount,
-            totalCount: uniqueRelayUrls.length
-          })
-          return
-        }
-        
-        // Handle case where no relays succeed
-        if (finishedCount >= uniqueRelayUrls.length && !resolved && successCount === 0) {
-          resolved = true
-          const aggregateError = new AggregateError(
-            errors.map(
-              ({ url, error }) => {
-                let errorMsg = 'Unknown error'
-                if (error instanceof Error) {
-                  errorMsg = error.message || 'Empty error message'
-                } else if (error !== null && error !== undefined) {
-                  errorMsg = String(error)
-                }
-                return new Error(`Failed to publish to ${url}: ${errorMsg}`)
-              }
-            )
-          )
-          // Attach relay statuses to the error so they can be displayed
-          ;(aggregateError as any).relayStatuses = relayStatuses
-          reject(aggregateError)
-        }
-      }
-      
-      // Add overall timeout to prevent hanging
-      const overallTimeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true
-          if (successCount > 0) {
-            this.emitNewEvent(event)
-            resolve({
-              success: true,
-              relayStatuses,
-              successCount,
-              totalCount: uniqueRelayUrls.length
-            })
-          } else {
-            // Don't reject for notification updates - they're not critical
-            if (event.kind === 30078) { // Application-specific data (notifications)
-              logger.debug('Notification update timeout - non-critical, continuing')
-              resolve({
-                success: false,
-                relayStatuses,
-                successCount: 0,
-                totalCount: uniqueRelayUrls.length
-              })
-            } else {
-              reject(new Error('Publishing timeout - no relays responded in time'))
-            }
-          }
-        }
-      }, 10_000) // Reduced to 10 second overall timeout
       
       Promise.allSettled(
         uniqueRelayUrls.map(async (url) => {
           // eslint-disable-next-line @typescript-eslint/no-this-alias
           const that = this
-          
-           try {
-            // Throttle requests to prevent "too many concurrent REQs" errors
-            await this.throttleRequest(url)
-            
-            const relay = await this.pool.ensureRelay(url)
-            relay.publishTimeout = 8_000 // 8s
-            
-            await relay.publish(event)
-            this.trackEventSeenOn(event.id, relay)
-            this.recordSuccess(url)
-            successCount++
-            finishedCount++
-            
-            relayStatuses.push({
-              url,
-              success: true
+          const relay = await this.pool.ensureRelay(url)
+          relay.publishTimeout = 10_000 // 10s
+          return relay
+            .publish(event)
+            .then(() => {
+              this.trackEventSeenOn(event.id, relay)
+              successCount++
+              relayStatuses.push({ url, success: true })
             })
-            
-            checkCompletion()
-          } catch (error) {
-            let errorMessage = 'Unknown error'
-            if (error instanceof Error) {
-              errorMessage = error.message || 'Empty error message'
-            } else if (error !== null && error !== undefined) {
-              errorMessage = String(error)
-            }
-            
-            // Record failure for exponential backoff
-            this.recordFailure(url)
-            
-            // Check if this is a "too many concurrent REQs" error
-            if (
-              error instanceof Error &&
-              error.message.includes('too many concurrent REQs')
-            ) {
-              logger.debug(`⚠ Relay ${url} is overloaded, blacklisting temporarily`)
-              // Blacklist this relay for 5 minutes to prevent further overload
-              this.blacklistRelay(url)
-              errors.push({ url, error: new Error('Relay overloaded - too many concurrent requests') })
-              finishedCount++
-              
-              relayStatuses.push({
-                url,
-                success: false,
-                error: 'Relay overloaded - too many concurrent requests'
-              })
-              
-              checkCompletion()
-              return
-            }
-            
-            // Check if this is an auth-required error and we have a signer
-            if (
-              error instanceof Error &&
-              error.message.startsWith('auth-required') &&
-              !!that.signer
-            ) {
-              try {
-                // Throttle auth requests too
-                await this.throttleRequest(url)
-                
-                const relay = await this.pool.ensureRelay(url)
-                
-                const authPromise = relay.auth((authEvt: EventTemplate) => {
-                  // Ensure the auth event has the correct pubkey
-                  const authEventWithPubkey = { ...authEvt, pubkey: that.pubkey }
-                  return that.signer!.signEvent(authEventWithPubkey)
-                })
-                
-                const authTimeoutPromise = new Promise((_, reject) => {
-                  setTimeout(() => reject(new Error('Auth timeout')), 8000) // 8s timeout
-                })
-                
-                await Promise.race([authPromise, authTimeoutPromise])
-                
-                await relay.publish(event)
-                this.trackEventSeenOn(event.id, relay)
-                this.recordSuccess(url)
-                successCount++
-                finishedCount++
-                
-                relayStatuses.push({
-                  url,
-                  success: true,
-                  authAttempted: true
-                })
-                
-                checkCompletion()
-              } catch (authError) {
-                let authErrorMessage = 'Unknown auth error'
-                if (authError instanceof Error) {
-                  authErrorMessage = authError.message || 'Empty auth error message'
-                } else if (authError !== null && authError !== undefined) {
-                  authErrorMessage = String(authError)
-                }
-                this.recordFailure(url)
-                errors.push({ url, error: authError })
-                finishedCount++
-                
-                relayStatuses.push({
-                  url,
-                  success: false,
-                  error: authErrorMessage,
-                  authAttempted: true
-                })
-                
-                checkCompletion()
+            .catch((error) => {
+              if (
+                error instanceof Error &&
+                error.message.startsWith('auth-required') &&
+                !!that.signer
+              ) {
+                return relay
+                  .auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
+                  .then(() => relay.publish(event))
+                  .then(() => {
+                    this.trackEventSeenOn(event.id, relay)
+                    successCount++
+                    relayStatuses.push({ url, success: true })
+                  })
+                  .catch((authError) => {
+                    errors.push({ url, error: authError })
+                    relayStatuses.push({ url, success: false, error: authError.message })
+                  })
+              } else {
+                errors.push({ url, error })
+                relayStatuses.push({ url, success: false, error: error.message })
               }
-            } else {
-              // For permanent errors like "blocked" or "writes disabled", don't retry
-              errors.push({ url, error })
-              finishedCount++
-              
-              relayStatuses.push({
-                url,
-                success: false,
-                error: errorMessage
-              })
-              
-              checkCompletion()
-            }
-          }
+            })
+            .finally(() => {
+              // If one third of the relays have accepted the event, consider it a success
+              const isSuccess = successCount >= uniqueRelayUrls.length / 3
+              if (isSuccess) {
+                this.emitNewEvent(event)
+              }
+              if (++finishedCount >= uniqueRelayUrls.length) {
+                resolve({
+                  success: successCount >= uniqueRelayUrls.length / 3,
+                  relayStatuses,
+                  successCount,
+                  totalCount: uniqueRelayUrls.length
+                })
+              }
+            })
         })
-      ).finally(() => {
-        clearTimeout(overallTimeout)
-      })
+      )
     })
-    
-    return result
   }
 
   emitNewEvent(event: NEvent) {
@@ -575,29 +282,13 @@ class ClientService extends EventTarget {
   ) {
     const newEventIdSet = new Set<string>()
     const requestCount = subRequests.length
-    // More aggressive threshold for faster loading - respond when 1/2 of relays respond (increased from 1/3)
-    const threshold = Math.max(1, Math.floor(requestCount / 2))
+    const threshold = Math.floor(requestCount / 2)
     let eventIdSet = new Set<string>()
     let events: NEvent[] = []
     let eosedCount = 0
-    let hasCalledOnEvents = false
 
-    // Add a global timeout for the entire subscription process
-    const globalTimeout = setTimeout(() => {
-      if (!hasCalledOnEvents && events.length === 0) {
-        hasCalledOnEvents = true
-        onEvents([], true) // Call with empty events to stop loading
-        logger.debug('Global subscription timeout - stopping after 12 seconds')
-      }
-    }, 12000) // Increased timeout to 12 seconds for better reliability
-    
     const subs = await Promise.all(
-      subRequests.map(async ({ urls, filter }) => {
-        // Throttle subscription requests to prevent overload
-        for (const url of urls) {
-          await this.throttleRequest(url)
-        }
-        
+      subRequests.map(({ urls, filter }) => {
         return this._subscribeTimeline(
           urls,
           filter,
@@ -615,19 +306,8 @@ class ClientService extends EventTarget {
               events = events.sort((a, b) => b.created_at - a.created_at).slice(0, filter.limit)
               eventIdSet = new Set(events.map((evt) => evt.id))
 
-              // Call immediately on first events, then on threshold/completion
-              if (!hasCalledOnEvents && events.length > 0) {
-                hasCalledOnEvents = true
-                clearTimeout(globalTimeout)
+              if (eosedCount >= threshold) {
                 onEvents(events, eosedCount >= requestCount)
-              } else if (eosedCount >= threshold) {
-                clearTimeout(globalTimeout)
-                onEvents(events, eosedCount >= requestCount)
-              } else if (eosedCount >= requestCount && !hasCalledOnEvents) {
-                // All relays have finished but no events received - call onEvents to stop loading
-                hasCalledOnEvents = true
-                clearTimeout(globalTimeout)
-                onEvents(events, true)
               }
             },
             onNew: (evt) => {
@@ -647,7 +327,6 @@ class ClientService extends EventTarget {
 
     return {
       closer: () => {
-        clearTimeout(globalTimeout)
         onEvents = () => {}
         onNew = () => {}
         subs.forEach((sub) => {
@@ -698,7 +377,7 @@ class ClientService extends EventTarget {
       onAllClose?: (reasons: string[]) => void
     }
   ) {
-    const relays = this.optimizeRelaySelection(Array.from(new Set(urls)))
+    const relays = Array.from(new Set(urls))
     const filters = Array.isArray(filter) ? filter : [filter]
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -717,7 +396,7 @@ class ClientService extends EventTarget {
 
       async function startSub() {
         startedCount++
-        const relay = await that.pool.ensureRelay(url, { connectionTimeout: 3000 }).catch(() => {
+        const relay = await that.pool.ensureRelay(url, { connectionTimeout: 5000 }).catch(() => {
           return undefined
         })
         // cannot connect to relay
@@ -796,13 +475,29 @@ class ClientService extends EventTarget {
             }
             return
           },
-          eoseTimeout: 5_000 // 5s (reduced from 8s)
+          eoseTimeout: 10_000 // 10s
         })
       }
     })
 
+    const handleNewEventFromInternal = (data: Event) => {
+      const customEvent = data as CustomEvent<NEvent>
+      const evt = customEvent.detail
+      if (!matchFilters(filters, evt)) return
+
+      const id = evt.id
+      const have = _knownIds.has(id)
+      if (have) return
+
+      _knownIds.add(id)
+      onevent?.(evt)
+    }
+
+    this.addEventListener('newEvent', handleNewEventFromInternal)
+
     return {
       close: () => {
+        this.removeEventListener('newEvent', handleNewEventFromInternal)
         subPromises.forEach((subPromise) => {
           subPromise
             .then((sub) => {
@@ -988,15 +683,15 @@ class ClientService extends EventTarget {
   }
 
   getSeenEventRelayUrls(eventId: string) {
-    return Array.from(new Set(this.getSeenEventRelays(eventId).map((relay) => relay.url)))
+    return this.getSeenEventRelays(eventId).map((relay) => relay.url)
   }
 
   getEventHints(eventId: string) {
-    return this.getSeenEventRelayUrls(eventId)
+    return this.getSeenEventRelayUrls(eventId).filter((url) => !isLocalNetworkUrl(url))
   }
 
   getEventHint(eventId: string) {
-    return this.getSeenEventRelayUrls(eventId)[0] ?? ''
+    return this.getSeenEventRelayUrls(eventId).find((url) => !isLocalNetworkUrl(url)) ?? ''
   }
 
   trackEventSeenOn(eventId: string, relay: AbstractRelay) {
@@ -1081,72 +776,38 @@ class ClientService extends EventTarget {
     return this.eventDataLoader.load(id)
   }
 
-  // Force retry fetching an event by clearing its cache
-  async fetchEventForceRetry(id: string): Promise<NEvent | undefined> {
-    // Clear the cache for this specific event
-    this.eventCacheMap.delete(id)
-    
-    // Also clear from replaceable event cache if it's a replaceable event
-    if (!/^[0-9a-f]{64}$/.test(id)) {
-      const { type, data } = nip19.decode(id)
-      if (type === 'naddr') {
-        const coordinate = getReplaceableCoordinate(data.kind, data.pubkey, data.identifier)
-        if (coordinate) {
-          this.replaceableEventCacheMap.delete(coordinate)
+  async fetchTrendingNotes() {
+    if (this.trendingNotesCache) {
+      return this.trendingNotesCache
+    }
+
+    try {
+      const response = await fetch('https://api.nostr.band/v0/trending/notes')
+      const data = await response.json()
+      const events: NEvent[] = []
+      for (const note of data.notes ?? []) {
+        if (validateEvent(note.event)) {
+          events.push(note.event)
+          this.addEventToCache(note.event)
+          if (note.relays?.length) {
+            note.relays.map((r: string) => {
+              try {
+                const relay = new Relay(r)
+                this.trackEventSeenOn(note.event.id, relay)
+              } catch {
+                return null
+              }
+            })
+          }
         }
       }
-    }
-    
-    // Now fetch with a fresh attempt
-    return this._fetchEvent(id)
-  }
-
-  // Force clear relay connection state to allow fresh connections
-  clearRelayConnectionState(relayUrls?: string[]) {
-    if (relayUrls) {
-      // Clear state for specific relays
-      relayUrls.forEach(url => {
-        this.failureCount.delete(url)
-        this.circuitBreaker.delete(url)
-        this.requestThrottle.delete(url)
-        this.concurrentRequests.delete(url)
-        this.blacklistedRelays.delete(url) // Also clear blacklist
-        logger.debug(`Cleared connection state for relay: ${url}`)
-      })
-    } else {
-      // Clear all relay state
-      this.failureCount.clear()
-      this.circuitBreaker.clear()
-      this.requestThrottle.clear()
-      this.concurrentRequests.clear()
-      this.blacklistedRelays.clear() // Clear blacklist
-      this.globalRequestThrottle = 0 // Reset global throttle
-      logger.debug('Cleared all relay connection state')
+      this.trendingNotesCache = events
+      return this.trendingNotesCache
+    } catch (error) {
+      console.error('fetchTrendingNotes error', error)
+      return []
     }
   }
-
-  // Blacklist a problematic relay temporarily
-  private blacklistRelay(relayUrl: string): void {
-    this.blacklistedRelays.set(relayUrl, Date.now())
-    logger.debug(`🚫 Blacklisted problematic relay: ${relayUrl}`)
-  }
-
-  // Check if a relay is blacklisted
-  private isRelayBlacklisted(relayUrl: string): boolean {
-    const blacklistTime = this.blacklistedRelays.get(relayUrl)
-    if (!blacklistTime) return false
-    
-    const now = Date.now()
-    if (now - blacklistTime > this.BLACKLIST_TIMEOUT) {
-      // Blacklist expired, remove it
-      this.blacklistedRelays.delete(relayUrl)
-      logger.debug(`🟢 Blacklist expired for relay: ${relayUrl}`)
-      return false
-    }
-    
-    return true
-  }
-
 
   addEventToCache(event: NEvent) {
     this.eventDataLoader.prime(event.id, Promise.resolve(event))
@@ -1159,138 +820,58 @@ class ClientService extends EventTarget {
     }
   }
 
-  /**
-   * Get list of relays that were already tried in tiers 1-3
-   */
-  async getAlreadyTriedRelays(): Promise<string[]> {
-    const userRelayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { read: [], write: [] }
-    
-    // Get favorite relays from storage (includes user's configured relay sets)
-    const storedRelaySets = storage.getRelaySets()
-    const favoriteRelays: string[] = this.pubkey ? DEFAULT_FAVORITE_RELAYS : BIG_RELAY_URLS.slice()
-    
-    // Add relays from stored relay sets
-    storedRelaySets.forEach(({ relayUrls }) => {
-      relayUrls.forEach((url) => {
-        if (!favoriteRelays.includes(url)) {
-          favoriteRelays.push(url)
-        }
-      })
-    })
-    
-    // Tier 1: User's read relays + fast read relays + favorite relays
-    const tier1Relays = Array.from(new Set([
-      ...userRelayList.read.map(url => normalizeUrl(url) || url),
-      ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url),
-      ...favoriteRelays.map(url => normalizeUrl(url) || url)
-    ]))
-    
-    // Tier 2: User's write relays + fast write relays  
-    const tier2Relays = Array.from(new Set([
-      ...userRelayList.write.map(url => normalizeUrl(url) || url),
-      ...FAST_WRITE_RELAY_URLS.map(url => normalizeUrl(url) || url)
-    ]))
-    
-    // Tier 3: Search relays + big relays
-    const tier3Relays = Array.from(new Set([
-      ...SEARCHABLE_RELAY_URLS.map(url => normalizeUrl(url) || url),
-      ...BIG_RELAY_URLS.map(url => normalizeUrl(url) || url)
-    ]))
-    
-    return Array.from(new Set([
-      ...tier1Relays,
-      ...tier2Relays,
-      ...tier3Relays
-    ]))
-  }
-
-  // Opt-in method to fetch from author's relays, relay hints, and "seen on" relays
-  async fetchEventWithExternalRelays(id: string): Promise<NEvent | undefined> {
-    // Clear cache to force new fetch
-    this.eventCacheMap.delete(id)
-    
-    // Parse the ID to extract relay hints and author
-    let relayHints: string[] = []
-    let author: string | undefined
-    
-    if (!/^[0-9a-f]{64}$/.test(id)) {
-      try {
-        const { type, data } = nip19.decode(id)
-        if (type === 'nevent') {
-          if (data.relays) relayHints = data.relays
-          if (data.author) author = data.author
-        } else if (type === 'naddr') {
-          if (data.relays) relayHints = data.relays
-          author = data.pubkey
-        }
-      } catch (err) {
-        console.error('Failed to decode bech32 ID:', id, err)
-        // Continue with empty relay hints and author
-      }
+  private async fetchEventById(relayUrls: string[], id: string): Promise<NEvent | undefined> {
+    const event = await this.fetchEventFromBigRelaysDataloader.load(id)
+    if (event) {
+      return event
     }
 
-    // Collect external relays: author's outbox + relay hints + seen on
-    const externalRelays: string[] = []
-    
-    if (author) {
-      const authorRelayList = await this.fetchRelayList(author)
-      externalRelays.push(...authorRelayList.write.slice(0, 6))
-    }
-    
-    if (relayHints.length > 0) {
-      externalRelays.push(...relayHints)
-    }
-    
-    const seenOn = this.getSeenEventRelayUrls(id)
-    externalRelays.push(...seenOn)
-
-    // Normalize and deduplicate the combined external relays
-    const normalizedExternalRelays = externalRelays.map(url => normalizeUrl(url) || url)
-    const uniqueExternalRelays = Array.from(new Set(normalizedExternalRelays))
-    
-    if (uniqueExternalRelays.length === 0) {
-      return undefined
-    }
-
-    return this.tryHarderToFetchEvent(uniqueExternalRelays, { ids: [id], limit: 1 })
+    return this.tryHarderToFetchEvent(relayUrls, { ids: [id], limit: 1 }, true)
   }
 
   private async _fetchEvent(id: string): Promise<NEvent | undefined> {
     let filter: Filter | undefined
+    let relays: string[] = []
+    let author: string | undefined
     if (/^[0-9a-f]{64}$/.test(id)) {
       filter = { ids: [id] }
     } else {
-      try {
-        const { type, data } = nip19.decode(id)
-        switch (type) {
-          case 'note':
-            filter = { ids: [data] }
-            break
-          case 'nevent':
-            filter = { ids: [data.id] }
-            break
-          case 'naddr':
-            filter = {
-              authors: [data.pubkey],
-              kinds: [data.kind],
-              limit: 1
-            }
-            if (data.identifier) {
-              filter['#d'] = [data.identifier]
-            }
-        }
-      } catch {
-        console.error('Failed to decode bech32 ID - likely malformed:', id)
-        // Malformed naddr/nevent from broken clients - can't fetch it
-        return undefined
+      const { type, data } = nip19.decode(id)
+      switch (type) {
+        case 'note':
+          filter = { ids: [data] }
+          break
+        case 'nevent':
+          filter = { ids: [data.id] }
+          if (data.relays) relays = data.relays
+          if (data.author) author = data.author
+          break
+        case 'naddr':
+          filter = {
+            authors: [data.pubkey],
+            kinds: [data.kind],
+            limit: 1
+          }
+          author = data.pubkey
+          if (data.identifier) {
+            filter['#d'] = [data.identifier]
+          }
+          if (data.relays) relays = data.relays
       }
     }
     if (!filter) {
       throw new Error('Invalid id')
     }
 
-    // Use unified tiered fetching for both regular and replaceable events
-    const event = await this.fetchEventTiered(filter)
+    let event: NEvent | undefined
+    if (filter.ids?.length) {
+      event = await this.fetchEventById(relays, filter.ids[0])
+    }
+
+    if (!event && author) {
+      const relayList = await this.fetchRelayList(author)
+      event = await this.tryHarderToFetchEvent(relayList.write.slice(0, 5), filter)
+    }
 
     if (event && event.id !== id) {
       this.addEventToCache(event)
@@ -1299,69 +880,37 @@ class ClientService extends EventTarget {
     return event
   }
 
-  /**
-   * Unified tiered fetching for both regular and replaceable events
-   */
-  private async fetchEventTiered(filter: Filter): Promise<NEvent | undefined> {
-    const userRelayList = this.pubkey ? await this.fetchRelayList(this.pubkey) : { read: [], write: [] }
-
-    // Tier 1: User's read relays + fast read relays (deduplicated)
-    const tier1Relays = Array.from(new Set([
-      ...userRelayList.read.map(url => normalizeUrl(url) || url),
-      ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url)
-    ]))
-    const tier1Event = await this.tryHarderToFetchEvent(tier1Relays, filter)
-    if (tier1Event) { return tier1Event }
-
-    // Tier 2: User's write relays + fast write relays (deduplicated)
-    const tier2Relays = Array.from(new Set([
-      ...userRelayList.write.map(url => normalizeUrl(url) || url),
-      ...FAST_WRITE_RELAY_URLS.map(url => normalizeUrl(url) || url)
-    ]))
-    const tier2Event = await this.tryHarderToFetchEvent(tier2Relays, filter)
-    if (tier2Event) { return tier2Event }
-
-    // Tier 3: Search relays + big relays (deduplicated)
-    const tier3Relays = Array.from(new Set([
-      ...SEARCHABLE_RELAY_URLS.map(url => normalizeUrl(url) || url),
-      ...BIG_RELAY_URLS.map(url => normalizeUrl(url) || url)
-    ]))
-    const tier3Event = await this.tryHarderToFetchEvent(tier3Relays, filter)
-    if (tier3Event) { return tier3Event }
-
-    // Tier 4: Not found - external relays require opt-in (see fetchEventWithExternalRelays)
-    return undefined
-  }
-
   private async tryHarderToFetchEvent(
     relayUrls: string[],
     filter: Filter,
     alreadyFetchedFromBigRelays = false
   ) {
-    try {
-      // Privacy: Don't fetch author's relays, only use provided relays or defaults
-      if (!relayUrls.length && !alreadyFetchedFromBigRelays) {
-        relayUrls = BIG_RELAY_URLS
-      }
-      if (!relayUrls.length) return undefined
-
-      // Normalize relay URLs (remove trailing slashes for consistency)
-      const normalizedUrls = relayUrls.map(url => url.endsWith('/') ? url.slice(0, -1) : url)
-      
-      const events = await this.query(normalizedUrls, filter)
-      
-      if (events.length === 0) {
-        return undefined
-      }
-      
-      const result = events.sort((a, b) => b.created_at - a.created_at)[0]
-      return result
-    } catch (error) {
-      console.error('Error in tryHarderToFetchEvent:', error)
-      return undefined
+    if (!relayUrls.length && filter.authors?.length) {
+      const relayList = await this.fetchRelayList(filter.authors[0])
+      relayUrls = alreadyFetchedFromBigRelays
+        ? relayList.write.filter((url) => !BIG_RELAY_URLS.includes(url)).slice(0, 4)
+        : relayList.write.slice(0, 4)
+    } else if (!relayUrls.length && !alreadyFetchedFromBigRelays) {
+      relayUrls = BIG_RELAY_URLS
     }
+    if (!relayUrls.length) return
+
+    const events = await this.query(relayUrls, filter)
+    return events.sort((a, b) => b.created_at - a.created_at)[0]
   }
 
+  private async fetchEventsFromBigRelays(ids: readonly string[]) {
+    const events = await this.query(BIG_RELAY_URLS, {
+      ids: Array.from(new Set(ids)),
+      limit: ids.length
+    })
+    const eventsMap = new Map<string, NEvent>()
+    for (const event of events) {
+      eventsMap.set(event.id, event)
+    }
+
+    return ids.map((id) => eventsMap.get(id))
+  }
 
   /** =========== Following favorite relays =========== */
 
@@ -1380,7 +929,7 @@ class ClientService extends EventTarget {
       const events = await this.fetchEvents(BIG_RELAY_URLS, {
         authors: followings,
         kinds: [ExtendedKind.FAVORITE_RELAYS, kinds.Relaysets],
-        limit: 100
+        limit: 1000
       })
       const alreadyExistsFavoriteRelaysPubkeySet = new Set<string>()
       const alreadyExistsRelaySetsPubkeySet = new Set<string>()
@@ -1578,7 +1127,7 @@ class ClientService extends EventTarget {
         return getRelayListFromEvent(event)
       }
       return {
-        write: Array.from(new Set([...FAST_WRITE_RELAY_URLS, ...BIG_RELAY_URLS])).slice(0, 8), // Combine fast write + big relays for better redundancy (deduplicated)
+        write: BIG_RELAY_URLS,
         read: BIG_RELAY_URLS,
         originalRelays: []
       }
@@ -1591,50 +1140,6 @@ class ClientService extends EventTarget {
 
   async updateRelayListCache(event: NEvent) {
     await this.updateReplaceableEventFromBigRelaysCache(event)
-  }
-
-  /**
-   * Fetch blocked relays from IndexedDB
-   */
-  async fetchBlockedRelays(pubkey: string): Promise<string[]> {
-    try {
-      const blockedRelaysEvent = await indexedDb.getReplaceableEvent(pubkey, ExtendedKind.BLOCKED_RELAYS)
-      if (!blockedRelaysEvent) {
-        return []
-      }
-      
-      // Extract relay URLs from the relay tags
-      const relayUrls = blockedRelaysEvent.tags
-        .filter(([tagName]) => tagName === 'relay')
-        .map(([, url]) => url)
-        .filter(Boolean)
-      
-      return relayUrls
-    } catch (error) {
-      console.error('Failed to fetch blocked relays:', error)
-      return []
-    }
-  }
-
-  /**
-   * Filter out blocked relays from a relay list
-   */
-  private filterBlockedRelays(relays: string[], blockedRelays: string[]): string[] {
-    if (!blockedRelays || blockedRelays.length === 0) {
-      return relays
-    }
-
-    // Helper function to safely normalize URLs
-    const safeNormalize = (url: string): string => {
-      const normalized = normalizeUrl(url)
-      return normalized || url
-    }
-
-    const normalizedBlocked = blockedRelays.map(safeNormalize)
-    return relays.filter(relay => {
-      const normalizedRelay = safeNormalize(relay)
-      return !normalizedBlocked.includes(normalizedRelay)
-    })
   }
 
   /** =========== Replaceable event from big relays dataloader =========== */
@@ -1663,7 +1168,7 @@ class ClientService extends EventTarget {
     const eventsMap = new Map<string, NEvent>()
     await Promise.allSettled(
       Array.from(groups.entries()).map(async ([kind, pubkeys]) => {
-        const events = await this.query(PROFILE_FETCH_RELAY_URLS, {
+        const events = await this.query(BIG_RELAY_URLS, {
           authors: pubkeys,
           kinds: [kind]
         })
@@ -1766,7 +1271,7 @@ class ClientService extends EventTarget {
                 }
               : { authors: [pubkey], kinds: [kind] }) as Filter
         )
-        const events = await this.query(PROFILE_FETCH_RELAY_URLS, filters)
+        const events = await this.query(BIG_RELAY_URLS, filters)
 
         for (const event of events) {
           const key = getReplaceableCoordinateFromEvent(event)
@@ -1781,6 +1286,8 @@ class ClientService extends EventTarget {
     return params.map(({ pubkey, kind, d }) => {
       const key = `${kind}:${pubkey}:${d ?? ''}`
       const event = eventMap.get(key)
+      if (kind === kinds.Pinlist) return event ?? null
+
       if (event) {
         indexedDb.putReplaceableEvent(event)
         return event
@@ -1832,16 +1339,35 @@ class ClientService extends EventTarget {
     return this.fetchReplaceableEvent(pubkey, kinds.BookmarkList)
   }
 
+  async fetchBlossomServerListEvent(pubkey: string) {
+    return await this.fetchReplaceableEvent(pubkey, ExtendedKind.BLOSSOM_SERVER_LIST)
+  }
+
   async fetchInterestListEvent(pubkey: string) {
-    return this.fetchReplaceableEvent(pubkey, 10015)
+    return await this.fetchReplaceableEvent(pubkey, 10015)
   }
 
   async fetchPinListEvent(pubkey: string) {
-    return this.fetchReplaceableEvent(pubkey, 10001)
+    return await this.fetchReplaceableEvent(pubkey, 10001)
   }
 
-  async fetchBlossomServerListEvent(pubkey: string) {
-    return await this.fetchReplaceableEvent(pubkey, ExtendedKind.BLOSSOM_SERVER_LIST)
+  clearRelayConnectionState(relayUrl: string) {
+    // Clear connection state for specified relay
+    this.pool.close([relayUrl])
+  }
+
+  getAlreadyTriedRelays() {
+    return []
+  }
+
+  async fetchEventForceRetry(eventId: string) {
+    return await this.fetchEvent(eventId)
+  }
+
+  async fetchEventWithExternalRelays(eventId: string, externalRelays: string[]) {
+    // Use external relays for fetching the event
+    const events = await this.fetchEvents(externalRelays, { ids: [eventId], limit: 1 })
+    return events[0]
   }
 
   async fetchBlossomServerList(pubkey: string) {
@@ -1868,167 +1394,53 @@ class ClientService extends EventTarget {
     return await this.replaceableEventDataLoader.loadMany(params)
   }
 
-  // ================= Performance Optimization =================
-
-  private optimizeRelaySelection(relays: string[]): string[] {
-    // Filter out invalid or problematic relay URLs
-    const validRelays = relays.filter(url => {
-      try {
-        // Skip empty or invalid URLs
-        if (!url || typeof url !== 'string') return false
-        
-        // Skip blacklisted relays
-        if (this.isRelayBlacklisted(url)) {
-          logger.debug(`Skipping blacklisted relay: ${url}`)
-          return false
-        }
-        
-        // Skip relays with open circuit breaker
-        if (this.isCircuitBreakerOpen(url)) {
-          logger.debug(`Skipping relay with open circuit breaker: ${url}`)
-          return false
-        }
-        
-        // Validate websocket URL format
-        if (!isWebsocketUrl(url)) return false
-
-        // Skip URLs that are clearly invalid
-        const normalizedUrl = normalizeUrl(url)
-        if (!normalizedUrl) return false
-
-        return true
-      } catch (error) {
-        logger.debug(`Skipping invalid relay URL: ${url}`, error)
-        return false
-      }
-    })
-
-    // For profile feeds, prioritize write relays to ensure user's own responses are found
-    // Check if this looks like a profile feed (relays include write relays)
-    const hasWriteRelays = validRelays.some(url => 
-      FAST_WRITE_RELAY_URLS.some(writeRelay => normalizeUrl(writeRelay) === normalizeUrl(url))
-    )
-    
-    if (hasWriteRelays) {
-      // For profile feeds: prioritize write relays and allow more relays
-      const writeRelays = validRelays.filter(url => 
-        FAST_WRITE_RELAY_URLS.some(writeRelay => normalizeUrl(writeRelay) === normalizeUrl(url))
-      )
-      const otherRelays = validRelays.filter(url => 
-        !FAST_WRITE_RELAY_URLS.some(writeRelay => normalizeUrl(writeRelay) === normalizeUrl(url))
-      )
-      
-      // Return write relays first, then others (up to 6 total for profile feeds - reduced from 8)
-      return [...writeRelays, ...otherRelays].slice(0, 6)
-    }
-
-    // For other feeds: limit to 3 relays to prevent "too many concurrent REQs" errors (reduced from 5)
-    return validRelays.slice(0, 5)
-  }
-
   // ================= Utils =================
 
-  private async throttleRequest(relayUrl: string): Promise<void> {
-    const now = Date.now()
-    const lastRequest = this.requestThrottle.get(relayUrl) || 0
-    const failures = this.failureCount.get(relayUrl) || 0
-    const concurrent = this.concurrentRequests.get(relayUrl) || 0
-    
-    // Global throttling to prevent overwhelming all relays
-    const globalDelay = Math.max(0, this.GLOBAL_REQUEST_COOLDOWN - (now - this.globalRequestThrottle))
-    if (globalDelay > 0) {
-      await new Promise(resolve => setTimeout(resolve, globalDelay))
-    }
-    this.globalRequestThrottle = Date.now()
-    
-    // Check concurrent request limit
-    if (concurrent >= this.MAX_CONCURRENT_REQUESTS) {
-      logger.debug(`Relay ${relayUrl} has ${concurrent} concurrent requests, waiting...`)
-      // Wait for a concurrent request to complete
-      while (this.concurrentRequests.get(relayUrl) || 0 >= this.MAX_CONCURRENT_REQUESTS) {
-        await new Promise(resolve => setTimeout(resolve, 2000)) // Increased wait time
-      }
-    }
-    
-    // Calculate delay based on failures (exponential backoff)
-    let delay = this.REQUEST_COOLDOWN
-    if (failures >= this.MAX_FAILURES) {
-      delay = Math.min(this.REQUEST_COOLDOWN * Math.pow(2, failures - this.MAX_FAILURES), 60000) // Max 60 seconds
-    } else if (now - lastRequest < this.REQUEST_COOLDOWN) {
-      delay = this.REQUEST_COOLDOWN - (now - lastRequest)
-    }
-    
-    if (delay > 0) {
-      await new Promise(resolve => setTimeout(resolve, delay))
-    }
-    
-    // Increment concurrent request counter
-    this.concurrentRequests.set(relayUrl, (this.concurrentRequests.get(relayUrl) || 0) + 1)
-    this.requestThrottle.set(relayUrl, Date.now())
-  }
-
-  private recordSuccess(relayUrl: string): void {
-    // Reset failure count on success
-    this.failureCount.delete(relayUrl)
-    // Decrement concurrent request counter
-    const current = this.concurrentRequests.get(relayUrl) || 0
-    if (current > 0) {
-      this.concurrentRequests.set(relayUrl, current - 1)
-    }
-  }
-
-  private recordFailure(relayUrl: string): void {
-    const currentFailures = this.failureCount.get(relayUrl) || 0
-    const newFailures = currentFailures + 1
-    this.failureCount.set(relayUrl, newFailures)
-    
-    // Decrement concurrent request counter
-    const current = this.concurrentRequests.get(relayUrl) || 0
-    if (current > 0) {
-      this.concurrentRequests.set(relayUrl, current - 1)
-    }
-    
-    // Activate circuit breaker immediately on any failure to prevent "too many concurrent REQs"
-    if (newFailures >= this.MAX_FAILURES) {
-      this.circuitBreaker.set(relayUrl, Date.now())
-      logger.debug(`🔴 Circuit breaker activated for ${relayUrl} (${newFailures} failures)`)
-    }
-  }
-
-  private isCircuitBreakerOpen(relayUrl: string): boolean {
-    const breakerTime = this.circuitBreaker.get(relayUrl)
-    if (!breakerTime) return false
-    
-    const now = Date.now()
-    if (now - breakerTime > this.CIRCUIT_BREAKER_TIMEOUT) {
-      // Circuit breaker timeout expired, reset it
-      this.circuitBreaker.delete(relayUrl)
-      this.failureCount.delete(relayUrl)
-      this.concurrentRequests.delete(relayUrl) // Clean up concurrent counter
-      logger.debug(`🟢 Circuit breaker reset for ${relayUrl}`)
-      return false
-    }
-    
-    return true
-  }
-
-
   async generateSubRequestsForPubkeys(pubkeys: string[], myPubkey?: string | null) {
-    // Privacy: Only use user's own relays + defaults, never fetch other users' relays
-    let urls = BIG_RELAY_URLS
-    if (myPubkey) {
-      const relayList = await this.fetchRelayList(myPubkey)
-      urls = relayList.read.concat(BIG_RELAY_URLS).slice(0, 5)
-    }
-    
     // If many websocket connections are initiated simultaneously, it will be
     // very slow on Safari (for unknown reason)
     if (isSafari()) {
+      let urls = BIG_RELAY_URLS
+      if (myPubkey) {
+        const relayList = await this.fetchRelayList(myPubkey)
+        urls = relayList.read.concat(BIG_RELAY_URLS).slice(0, 5)
+      }
       return [{ urls, filter: { authors: pubkeys } }]
     }
 
-    // Simplified: Use user's relays for all followed users instead of individual relay lists
-    return [{ urls, filter: { authors: pubkeys } }]
+    const relayLists = await this.fetchRelayLists(pubkeys)
+    const group: Record<string, Set<string>> = {}
+    relayLists.forEach((relayList, index) => {
+      relayList.write.slice(0, 4).forEach((url) => {
+        if (!group[url]) {
+          group[url] = new Set()
+        }
+        group[url].add(pubkeys[index])
+      })
+    })
+
+    const relayCount = Object.keys(group).length
+    const coveredCount = new Map<string, number>()
+    Object.entries(group)
+      .sort(([, a], [, b]) => b.size - a.size)
+      .forEach(([url, pubkeys]) => {
+        if (
+          relayCount > 10 &&
+          pubkeys.size < 10 &&
+          Array.from(pubkeys).every((pubkey) => (coveredCount.get(pubkey) ?? 0) >= 2)
+        ) {
+          delete group[url]
+        } else {
+          pubkeys.forEach((pubkey) => {
+            coveredCount.set(pubkey, (coveredCount.get(pubkey) ?? 0) + 1)
+          })
+        }
+      })
+
+    return Object.entries(group).map(([url, authors]) => ({
+      urls: [url],
+      filter: { authors: Array.from(authors) }
+    }))
   }
 }
 

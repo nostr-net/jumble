@@ -774,9 +774,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     const relays = await client.determineTargetRelays(event, options)
 
     try {
-      const publishResult = await client.publishEvent(relays, event, { 
-        disableFallbacks: options.disableFallbacks 
-      })
+      const publishResult = await client.publishEvent(relays, event)
       
       // Store relay status for display
       if (publishResult.relayStatuses.length > 0) {
@@ -786,7 +784,9 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       // If publishing failed completely, throw an error so the form doesn't close
       if (!publishResult.success) {
         const error = new AggregateError(
-          publishResult.relayStatuses.map(s => new Error(s.error || 'Failed')),
+          publishResult.relayStatuses
+            .filter(s => !s.success)
+            .map(s => new Error(s.error || 'Failed')),
           'Failed to publish to any relay'
         )
         ;(error as any).relayStatuses = publishResult.relayStatuses
