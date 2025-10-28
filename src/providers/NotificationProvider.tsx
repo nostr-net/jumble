@@ -1,7 +1,8 @@
-import { BIG_RELAY_URLS, ExtendedKind } from '@/constants'
+import { ExtendedKind, FAST_READ_RELAY_URLS } from '@/constants'
 import { compareEvents } from '@/lib/event'
 import { notificationFilter } from '@/lib/notification'
 import { usePrimaryPage } from '@/PageManager'
+import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import client from '@/services/client.service'
 import storage from '@/services/local-storage.service'
 import { kinds, NostrEvent } from 'nostr-tools'
@@ -33,7 +34,8 @@ export const useNotification = () => {
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { current } = usePrimaryPage()
   const active = useMemo(() => current === 'notifications', [current])
-  const { pubkey, notificationsSeenAt, updateNotificationsSeenAt } = useNostr()
+  const { pubkey, relayList, notificationsSeenAt, updateNotificationsSeenAt } = useNostr()
+  const { favoriteRelays } = useFavoriteRelays()
   const { hideUntrustedNotifications, isUserTrusted } = useUserTrust()
   const { mutePubkeySet } = useMuteList()
   const { hideContentMentioningMutedUsers } = useContentPolicy()
@@ -106,8 +108,27 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
       try {
         let eosed = false
-        const relayList = await client.fetchRelayList(pubkey)
-        const notificationRelays = relayList.read.length > 0 ? relayList.read.slice(0, 5) : BIG_RELAY_URLS
+        // Use proper fallback hierarchy: user's read/inbox relays → favorite relays → fast read relays
+        const userRelayList = relayList || { read: [], write: [] }
+        const userReadRelays = userRelayList.read || []
+        const userFavoriteRelays = favoriteRelays || []
+        
+        // Build relay list with proper fallback hierarchy
+        let notificationRelays: string[] = []
+        
+        if (userReadRelays.length > 0) {
+          // Priority 1: User's read/inbox relays (kind 10002)
+          notificationRelays = userReadRelays.slice(0, 5)
+          console.debug('[NotificationProvider] Using user read relays:', notificationRelays.length, 'relays')
+        } else if (userFavoriteRelays.length > 0) {
+          // Priority 2: User's favorite relays (kind 10012)
+          notificationRelays = userFavoriteRelays.slice(0, 5)
+          console.debug('[NotificationProvider] Using user favorite relays:', notificationRelays.length, 'relays')
+        } else {
+          // Priority 3: Fast read relays (reliable defaults)
+          notificationRelays = FAST_READ_RELAY_URLS.slice(0, 5)
+          console.debug('[NotificationProvider] Using fast read relays fallback:', notificationRelays.length, 'relays')
+        }
         
         // Subscribe to discussion notifications (kind 11)
         // Subscribe to all discussions, not just subscribed topics

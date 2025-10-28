@@ -1,9 +1,10 @@
-import { BIG_RELAY_URLS, ExtendedKind, NOTIFICATION_LIST_STYLE } from '@/constants'
+import { ExtendedKind, NOTIFICATION_LIST_STYLE, FAST_READ_RELAY_URLS } from '@/constants'
 import { compareEvents } from '@/lib/event'
 import { usePrimaryPage } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import { useNotification } from '@/providers/NotificationProvider'
 import { useUserPreferences } from '@/providers/UserPreferencesProvider'
+import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
 import { TNotificationType } from '@/types'
@@ -33,9 +34,10 @@ const NotificationList = forwardRef((_, ref) => {
   const { t } = useTranslation()
   const { current, display } = usePrimaryPage()
   const active = useMemo(() => current === 'notifications' && display, [current, display])
-  const { pubkey } = useNostr()
+  const { pubkey, relayList } = useNostr()
   const { getNotificationsSeenAt } = useNotification()
   const { notificationListStyle } = useUserPreferences()
+  const { favoriteRelays } = useFavoriteRelays()
   const [notificationType, setNotificationType] = useState<TNotificationType>('all')
   const [lastReadTime, setLastReadTime] = useState(0)
   const [refreshCount, setRefreshCount] = useState(0)
@@ -121,7 +123,27 @@ const NotificationList = forwardRef((_, ref) => {
       setNotifications([])
       setShowCount(SHOW_COUNT)
       setLastReadTime(getNotificationsSeenAt())
-      const relayList = await client.fetchRelayList(pubkey)
+      // Use proper fallback hierarchy: user's read/inbox relays → favorite relays → fast read relays
+      const userRelayList = relayList || { read: [], write: [] }
+      const userReadRelays = userRelayList.read || []
+      const userFavoriteRelays = favoriteRelays || []
+      
+      // Build relay list with proper fallback hierarchy
+      let primaryRelays: string[] = []
+      
+      if (userReadRelays.length > 0) {
+        // Priority 1: User's read/inbox relays (kind 10002)
+        primaryRelays = userReadRelays.slice(0, 5)
+        console.debug('[NotificationList] Using user read relays:', primaryRelays.length, 'relays')
+      } else if (userFavoriteRelays.length > 0) {
+        // Priority 2: User's favorite relays (kind 10012)
+        primaryRelays = userFavoriteRelays.slice(0, 5)
+        console.debug('[NotificationList] Using user favorite relays:', primaryRelays.length, 'relays')
+      } else {
+        // Priority 3: Fast read relays (reliable defaults)
+        primaryRelays = FAST_READ_RELAY_URLS.slice(0, 5)
+        console.debug('[NotificationList] Using fast read relays fallback:', primaryRelays.length, 'relays')
+      }
 
       // Create separate subscriptions for different notification types
       const subscriptions = []
@@ -130,7 +152,7 @@ const NotificationList = forwardRef((_, ref) => {
       const mentionKinds = filterKinds.filter(kind => kind !== 11)
       if (mentionKinds.length > 0) {
         subscriptions.push({
-          urls: relayList.read.length > 0 ? relayList.read.slice(0, 5) : BIG_RELAY_URLS,
+          urls: primaryRelays,
           filter: {
             '#p': [pubkey],
             kinds: mentionKinds,
@@ -142,7 +164,7 @@ const NotificationList = forwardRef((_, ref) => {
       // Separate subscription for discussion notifications (kind 11) - no p-tag requirement
       if (filterKinds.includes(11)) {
         subscriptions.push({
-          urls: relayList.read.length > 0 ? relayList.read.slice(0, 5) : BIG_RELAY_URLS,
+          urls: primaryRelays,
           filter: {
             kinds: [11],
             limit: LIMIT

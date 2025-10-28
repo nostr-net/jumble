@@ -56,15 +56,15 @@ class ClientService extends EventTarget {
     { cacheMap: this.eventCacheMap }
   )
   private requestThrottle = new Map<string, number>() // Track request timestamps per relay
-  private readonly REQUEST_COOLDOWN = 3000 // 3 second cooldown between requests to prevent "too many REQs"
+  private readonly REQUEST_COOLDOWN = 1000 // 1 second cooldown between requests (reduced from 3s)
   private failureCount = new Map<string, number>() // Track consecutive failures per relay
-  private readonly MAX_FAILURES = 1 // Max failures before exponential backoff (reduced to 1 for faster circuit breaker activation)
+  private readonly MAX_FAILURES = 3 // Max failures before exponential backoff (increased from 1 for better reliability)
   private circuitBreaker = new Map<string, number>() // Track when relays are temporarily disabled
-  private readonly CIRCUIT_BREAKER_TIMEOUT = 60000 // 60 second timeout for circuit breaker (increased for better stability)
+  private readonly CIRCUIT_BREAKER_TIMEOUT = 30000 // 30 second timeout for circuit breaker (reduced from 60s)
   private concurrentRequests = new Map<string, number>() // Track concurrent requests per relay
-  private readonly MAX_CONCURRENT_REQUESTS = 1 // Max concurrent requests per relay (reduced to prevent "too many REQs")
+  private readonly MAX_CONCURRENT_REQUESTS = 2 // Max concurrent requests per relay (increased from 1)
   private globalRequestThrottle = 0 // Global request throttle to prevent overwhelming all relays
-  private readonly GLOBAL_REQUEST_COOLDOWN = 1000 // 1 second global cooldown between any relay requests
+  private readonly GLOBAL_REQUEST_COOLDOWN = 500 // 0.5 second global cooldown (reduced from 1s)
   private blacklistedRelays = new Map<string, number>() // Temporarily blacklist problematic relays
   private readonly BLACKLIST_TIMEOUT = 300000 // 5 minutes blacklist timeout
 
