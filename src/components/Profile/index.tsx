@@ -19,6 +19,7 @@ import client from '@/services/client.service'
 import { Link, Zap } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 import NotFound from '../NotFound'
 import FollowedBy from './FollowedBy'
 import ProfileFeed from './ProfileFeed'
@@ -99,6 +100,14 @@ export default function Profile({ id }: { id?: string }) {
   if (!profile) return <NotFound />
 
   const { banner, username, about, avatar, pubkey, website, lightningAddress } = profile
+  
+  logger.component('Profile', 'Profile data loaded', { 
+    pubkey, 
+    username, 
+    hasProfile: !!profile, 
+    isFetching,
+    id 
+  })
   return (
     <>
       <div ref={topContainerRef}>
@@ -178,7 +187,10 @@ export default function Profile({ id }: { id?: string }) {
           </div>
         </div>
       </div>
-      <ProfileFeed pubkey={pubkey} topSpace={topContainerHeight + 100} />
+      {(() => {
+        logger.component('Profile', 'Rendering ProfileFeed', { pubkey, topSpace: topContainerHeight + 100, profile: !!profile, isFetching })
+        return <ProfileFeed pubkey={pubkey} topSpace={topContainerHeight + 100} />
+      })()}
     </>
   )
 }

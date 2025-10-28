@@ -2,7 +2,6 @@ import { forwardRef, useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw } from 'lucide-react'
 import { useNostr } from '@/providers/NostrProvider'
-import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { normalizeUrl } from '@/lib/url'
 import { FAST_READ_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
@@ -33,10 +32,11 @@ const SimpleNoteFeed = forwardRef<
 }, ref) => {
   const { t } = useTranslation()
   const { pubkey } = useNostr()
-  const { favoriteRelays } = useFavoriteRelays()
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  logger.component('SimpleNoteFeed', 'Component rendered', { authors, requestedKinds, limit, hideReplies, pubkey: !!pubkey })
 
   // Build comprehensive relay list (same as Discussions)
   const buildComprehensiveRelayList = useCallback(async () => {
@@ -54,17 +54,20 @@ const SimpleNoteFeed = forwardRef<
     
     logger.debug('[SimpleNoteFeed] Using', normalizedRelays.length, 'comprehensive relays')
     return Array.from(new Set(normalizedRelays))
-  }, [pubkey, favoriteRelays])
+  }, [pubkey])
 
   // Fetch events using the same pattern as Discussions
   const fetchEvents = useCallback(async () => {
-    if (isRefreshing) return
+    if (isRefreshing) {
+      logger.component('SimpleNoteFeed', 'Already refreshing, skipping')
+      return
+    }
+    
+    logger.component('SimpleNoteFeed', 'Starting fetch', { authors, kinds: requestedKinds, limit })
     setLoading(true)
     setIsRefreshing(true)
     
     try {
-      logger.component('SimpleNoteFeed', 'Starting fetch', { authors, kinds: requestedKinds, limit })
-      
       // Get comprehensive relay list
       const allRelays = await buildComprehensiveRelayList()
       logger.component('SimpleNoteFeed', 'Using relays', { count: allRelays.length })
@@ -115,16 +118,20 @@ const SimpleNoteFeed = forwardRef<
       logger.component('SimpleNoteFeed', 'Filtered events', { count: filteredEvents.length })
       
       setEvents(filteredEvents)
+      logger.component('SimpleNoteFeed', 'Set events successfully', { count: filteredEvents.length })
     } catch (error) {
       logger.component('SimpleNoteFeed', 'Error fetching events', { error: (error as Error).message })
+      // Don't clear events on error, keep what we have
     } finally {
+      logger.component('SimpleNoteFeed', 'Setting loading states to false')
       setLoading(false)
       setIsRefreshing(false)
     }
-  }, [authors, requestedKinds, limit, hideReplies, buildComprehensiveRelayList, isRefreshing])
+  }, [authors, requestedKinds, limit, hideReplies, isRefreshing])
 
   // Initial fetch
   useEffect(() => {
+    logger.component('SimpleNoteFeed', 'useEffect triggered for initial fetch', { authors, requestedKinds, limit, hideReplies })
     fetchEvents()
   }, [authors, requestedKinds, limit, hideReplies])
 
@@ -138,6 +145,7 @@ const SimpleNoteFeed = forwardRef<
   }, [ref, fetchEvents])
 
   const handleRefresh = () => {
+    logger.component('SimpleNoteFeed', 'handleRefresh called')
     fetchEvents()
   }
 
@@ -159,17 +167,6 @@ const SimpleNoteFeed = forwardRef<
     <div className="min-h-screen">
       {customHeader}
       
-      {/* Refresh button */}
-      <div className="flex justify-end p-4">
-        <button
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-muted hover:bg-muted/80 rounded-md disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? t('refreshing...') : t('refresh')}
-        </button>
-      </div>
 
       {/* Events list */}
       {events.length > 0 ? (

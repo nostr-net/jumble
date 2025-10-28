@@ -6,19 +6,17 @@ import {
   isReplaceableEvent,
   isReplyNoteEvent
 } from '@/lib/event'
-import { getZapInfoFromEvent } from '@/lib/event-metadata'
-import logger from '@/lib/logger'
 import { isTouchDevice } from '@/lib/utils'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useDeletedEvent } from '@/providers/DeletedEventProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
-import { useZap } from '@/providers/ZapProvider'
 import client from '@/services/client.service'
 import { TFeedSubRequest } from '@/types'
 import dayjs from 'dayjs'
-import { Event, kinds } from 'nostr-tools'
+import { Event } from 'nostr-tools'
+import { decode } from 'nostr-tools/nip19'
 import {
   forwardRef,
   useCallback,
@@ -33,8 +31,8 @@ import PullToRefresh from 'react-simple-pull-to-refresh'
 import { toast } from 'sonner'
 import NoteCard, { NoteCardLoadingSkeleton } from '../NoteCard'
 
-const LIMIT = 100
-const ALGO_LIMIT = 100
+const LIMIT = 200
+const ALGO_LIMIT = 500
 const SHOW_COUNT = 10
 
 const NoteList = forwardRef(
@@ -47,7 +45,7 @@ const NoteList = forwardRef(
       hideUntrustedNotes = false,
       areAlgoRelays = false,
       showRelayCloseReason = false,
-      customHeader
+      pinnedEventIds = []
     }: {
       subRequests: TFeedSubRequest[]
       showKinds: number[]
@@ -56,7 +54,7 @@ const NoteList = forwardRef(
       hideUntrustedNotes?: boolean
       areAlgoRelays?: boolean
       showRelayCloseReason?: boolean
-      customHeader?: React.ReactNode
+      pinnedEventIds?: string[]
     },
     ref
   ) => {
@@ -66,7 +64,6 @@ const NoteList = forwardRef(
     const { mutePubkeySet } = useMuteList()
     const { hideContentMentioningMutedUsers } = useContentPolicy()
     const { isEventDeleted } = useDeletedEvent()
-    const { zapReplyThreshold } = useZap()
     const [events, setEvents] = useState<Event[]>([])
     const [newEvents, setNewEvents] = useState<Event[]>([])
     const [hasMore, setHasMore] = useState<boolean>(true)
@@ -80,82 +77,49 @@ const NoteList = forwardRef(
 
     const shouldHideEvent = useCallback(
       (evt: Event) => {
-        // Check if this is a profile feed
-        const isProfileFeed = subRequests.some(req => req.filter.authors && req.filter.authors.length === 1)
-        
-        if (isEventDeleted(evt)) {
-          logger.component('NoteList', 'Event filtered: deleted', { id: evt.id, kind: evt.kind })
-          return true
-        }
-        
-        // Special handling for zaps - check threshold, but be more lenient for profile feeds
-        if (evt.kind === kinds.Zap) {
-          const zapInfo = getZapInfoFromEvent(evt)
-          
-          // For profile feeds, show all zaps from the profile owner
-          // For timeline feeds, filter by threshold
-          if (!isProfileFeed && zapInfo && zapInfo.amount < zapReplyThreshold) {
-            logger.component('NoteList', 'Event filtered: zap below threshold', { 
-              id: evt.id, 
-              amount: zapInfo.amount, 
-              threshold: zapReplyThreshold 
-            })
-            return true
+        const pinnedEventHexIdSet = new Set()
+        pinnedEventIds.forEach((id) => {
+          try {
+            const { type, data } = decode(id)
+            if (type === 'nevent') {
+              pinnedEventHexIdSet.add(data.id)
+            }
+          } catch {
+            // ignore
           }
-        } else if (hideReplies && isReplyNoteEvent(evt)) {
-          logger.component('NoteList', 'Event filtered: reply hidden', { id: evt.id, kind: evt.kind })
-          return true
-        }
-        
-        if (hideUntrustedNotes && !isUserTrusted(evt.pubkey)) {
-          logger.component('NoteList', 'Event filtered: untrusted user', { id: evt.id, pubkey: evt.pubkey.substring(0, 8) })
-          return true
-        }
-        if (filterMutedNotes && mutePubkeySet.has(evt.pubkey)) {
-          logger.component('NoteList', 'Event filtered: muted user', { id: evt.id, pubkey: evt.pubkey.substring(0, 8) })
-          return true
-        }
+        })
+
+        if (pinnedEventHexIdSet.has(evt.id)) return true
+        if (isEventDeleted(evt)) return true
+        if (hideReplies && isReplyNoteEvent(evt)) return true
+        if (hideUntrustedNotes && !isUserTrusted(evt.pubkey)) return true
+        if (filterMutedNotes && mutePubkeySet.has(evt.pubkey)) return true
         if (
           filterMutedNotes &&
           hideContentMentioningMutedUsers &&
           isMentioningMutedUsers(evt, mutePubkeySet)
         ) {
-          logger.component('NoteList', 'Event filtered: mentions muted users', { id: evt.id, kind: evt.kind })
           return true
         }
 
         return false
       },
-      [hideReplies, hideUntrustedNotes, mutePubkeySet, isEventDeleted, zapReplyThreshold, subRequests]
+      [hideReplies, hideUntrustedNotes, mutePubkeySet, pinnedEventIds, isEventDeleted]
     )
 
     const filteredEvents = useMemo(() => {
       const idSet = new Set<string>()
-      const startTime = performance.now()
 
-      const filtered = events.slice(0, showCount).filter((evt) => {
-        if (shouldHideEvent(evt)) {
-          return false
-        }
+      return events.slice(0, showCount).filter((evt) => {
+        if (shouldHideEvent(evt)) return false
 
         const id = isReplaceableEvent(evt.kind) ? getReplaceableCoordinateFromEvent(evt) : evt.id
         if (idSet.has(id)) {
-          logger.component('NoteList', 'Event filtered: duplicate', { id: evt.id, kind: evt.kind })
           return false
         }
         idSet.add(id)
         return true
       })
-
-      const endTime = performance.now()
-      logger.perfComponent('NoteList', 'Event filtering completed', {
-        totalEvents: events.length,
-        filteredEvents: filtered.length,
-        showCount,
-        duration: `${(endTime - startTime).toFixed(2)}ms`
-      })
-
-      return filtered
     }, [events, showCount, shouldHideEvent])
 
     const filteredNewEvents = useMemo(() => {
@@ -183,9 +147,6 @@ const NoteList = forwardRef(
 
     const refresh = () => {
       scrollToTop()
-      // Clear relay connection state to force fresh connections
-      const relayUrls = subRequests.flatMap(req => req.urls)
-      relayUrls.forEach(url => client.clearRelayConnectionState(url))
       setTimeout(() => {
         setRefreshCount((count) => count + 1)
       }, 500)
@@ -193,94 +154,39 @@ const NoteList = forwardRef(
 
     useImperativeHandle(ref, () => ({ scrollToTop, refresh }), [])
 
-  useEffect(() => {
-    logger.component('NoteList', 'useEffect triggered', { 
-      subRequests: subRequests.length, 
-      showKinds: showKinds.length,
-      refreshCount 
-    })
-    
-    if (!subRequests.length) {
-      logger.component('NoteList', 'No subRequests, returning early')
-      return
-    }
-    
-    // Don't initialize if showKinds is empty (still loading from provider)
-    if (showKinds.length === 0) {
-      logger.component('NoteList', 'showKinds is empty, waiting for provider to initialize')
-      return
-    }
+    useEffect(() => {
+      if (!subRequests.length) return
 
-    async function init() {
-        logger.component('NoteList', 'Initializing feed')
+      async function init() {
         setLoading(true)
         setEvents([])
         setNewEvents([])
         setHasMore(true)
 
         if (showKinds.length === 0) {
-          logger.component('NoteList', 'showKinds is empty, no events will be displayed')
           setLoading(false)
           setHasMore(false)
           return () => {}
         }
 
-        const finalFilters = subRequests.map(({ urls, filter }) => ({
-          urls,
-          filter: {
-            kinds: showKinds,
-            ...filter,
-            limit: areAlgoRelays ? ALGO_LIMIT : LIMIT
-          }
-        }))
-        
         const { closer, timelineKey } = await client.subscribeTimeline(
-          finalFilters,
+          subRequests.map(({ urls, filter }) => ({
+            urls,
+            filter: {
+              kinds: showKinds,
+              ...filter,
+              limit: areAlgoRelays ? ALGO_LIMIT : LIMIT
+            }
+          })),
           {
             onEvents: (events, eosed) => {
-              logger.component('NoteList', 'Received events from relay', { 
-                eventsCount: events.length, 
-                eosed,
-                eventKinds: [...new Set(events.map(e => e.kind))].slice(0, 5)
-              })
-              
               if (events.length > 0) {
-                setEvents(prevEvents => {
-                  // For profile feeds, accumulate events from all relays
-                  // For timeline feeds, replace events
-                  const isProfileFeed = subRequests.some(req => req.filter.authors && req.filter.authors.length === 1)
-                  
-                  if (isProfileFeed) {
-                    // Accumulate events, removing duplicates
-                    const existingIds = new Set(prevEvents.map(e => e.id))
-                    const newEvents = events.filter(e => !existingIds.has(e.id))
-                    logger.component('NoteList', 'Profile feed - accumulating events', {
-                      previous: prevEvents.length,
-                      new: events.length,
-                      unique: newEvents.length,
-                      total: prevEvents.length + newEvents.length
-                    })
-                    return [...prevEvents, ...newEvents]
-                  } else {
-                    // Timeline feed - replace events
-                    logger.component('NoteList', 'Timeline feed - replacing events', {
-                      previous: prevEvents.length,
-                      new: events.length
-                    })
-                    return events
-                  }
-                })
-                // Stop loading as soon as we have events, don't wait for all relays
-                setLoading(false)
+                setEvents(events)
               }
               if (areAlgoRelays) {
                 setHasMore(false)
               }
               if (eosed) {
-                logger.component('NoteList', 'EOSED - all relays finished', {
-                  eventsCount: events.length,
-                  hasMore: events.length > 0
-                })
                 setLoading(false)
                 setHasMore(events.length > 0)
               }
@@ -299,7 +205,6 @@ const NoteList = forwardRef(
               }
             },
             onClose: (url, reason) => {
-              logger.component('NoteList', 'Relay connection closed', { url, reason })
               if (!showRelayCloseReason) return
               // ignore reasons from nostr-tools
               if (
@@ -322,28 +227,15 @@ const NoteList = forwardRef(
             needSort: !areAlgoRelays
           }
         )
-        
-        // Add a fallback timeout to prevent infinite loading
-        // Increased timeout to 15 seconds to handle slow relay connections
-        const fallbackTimeout = setTimeout(() => {
-          if (loading) {
-            setLoading(false)
-            logger.component('NoteList', 'Loading timeout - stopping after 15 seconds')
-          }
-        }, 15000)
-        
         setTimelineKey(timelineKey)
-        return () => {
-          clearTimeout(fallbackTimeout)
-          closer?.()
-        }
+        return closer
       }
 
       const promise = init()
       return () => {
         promise.then((closer) => closer())
       }
-    }, [subRequests, refreshCount, showKinds])
+    }, [JSON.stringify(subRequests), refreshCount, showKinds])
 
     useEffect(() => {
       const options = {
@@ -403,17 +295,8 @@ const NoteList = forwardRef(
       }, 0)
     }
 
-    logger.component('NoteList', 'Rendering with state', {
-      eventsCount: events.length,
-      filteredEventsCount: filteredEvents.length,
-      loading,
-      hasMore,
-      showKinds: showKinds.length
-    })
-
     const list = (
       <div className="min-h-screen">
-        {customHeader}
         {filteredEvents.map((event) => (
           <NoteCard
             key={event.id}
@@ -430,13 +313,7 @@ const NoteList = forwardRef(
           <div className="text-center text-sm text-muted-foreground mt-2">{t('no more notes')}</div>
         ) : (
           <div className="flex justify-center w-full mt-2">
-            <Button size="lg" onClick={() => {
-              logger.component('NoteList', 'Reload button clicked, refreshing feed')
-              // Clear relay connection state to force fresh connections
-              const relayUrls = subRequests.flatMap(req => req.urls)
-              relayUrls.forEach(url => client.clearRelayConnectionState(url))
-              setRefreshCount((count) => count + 1)
-            }}>
+            <Button size="lg" onClick={() => setRefreshCount((count) => count + 1)}>
               {t('reload notes')}
             </Button>
           </div>
@@ -446,9 +323,6 @@ const NoteList = forwardRef(
 
     return (
       <div>
-        {filteredNewEvents.length > 0 && (
-          <NewNotesButton newEvents={filteredNewEvents} onClick={showNewEvents} />
-        )}
         <div ref={topRef} className="scroll-mt-[calc(6rem+1px)]" />
         {supportTouch ? (
           <PullToRefresh
@@ -464,6 +338,9 @@ const NoteList = forwardRef(
           list
         )}
         <div className="h-40" />
+        {filteredNewEvents.length > 0 && (
+          <NewNotesButton newEvents={filteredNewEvents} onClick={showNewEvents} />
+        )}
       </div>
     )
   }

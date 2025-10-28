@@ -2,6 +2,7 @@ import KindFilter from '@/components/KindFilter'
 import SimpleNoteFeed from '@/components/SimpleNoteFeed'
 import Tabs from '@/components/Tabs'
 import { isTouchDevice } from '@/lib/utils'
+import logger from '@/lib/logger'
 import { useKindFilter } from '@/providers/KindFilterProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { TNoteListMode } from '@/types'
@@ -51,6 +52,7 @@ export default function ProfileFeed({
       if (!myPubkey) return []
       return [myPubkey, pubkey] // Show interactions between current user and profile user
     }
+    logger.component('ProfileFeed', 'getAuthorsFilter called', { listMode, pubkey, myPubkey })
     return [pubkey] // Show only profile user's events
   }
 
@@ -78,14 +80,26 @@ export default function ProfileFeed({
       {listMode === 'bookmarksAndHashtags' ? (
         <ProfileBookmarksAndHashtags pubkey={pubkey} topSpace={topSpace} />
       ) : (
-        <SimpleNoteFeed
-          ref={simpleNoteFeedRef}
-          authors={getAuthorsFilter()}
-          kinds={temporaryShowKinds}
-          limit={100}
-          hideReplies={shouldHideReplies}
-          filterMutedNotes={false}
-        />
+        (() => {
+          const authors = getAuthorsFilter()
+          logger.component('ProfileFeed', 'Rendering SimpleNoteFeed', { 
+            listMode, 
+            authors, 
+            kinds: temporaryShowKinds, 
+            hideReplies: shouldHideReplies,
+            pubkey 
+          })
+          return (
+            <SimpleNoteFeed
+              ref={simpleNoteFeedRef}
+              authors={authors}
+              kinds={temporaryShowKinds}
+              limit={100}
+              hideReplies={shouldHideReplies}
+              filterMutedNotes={false}
+            />
+          )
+        })()
       )}
     </>
   )
