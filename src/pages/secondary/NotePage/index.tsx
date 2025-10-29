@@ -201,12 +201,21 @@ function ParentNote({
           'flex space-x-1 px-[0.4375rem] py-1 items-center rounded-full border clickable text-sm text-muted-foreground',
           event && 'hover:text-foreground'
         )}
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation()
           navigateToNote(toNote(event ?? eventBech32Id))
         }}
       >
         {event && <UserAvatar userId={event.pubkey} size="tiny" className="shrink-0" />}
-        <ContentPreview className="truncate" event={event} />
+        <div 
+          className="truncate flex-1"
+          onClick={(e) => {
+            e.stopPropagation()
+            navigateToNote(toNote(event ?? eventBech32Id))
+          }}
+        >
+          <ContentPreview event={event} />
+        </div>
       </div>
       {isConsecutive ? (
         <div className="ml-5 w-px h-3 bg-border" />

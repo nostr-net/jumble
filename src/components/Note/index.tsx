@@ -156,7 +156,17 @@ export default function Note({
   }
 
   return (
-    <div className={className}>
+    <div 
+      className={`${className} clickable`}
+      onClick={(e) => {
+        // Don't navigate if clicking on interactive elements
+        const target = e.target as HTMLElement
+        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a')) {
+          return
+        }
+        navigateToNote(toNote(event))
+      }}
+    >
       <div className="flex justify-between items-start gap-2">
         <div className="flex items-center space-x-2 flex-1">
           <UserAvatar userId={event.pubkey} size={size === 'small' ? 'medium' : 'normal'} />

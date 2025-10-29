@@ -7,6 +7,7 @@ export function EmbeddedMention({ userId, className }: { userId: string; classNa
       userId={userId}
       showAt
       className={cn('text-primary font-normal inline', className)}
+      style={{ verticalAlign: 'baseline' }}
       withoutSkeleton
     />
   )

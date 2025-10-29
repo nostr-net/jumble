@@ -9,13 +9,15 @@ export default function Username({
   showAt = false,
   className,
   skeletonClassName,
-  withoutSkeleton = false
+  withoutSkeleton = false,
+  style
 }: {
   userId: string
   showAt?: boolean
   className?: string
   skeletonClassName?: string
   withoutSkeleton?: boolean
+  style?: React.CSSProperties
 }) {
   const { profile } = useFetchProfile(userId)
   const { navigateToProfile } = useSmartProfileNavigation()
@@ -35,13 +37,14 @@ export default function Username({
   const { username, pubkey } = profile
 
   return (
-    <div 
+    <span 
       className={cn('truncate hover:underline cursor-pointer', className)}
+      style={{ verticalAlign: 'baseline', ...style }}
       onClick={() => navigateToProfile(toProfile(pubkey))}
     >
       {showAt && '@'}
       {username}
-    </div>
+    </span>
   )
 }
 
@@ -50,13 +53,15 @@ export function SimpleUsername({
   showAt = false,
   className,
   skeletonClassName,
-  withoutSkeleton = false
+  withoutSkeleton = false,
+  style
 }: {
   userId: string
   showAt?: boolean
   className?: string
   skeletonClassName?: string
   withoutSkeleton?: boolean
+  style?: React.CSSProperties
 }) {
   const { profile } = useFetchProfile(userId)
   
@@ -75,9 +80,12 @@ export function SimpleUsername({
   const { username } = profile
 
   return (
-    <div className={cn('truncate', className)}>
+    <span 
+      className={cn('truncate', className)}
+      style={{ verticalAlign: 'baseline', ...style }}
+    >
       {showAt && '@'}
       {username}
-    </div>
+    </span>
   )
 }
