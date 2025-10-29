@@ -35,7 +35,7 @@ export default function WebPreview({ url, className }: { url: string; className?
           window.open(url, '_blank')
         }}
       >
-        <Image image={{ url: image }} className="w-full h-44 rounded-none" hideIfError />
+        <Image image={{ url: image }} className="w-full max-w-[400px] h-44 rounded-none" hideIfError />
         <div className="bg-muted p-2 w-full">
           <div className="text-xs text-muted-foreground">{hostname}</div>
           <div className="font-semibold line-clamp-1">{title}</div>
@@ -55,7 +55,7 @@ export default function WebPreview({ url, className }: { url: string; className?
       {image && (
         <Image
           image={{ url: image }}
-          className="aspect-[4/3] xl:aspect-video bg-foreground h-44 rounded-none"
+          className="aspect-[4/3] xl:aspect-video bg-foreground h-44 max-w-[400px] rounded-none"
           hideIfError
         />
       )}

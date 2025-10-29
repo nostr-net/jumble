@@ -78,9 +78,9 @@ export default function LongFormArticle({
         img: (props) => (
           <ImageWithLightbox
             image={{ url: props.src || '', pubkey: event.pubkey }}
-            className="max-h-[80vh] sm:max-h-[50vh] object-contain my-0"
+            className="max-h-[80vh] sm:max-h-[50vh] object-contain my-0 max-w-[400px]"
             classNames={{
-              wrapper: 'w-fit max-w-full'
+              wrapper: 'w-fit max-w-[400px]'
             }}
           />
         )
@@ -101,7 +101,7 @@ export default function LongFormArticle({
       {metadata.image && (
         <ImageWithLightbox
           image={{ url: metadata.image, pubkey: event.pubkey }}
-          className="w-full aspect-[3/1] object-cover my-0"
+          className="w-full max-w-[400px] aspect-[3/1] object-cover my-0"
         />
       )}
       <Markdown

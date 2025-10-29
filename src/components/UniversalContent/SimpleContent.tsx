@@ -1,13 +1,14 @@
 import { useMemo } from 'react'
 import { cleanUrl } from '@/lib/url'
 import { getImetaInfosFromEvent } from '@/lib/event'
+import logger from '@/lib/logger'
 import { Event } from 'nostr-tools'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { remarkNostr } from '../Note/LongFormArticle/remarkNostr'
 import NostrNode from '../Note/LongFormArticle/NostrNode'
 import { cn } from '@/lib/utils'
-import ImageWithLightbox from '../ImageWithLightbox'
+import ImageGallery from '../ImageGallery'
 import MediaPlayer from '../MediaPlayer'
 
 interface SimpleContentProps {
@@ -75,107 +76,139 @@ export default function SimpleContent({
     const markdownLines: string[] = []
     let key = 0
 
+    // Extract all image URLs from content
+    const imageUrls: string[] = []
     lines.forEach((line) => {
-      // Check if line contains an image URL
       const imageMatch = line.match(/(https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp|heic|svg))/i)
-      
       if (imageMatch) {
-        const imageUrl = imageMatch[1]
-        const imageInfo = imetaInfos.find((info) => info.url === imageUrl)
-        const imageData = imageInfo || { url: imageUrl, pubkey: event?.pubkey }
-        
-        elements.push(
-          <div key={key++} className="my-4">
-            <ImageWithLightbox
-              image={imageData}
-              className="max-w-full h-auto rounded-lg cursor-zoom-in"
-            />
-          </div>
-        )
-        
-        // Add the rest of the line as text if there's anything else
-        const beforeImage = line.substring(0, imageMatch.index).trim()
-        const afterImage = line.substring(imageMatch.index! + imageUrl.length).trim()
-        
-        if (beforeImage || afterImage) {
-          markdownLines.push(beforeImage + afterImage)
-        }
-      } else {
-        // Check if line contains a video URL
-        const videoMatch = line.match(/(https?:\/\/[^\s]+\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv|m4v))/i)
-        
-        if (videoMatch) {
-          const originalVideoUrl = videoMatch[1]
-          // Clean the video URL to remove tracking parameters
-          const cleanedVideoUrl = (() => {
-            try {
-              return cleanUrl(originalVideoUrl)
-            } catch {
-              return originalVideoUrl
-            }
-          })()
-          
-          // Check if this video URL is already handled by imeta tags
-          const normalizedVideoUrl = (() => {
-            try {
-              return new URL(cleanedVideoUrl).href
-            } catch {
-              return cleanedVideoUrl
-            }
-          })()
-          
-          if (!imetaVideoUrls.includes(normalizedVideoUrl)) {
-            elements.push(
-              <div key={key++} className="my-4">
-                <MediaPlayer
-                  src={cleanedVideoUrl}
-                  className="max-w-full h-auto rounded-lg"
-                />
-              </div>
-            )
-          }
-          
-          // Add the rest of the line as text if there's anything else
-          const beforeVideo = line.substring(0, videoMatch.index).trim()
-          const afterVideo = line.substring(videoMatch.index! + originalVideoUrl.length).trim()
-          
-          if (beforeVideo || afterVideo) {
-            markdownLines.push(beforeVideo + afterVideo)
-          }
-        } else {
-          // Regular text line - add to markdown processing
-          markdownLines.push(line)
-        }
+        imageUrls.push(imageMatch[1])
       }
     })
 
-    // Add imeta videos to the elements
-    imetaInfos
-      .filter(info => {
-        // Check if the imeta info is a video by looking at the URL extension
-        const url = info.url
-        const extension = url.split('.').pop()?.toLowerCase()
+    // Extract all video URLs from content
+    const videoUrls: string[] = []
+    lines.forEach((line) => {
+      const videoMatch = line.match(/(https?:\/\/[^\s]+\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv|m4v))/i)
+      if (videoMatch) {
+        videoUrls.push(videoMatch[1])
+      }
+    })
+
+    // Get all unique images - prioritize imeta tags, then add content images that aren't in imeta
+    const allImageInfos = [...imetaInfos] // Start with imeta images
+    const processedUrls = new Set(imetaInfos.map(info => info.url))
+    
+    // Add content images that aren't already in imeta
+    imageUrls.forEach(url => {
+      if (!processedUrls.has(url)) {
+        allImageInfos.push({ url: url, pubkey: event?.pubkey })
+        processedUrls.add(url)
+      }
+    })
+
+    // Get all unique videos - prioritize imeta tags, then add content videos that aren't in imeta
+    const allVideoInfos = imetaInfos.filter(info => {
+      // Check if the imeta info is a video by looking at the URL extension
+      const url = info.url
+      const extension = url.split('.').pop()?.toLowerCase()
+      return extension && ['mp4', 'webm', 'ogg', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'm4v'].includes(extension)
+    })
+    
+    const processedVideoUrls = new Set(allVideoInfos.map(info => {
+      try {
+        return new URL(cleanUrl(info.url)).href
+      } catch {
+        return cleanUrl(info.url)
+      }
+    }))
+    
+    // Add content videos that aren't already in imeta
+    videoUrls.forEach(url => {
+      const cleanedUrl = (() => {
+        try {
+          return cleanUrl(url)
+        } catch {
+          return url
+        }
+      })()
+      
+      const normalizedUrl = (() => {
+        try {
+          return new URL(cleanedUrl).href
+        } catch {
+          return cleanedUrl
+        }
+      })()
+      
+      if (!processedVideoUrls.has(normalizedUrl)) {
+        allVideoInfos.push({ url: url, pubkey: event?.pubkey })
+        processedVideoUrls.add(normalizedUrl)
+      }
+    })
+
+    logger.debug('[SimpleContent] Processing content:', { 
+      totalLines: lines.length, 
+      imetaImages: imetaInfos.length,
+      contentImages: imageUrls.length,
+      totalUniqueImages: allImageInfos.length,
+      imetaVideos: imetaInfos.filter(info => {
+        const extension = info.url.split('.').pop()?.toLowerCase()
         return extension && ['mp4', 'webm', 'ogg', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'm4v'].includes(extension)
+      }).length,
+      contentVideos: videoUrls.length,
+      totalUniqueVideos: allVideoInfos.length
+    })
+
+    // If we have images, create a single ImageGallery for all of them
+    if (allImageInfos.length > 0) {
+      logger.debug('[SimpleContent] Creating ImageGallery with all unique images:', { 
+        count: allImageInfos.length, 
+        urls: allImageInfos.map(i => i.url) 
       })
-      .forEach(videoInfo => {
-        // Clean the imeta video URL to remove tracking parameters
-        const cleanedVideoUrl = (() => {
-          try {
-            return cleanUrl(videoInfo.url)
-          } catch {
-            return videoInfo.url
-          }
-        })()
-        
-        elements.push(
-          <div key={key++} className="my-4">
-            <MediaPlayer
-              src={cleanedVideoUrl}
-              className="max-w-full h-auto rounded-lg"
-            />
-          </div>
-        )
-      })
+      
+      elements.push(
+        <div key={key++} className="my-4">
+          <ImageGallery
+            images={allImageInfos}
+            className="max-w-[400px]"
+          />
+        </div>
+      )
+    }
+
+    // Add all unique videos to elements
+    allVideoInfos.forEach(videoInfo => {
+      const cleanedVideoUrl = (() => {
+        try {
+          return cleanUrl(videoInfo.url)
+        } catch {
+          return videoInfo.url
+        }
+      })()
+      
+      elements.push(
+        <div key={key++} className="my-4">
+          <MediaPlayer
+            src={cleanedVideoUrl}
+            className="max-w-[400px] h-auto rounded-lg"
+          />
+        </div>
+      )
+    })
+
+    // Process lines for text content (excluding images and videos)
+    lines.forEach((line) => {
+      // Skip lines that contain images or videos (already processed above)
+      const hasImage = line.match(/(https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp|heic|svg))/i)
+      const hasVideo = line.match(/(https?:\/\/[^\s]+\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv|m4v))/i)
+      
+      if (hasImage || hasVideo) {
+        return // Skip this line as it's already processed
+      }
+
+      // Regular text line - add to markdown processing
+      markdownLines.push(line)
+    })
 
     return { 
       markdownContent: markdownLines.join('\n'), 

@@ -1,5 +1,6 @@
 import { randomString } from '@/lib/random'
 import { cn } from '@/lib/utils'
+import logger from '@/lib/logger'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import modalManager from '@/services/modal-manager.service'
 import { TImetaInfo } from '@/types'
@@ -39,7 +40,9 @@ export default function ImageGallery({
   const handlePhotoClick = (event: React.MouseEvent, current: number) => {
     event.stopPropagation()
     event.preventDefault()
-    setIndex(start + current)
+    const newIndex = start + current
+    logger.debug('[ImageGallery] Click:', { start, current, newIndex, totalImages: images.length, displayImages: displayImages.length })
+    setIndex(newIndex)
   }
 
   const displayImages = images.slice(start, end)
@@ -62,7 +65,7 @@ export default function ImageGallery({
     imageContent = (
       <Image
         key={0}
-        className="max-h-[80vh] sm:max-h-[50vh] cursor-zoom-in object-contain"
+        className="max-h-[80vh] sm:max-h-[50vh] cursor-zoom-in object-contain max-w-[400px]"
         classNames={{
           errorPlaceholder: 'aspect-square h-[30vh]'
         }}
@@ -72,7 +75,7 @@ export default function ImageGallery({
     )
   } else if (displayImages.length === 2 || displayImages.length === 4) {
     imageContent = (
-      <div className="grid grid-cols-2 gap-2 w-full">
+      <div className="grid grid-cols-2 gap-2 w-full max-w-[400px]">
         {displayImages.map((image, i) => (
           <Image
             key={i}
@@ -85,7 +88,7 @@ export default function ImageGallery({
     )
   } else {
     imageContent = (
-      <div className="grid grid-cols-3 gap-2 w-full">
+      <div className="grid grid-cols-3 gap-2 w-full max-w-[400px]">
         {displayImages.map((image, i) => (
           <Image
             key={i}
@@ -99,17 +102,21 @@ export default function ImageGallery({
   }
 
   return (
-    <div className={cn(displayImages.length === 1 ? 'w-fit max-w-full' : 'w-full', className)}>
+    <div className={cn(displayImages.length === 1 ? 'w-fit max-w-[400px]' : 'w-full', className)}>
       {imageContent}
       {index >= 0 &&
         createPortal(
           <div onClick={(e) => e.stopPropagation()}>
             <Lightbox
               index={index}
-              slides={images.map(({ url, alt }) => ({ 
-                src: url, 
-                alt: alt || url 
-              }))}
+              slides={(() => {
+                const slides = images.map(({ url, alt }) => ({ 
+                  src: url, 
+                  alt: alt || url 
+                }))
+                logger.debug('[ImageGallery] Lightbox slides:', { index, slidesCount: slides.length, slides })
+                return slides
+              })()}
               plugins={[Zoom]}
               open={index >= 0}
               close={() => setIndex(-1)}
@@ -120,6 +127,9 @@ export default function ImageGallery({
               }}
               styles={{
                 toolbar: { paddingTop: '2.25rem' }
+              }}
+              carousel={{
+                finite: false
               }}
             />
           </div>,

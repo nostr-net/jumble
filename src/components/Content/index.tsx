@@ -9,6 +9,7 @@ import {
   EmbeddedWebsocketUrlParser,
   parseContent
 } from '@/lib/content-parser'
+import logger from '@/lib/logger'
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { getEmojiInfosFromEmojiTags, getImetaInfoFromImetaTag } from '@/lib/tag'
 import { cn } from '@/lib/utils'
@@ -119,6 +120,7 @@ export default function Content({
   }
 
   let imageIndex = 0
+  logger.debug('[Content] Parsed content:', { nodeCount: nodes.length, allImages: allImages.length, nodes: nodes.map(n => ({ type: n.type, data: Array.isArray(n.data) ? n.data.length : n.data })) })
   return (
     <div className={cn('text-wrap break-words whitespace-pre-wrap', className)}>
       {nodes.map((node, index) => {
@@ -129,6 +131,7 @@ export default function Content({
           const start = imageIndex
           const end = imageIndex + (Array.isArray(node.data) ? node.data.length : 1)
           imageIndex = end
+          logger.debug('[Content] Creating ImageGallery:', { nodeType: node.type, start, end, totalImages: allImages.length, nodeData: Array.isArray(node.data) ? node.data.length : node.data })
           return (
             <ImageGallery
               className="mt-2"
