@@ -8,9 +8,9 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import { useEventFieldParser } from '@/hooks/useContentParser'
 import WebPreview from '../../WebPreview'
 import HighlightSourcePreview from '../../UniversalContent/HighlightSourcePreview'
-import TableOfContents from '../../UniversalContent/TableOfContents'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { ExtendedKind } from '@/constants'
 
 export default function Article({
   event,
@@ -22,6 +22,14 @@ export default function Article({
   const { push } = useSecondaryPage()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   const [isInfoOpen, setIsInfoOpen] = useState(false)
+  
+  // Determine if this is an article-type event that should show ToC and Article Info
+  const isArticleType = useMemo(() => {
+    return event.kind === kinds.LongFormArticle || 
+           event.kind === ExtendedKind.WIKI_ARTICLE || 
+           event.kind === ExtendedKind.PUBLICATION ||
+           event.kind === ExtendedKind.PUBLICATION_CONTENT
+  }, [event.kind])
   
   // Use the comprehensive content parser
   const { parsedContent, isLoading, error } = useEventFieldParser(event, 'content', {
@@ -93,6 +101,46 @@ export default function Article({
     }
   }, [parsedContent])
 
+  // Add ToC return buttons to section headers
+  useEffect(() => {
+    if (!contentRef.current || !isArticleType || !parsedContent) return
+
+    const addTocReturnButtons = () => {
+      const headers = contentRef.current?.querySelectorAll('h1, h2, h3, h4, h5, h6')
+      if (!headers) return
+
+      headers.forEach((header) => {
+        // Skip if button already exists
+        if (header.querySelector('.toc-return-btn')) return
+
+        // Create the return button
+        const returnBtn = document.createElement('span')
+        returnBtn.className = 'toc-return-btn'
+        returnBtn.innerHTML = '↑ ToC'
+        returnBtn.title = 'Return to Table of Contents'
+        
+        // Add click handler
+        returnBtn.addEventListener('click', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          // Scroll to the ToC
+          const tocElement = document.getElementById('toc')
+          if (tocElement) {
+            tocElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        })
+        
+        // Add the button to the header
+        header.appendChild(returnBtn)
+      })
+    }
+
+    // Add buttons after a short delay to ensure content is rendered
+    const timeoutId = setTimeout(addTocReturnButtons, 100)
+    
+    return () => clearTimeout(timeoutId)
+  }, [parsedContent?.html, isArticleType])
+
 
   if (isLoading) {
     return (
@@ -130,41 +178,16 @@ export default function Article({
       {metadata.image && (
         <ImageWithLightbox
           image={{ url: metadata.image, pubkey: event.pubkey }}
-          className="w-full max-w-[400px] aspect-[3/1] object-cover my-0"
+          className="w-full max-w-[400px] h-auto object-contain my-0"
         />
       )}
 
 
-      {/* Table of Contents */}
-      <TableOfContents 
-        content={parsedContent.html} 
-        className="mb-6" 
-      />
-
       {/* Render AsciiDoc content (everything is now processed as AsciiDoc) */}
-      <div ref={contentRef} dangerouslySetInnerHTML={{ __html: parsedContent.html }} />
+      <div ref={contentRef} className={isArticleType ? "asciidoc-content" : "simple-content"} dangerouslySetInnerHTML={{ __html: parsedContent.html }} />
 
-      {/* Hashtags */}
-      {parsedContent.hashtags.length > 0 && (
-        <div className="flex gap-2 flex-wrap pb-2">
-          {parsedContent.hashtags.map((tag) => (
-            <div
-              key={tag}
-              title={tag}
-              className="flex items-center rounded-full px-3 bg-muted text-muted-foreground max-w-44 cursor-pointer hover:bg-accent hover:text-accent-foreground"
-              onClick={(e) => {
-                e.stopPropagation()
-                push(toNoteList({ hashtag: tag, kinds: [kinds.LongFormArticle] }))
-              }}
-            >
-              #<span className="truncate">{tag}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Collapsible Article Info */}
-      {(parsedContent.media.length > 0 || parsedContent.links.length > 0 || parsedContent.nostrLinks.length > 0 || parsedContent.highlightSources.length > 0) && (
+      {/* Collapsible Article Info - only for article-type events */}
+      {isArticleType && (parsedContent.media.length > 0 || parsedContent.links.length > 0 || parsedContent.nostrLinks.length > 0 || parsedContent.highlightSources.length > 0 || parsedContent.hashtags.length > 0) && (
         <Collapsible open={isInfoOpen} onOpenChange={setIsInfoOpen} className="mt-4">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
@@ -235,6 +258,28 @@ export default function Article({
                       source={source}
                       className="w-full"
                     />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Hashtags */}
+            {parsedContent.hashtags.length > 0 && (
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="text-sm font-semibold mb-3">Tags:</h4>
+                <div className="flex gap-2 flex-wrap">
+                  {parsedContent.hashtags.map((tag) => (
+                    <div
+                      key={tag}
+                      title={tag}
+                      className="flex items-center rounded-full px-3 py-1 bg-background text-muted-foreground max-w-44 cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        push(toNoteList({ hashtag: tag, kinds: [kinds.LongFormArticle] }))
+                      }}
+                    >
+                      #<span className="truncate">{tag}</span>
+                    </div>
                   ))}
                 </div>
               </div>

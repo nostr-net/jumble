@@ -62,7 +62,7 @@ export default function ImageWithLightbox({
         key={0}
         className={className}
         classNames={{
-          wrapper: cn('rounded-lg border cursor-zoom-in', classNames.wrapper),
+          wrapper: cn('rounded-lg cursor-zoom-in', classNames.wrapper),
           errorPlaceholder: 'aspect-square h-[30vh]'
         }}
         image={image}

@@ -28,6 +28,7 @@ import IValue from './IValue'
 import LiveEvent from './LiveEvent'
 import LongFormArticlePreview from './LongFormArticlePreview'
 import Article from './Article'
+import SimpleContent from './SimpleContent'
 import PublicationCard from './PublicationCard'
 import WikiCard from './WikiCard'
 import MutedNote from './MutedNote'
@@ -110,14 +111,6 @@ export default function Note({
     ) : (
       <WikiCard className="mt-2" event={event} />
     )
-  } else if (event.kind === ExtendedKind.WIKI_CHAPTER) {
-    content = showFull ? (
-      <Article className="mt-2" event={event} />
-    ) : (
-      <div className="mt-2 p-4 bg-muted rounded-lg">
-        <div className="text-sm text-muted-foreground">Wiki Chapter (part of publication)</div>
-      </div>
-    )
   } else if (event.kind === ExtendedKind.PUBLICATION) {
     content = showFull ? (
       <Article className="mt-2" event={event} />
@@ -159,7 +152,7 @@ export default function Note({
   } else if (event.kind === ExtendedKind.ZAP_REQUEST || event.kind === ExtendedKind.ZAP_RECEIPT) {
     content = <Zap className="mt-2" event={event} />
   } else {
-    content = <EnhancedContent className="mt-2" event={event} useEnhancedParsing={true} />
+    content = <SimpleContent className="mt-2" event={event} />
   }
 
   return (

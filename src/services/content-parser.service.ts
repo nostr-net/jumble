@@ -4,9 +4,9 @@
  */
 
 import { detectMarkupType, getMarkupClasses, MarkupType } from '@/lib/markup-detection'
-import { Event, nip19 } from 'nostr-tools'
+import { Event, kinds, nip19 } from 'nostr-tools'
 import { getImetaInfosFromEvent } from '@/lib/event'
-import { URL_REGEX } from '@/constants'
+import { URL_REGEX, ExtendedKind } from '@/constants'
 import { TImetaInfo } from '@/types'
 
 export interface ParsedContent {
@@ -69,7 +69,13 @@ class ContentParserService {
     const cssClasses = getMarkupClasses(markupType)
 
     // Extract all content elements
-            const media = this.extractAllMedia(content, event)
+            // For article-type events, don't extract media as it should be rendered inline
+            const isArticleType = eventKind === kinds.LongFormArticle || 
+                                 eventKind === ExtendedKind.WIKI_ARTICLE || 
+                                 eventKind === ExtendedKind.PUBLICATION ||
+                                 eventKind === ExtendedKind.PUBLICATION_CONTENT
+            
+            const media = isArticleType ? [] : this.extractAllMedia(content, event)
             const links = this.extractLinks(content)
             const hashtags = this.extractHashtags(content)
             const nostrLinks = this.extractNostrLinks(content)
@@ -121,6 +127,9 @@ class ContentParserService {
           'showtitle': true,
           'sectanchors': true,
           'sectlinks': true,
+          'toc': 'left',
+          'toclevels': 6,
+          'toc-title': 'Table of Contents',
           'source-highlighter': options.enableSyntaxHighlighting ? 'highlight.js' : 'none',
           'stem': options.enableMath ? 'latexmath' : 'none'
         }
@@ -131,8 +140,11 @@ class ContentParserService {
       // Process wikilinks in the HTML output
       const processedHtml = this.processWikilinksInHtml(htmlString)
       
-      // Clean up any leftover markdown syntax
-      return this.cleanupMarkdown(processedHtml)
+      // Clean up any leftover markdown syntax and hide raw ToC text
+      const cleanedHtml = this.cleanupMarkdown(processedHtml)
+      
+      // Hide any raw AsciiDoc ToC text that might appear in the content
+      return this.hideRawTocText(cleanedHtml)
     } catch (error) {
       console.error('AsciiDoc parsing error:', error)
       return this.parsePlainText(content)
@@ -190,15 +202,63 @@ class ContentParserService {
     })
     asciidoc = asciidoc.replace(/`([^`]+)`/g, '`$1`') // Inline code
 
-    // Convert blockquotes
-    asciidoc = asciidoc.replace(/^>\s+(.+)$/gm, '____\n$1\n____')
+    // Convert blockquotes - handle multiline blockquotes properly with separate attribution
+    asciidoc = asciidoc.replace(/^(>\s+.+(?:\n>\s+.+)*)/gm, (match) => {
+      const lines = match.split('\n').map(line => line.replace(/^>\s*/, '')) // Remove '>' and optional space from each line
+      
+      let quoteBodyLines: string[] = []
+      let attributionLine: string | undefined
+      
+      // Find the last line that looks like an attribution (starts with '—' or '--')
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim()
+        if (line.startsWith('—') || line.startsWith('--')) {
+          attributionLine = line
+          quoteBodyLines = lines.slice(0, i) // Everything before the attribution is the quote body
+          break
+        }
+      }
+      
+      const quoteContent = quoteBodyLines.filter(l => l.trim() !== '').join('\n').trim()
+      
+      if (attributionLine) {
+        // Remove leading '—' or '--' from the attribution line
+        let cleanedAttribution = attributionLine.replace(/^[—-]+/, '').trim()
+        
+        let author = ''
+        let source = ''
+        
+        // Try to find a link:url[text] pattern (already converted from markdown links)
+        // Example: "George Bernard Shaw, link:https://www.goodreads.com/work/quotes/376394[Man and Superman]"
+        const linkMatch = cleanedAttribution.match(/^(.*?),?\s*link:([^[\\]]+)\[([^\\]]+)\]$/)
+        
+        if (linkMatch) {
+          author = linkMatch[1].trim()
+          // Use the AsciiDoc link format directly in the source attribute
+          source = `link:${linkMatch[2].trim()}[${linkMatch[3].trim()}]`
+        } else {
+          // If no link, assume the whole thing is author or author, sourceText
+          const parts = cleanedAttribution.split(',').map(p => p.trim())
+          author = parts[0]
+          if (parts.length > 1) {
+            source = parts.slice(1).join(', ').trim()
+          }
+        }
+        
+        // AsciiDoc blockquote with attribution: [quote, author, source]
+        return `[quote, ${author}, ${source}]\n____\n${quoteContent}\n____`
+      } else {
+        // If no attribution line is found, render as a regular AsciiDoc blockquote
+        return `____\n${quoteContent}\n____`
+      }
+    })
 
     // Convert lists
     asciidoc = asciidoc.replace(/^(\s*)\*\s+(.+)$/gm, '$1* $2') // Unordered lists
     asciidoc = asciidoc.replace(/^(\s*)\d+\.\s+(.+)$/gm, '$1. $2') // Ordered lists
 
     // Convert links
-    asciidoc = asciidoc.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1[$2]')
+    asciidoc = asciidoc.replace(/\[([^\]]+)\]\(([^)]+)\)/g, 'link:$2[$1]')
 
     // Convert images
     asciidoc = asciidoc.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, 'image::$2[$1]')
@@ -208,6 +268,26 @@ class ContentParserService {
 
     // Convert horizontal rules
     asciidoc = asciidoc.replace(/^---$/gm, '\'\'\'')
+
+    // Convert footnotes - handle both references and definitions for auto-numbering
+    const footnoteDefinitions: { [id: string]: string } = {}
+    let tempAsciidoc = asciidoc
+
+    // First, extract all footnote definitions and remove them from the content
+    // This regex captures [^id]: text including multi-line content
+    tempAsciidoc = tempAsciidoc.replace(/^\[\^([^\]]+)\]:\s*([\s\S]*?)(?=\n\[\^|\n---|\n##|\n###|\n####|\n#####|\n######|$)/gm, (_, id, text) => {
+      footnoteDefinitions[id] = text.trim()
+      return '' // Remove the definition line from the content
+    })
+
+    // Then, replace all footnote references [^id] with AsciiDoc's auto-numbered footnote syntax
+    // using the extracted definitions.
+    asciidoc = tempAsciidoc.replace(/\[\^([^\]]+)\]/g, (match, id) => {
+      if (footnoteDefinitions[id]) {
+        return `footnote:[${footnoteDefinitions[id]}]`
+      }
+      return match // If definition not found, leave as is
+    })
 
     return asciidoc
   }
@@ -700,6 +780,35 @@ class ContentParserService {
       default:
         return ''
     }
+  }
+
+  /**
+   * Hide raw AsciiDoc ToC text that might appear in the content
+   */
+  private hideRawTocText(html: string): string {
+    // Hide any raw ToC text that might be generated by AsciiDoc
+    // This includes patterns like "# Table of Contents (5)" and plain text lists
+    let cleaned = html
+
+    // Hide raw ToC headings and content
+    cleaned = cleaned.replace(
+      /<h[1-6][^>]*>.*?Table of Contents.*?\(\d+\).*?<\/h[1-6]>/gi,
+      ''
+    )
+
+    // Hide raw ToC lists that might appear as plain text
+    cleaned = cleaned.replace(
+      /<p[^>]*>.*?Table of Contents.*?\(\d+\).*?<\/p>/gi,
+      ''
+    )
+
+    // Hide any remaining raw ToC text patterns
+    cleaned = cleaned.replace(
+      /<p[^>]*>.*?Assumptions.*?\[n=0\].*?<\/p>/gi,
+      ''
+    )
+
+    return cleaned
   }
 }
 

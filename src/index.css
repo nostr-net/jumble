@@ -140,6 +140,197 @@
   }
 }
 
+/* AsciiDoc Table of Contents Styling */
+#toc {
+  @apply bg-muted/30 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6;
+}
+
+#toc h2 {
+  @apply text-lg font-semibold mb-3 text-foreground border-b border-border pb-2;
+}
+
+#toc ul {
+  @apply space-y-1;
+}
+
+#toc li {
+  @apply list-none;
+}
+
+#toc a {
+  @apply text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 block py-1 px-2 rounded hover:bg-primary/10 hover:border-l-2 hover:border-primary hover:pl-3;
+}
+
+#toc .sectlevel1 a {
+  @apply font-medium text-foreground;
+}
+
+#toc .sectlevel2 a {
+  @apply ml-4;
+}
+
+#toc .sectlevel3 a {
+  @apply ml-8;
+}
+
+#toc .sectlevel4 a {
+  @apply ml-12;
+}
+
+#toc .sectlevel5 a {
+  @apply ml-16;
+}
+
+#toc .sectlevel6 a {
+  @apply ml-20;
+}
+
+/* Hide the raw AsciiDoc ToC text when styled ToC is present */
+.asciidoc-toc-raw {
+  display: none;
+}
+
+/* AsciiDoc Section Headers Styling */
+.asciidoc-content h1,
+.asciidoc-content h2,
+.asciidoc-content h3,
+.asciidoc-content h4,
+.asciidoc-content h5,
+.asciidoc-content h6 {
+  @apply scroll-mt-24; /* Add padding when scrolling to headers - increased for better visibility */
+  scroll-behavior: smooth;
+  position: relative;
+}
+
+/* ToC return button styling */
+.asciidoc-content h1 .toc-return-btn,
+.asciidoc-content h2 .toc-return-btn,
+.asciidoc-content h3 .toc-return-btn,
+.asciidoc-content h4 .toc-return-btn,
+.asciidoc-content h5 .toc-return-btn,
+.asciidoc-content h6 .toc-return-btn {
+  @apply absolute right-0 top-1/2 -translate-y-1/2 opacity-0 transition-all duration-200 text-muted-foreground hover:text-foreground cursor-pointer;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  background: hsl(var(--background) / 0.9);
+  backdrop-filter: blur(8px);
+  border: 1px solid hsl(var(--border));
+  white-space: nowrap;
+  z-index: 10;
+  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.1);
+}
+
+.asciidoc-content h1:hover .toc-return-btn,
+.asciidoc-content h2:hover .toc-return-btn,
+.asciidoc-content h3:hover .toc-return-btn,
+.asciidoc-content h4:hover .toc-return-btn,
+.asciidoc-content h5:hover .toc-return-btn,
+.asciidoc-content h6:hover .toc-return-btn {
+  @apply opacity-100;
+  transform: translateY(-50%) scale(1.05);
+  background: hsl(var(--primary) / 0.1);
+  border-color: hsl(var(--primary) / 0.3);
+}
+
+/* Show button on mobile when header is tapped */
+@media (hover: none) {
+  .asciidoc-content h1:active .toc-return-btn,
+  .asciidoc-content h2:active .toc-return-btn,
+  .asciidoc-content h3:active .toc-return-btn,
+  .asciidoc-content h4:active .toc-return-btn,
+  .asciidoc-content h5:active .toc-return-btn,
+  .asciidoc-content h6:active .toc-return-btn {
+    @apply opacity-100;
+  }
+}
+
+/* AsciiDoc Footnotes Styling */
+.asciidoc-content .footnote {
+  @apply text-xs text-muted-foreground;
+  margin-bottom: 0.5rem; /* Add some spacing between footnotes */
+}
+
+.asciidoc-content .footnote a {
+  @apply text-primary hover:underline;
+}
+
+.asciidoc-content .footnote-backref {
+  @apply ml-1 text-primary hover:underline;
+}
+
+.asciidoc-content .footnoteref {
+  @apply text-primary hover:underline;
+  vertical-align: super;
+  font-size: 0.75em;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+/* Add scroll padding to footnote anchors and content elements */
+.asciidoc-content [id^="footnote-"],
+.asciidoc-content [id*="footnote"],
+.asciidoc-content [id*="_footnote"],
+.asciidoc-content [id*="_ref"],
+.asciidoc-content p,
+.asciidoc-content li {
+  scroll-margin-top: 8rem; /* Scroll padding for footnote anchors and content */
+}
+
+/* Also add scroll padding to any element that might be a footnote target */
+.asciidoc-content *[id] {
+  scroll-margin-top: 8rem;
+}
+
+.asciidoc-content .footnoteref:hover {
+  @apply underline;
+}
+
+.asciidoc-content .footnotes {
+  @apply mt-8 pt-4 border-t border-border;
+  scroll-margin-top: 4rem; /* Ensure footnotes section doesn't scroll out of view */
+}
+
+.asciidoc-content .footnotes ol {
+  @apply space-y-3; /* Increased spacing between footnote entries */
+}
+
+.asciidoc-content .footnotes li {
+  @apply text-sm text-muted-foreground;
+  display: block; /* Ensure each footnote is on its own line */
+  margin-bottom: 0.75rem; /* Additional spacing for better readability */
+}
+
+.asciidoc-content .footnotes li p {
+  @apply mb-2;
+  margin-top: 0; /* Remove top margin for cleaner look */
+}
+
+.asciidoc-content h1 {
+  @apply text-xl sm:text-2xl font-bold mt-6 sm:mt-8 mb-3 sm:mb-4 text-foreground hover:bg-primary/5 hover:px-2 hover:py-1 hover:rounded transition-all duration-200;
+}
+
+.asciidoc-content h2 {
+  @apply text-lg sm:text-xl font-semibold mt-5 sm:mt-6 mb-2 sm:mb-3 text-foreground hover:bg-primary/5 hover:px-2 hover:py-1 hover:rounded transition-all duration-200;
+}
+
+.asciidoc-content h3 {
+  @apply text-base sm:text-lg font-medium mt-4 sm:mt-5 mb-2 text-foreground hover:bg-primary/5 hover:px-2 hover:py-1 hover:rounded transition-all duration-200;
+}
+
+.asciidoc-content h4 {
+  @apply text-sm sm:text-base font-medium mt-3 sm:mt-4 mb-2 text-foreground hover:bg-primary/5 hover:px-2 hover:py-1 hover:rounded transition-all duration-200;
+}
+
+.asciidoc-content h5 {
+  @apply text-xs sm:text-sm font-medium mt-3 mb-2 text-foreground hover:bg-primary/5 hover:px-2 hover:py-1 hover:rounded transition-all duration-200;
+}
+
+.asciidoc-content h6 {
+  @apply text-xs font-medium mt-3 mb-2 text-foreground hover:bg-primary/5 hover:px-2 hover:py-1 hover:rounded transition-all duration-200;
+}
+
 @keyframes progressFill {
   0% {
     width: 0%;
