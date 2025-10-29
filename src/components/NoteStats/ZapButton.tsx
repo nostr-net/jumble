@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import ZapDialog from '../ZapDialog'
 
-export default function ZapButton({ event }: { event: Event }) {
+export default function ZapButton({ event, hideCount = false }: { event: Event; hideCount?: boolean }) {
   const { t } = useTranslation()
   const { checkLogin, pubkey } = useNostr()
   const noteStats = useNoteStatsById(event.id)
@@ -147,7 +147,7 @@ export default function ZapButton({ event }: { event: Event }) {
         ) : (
           <Zap className={hasZapped ? 'fill-yellow-400' : ''} />
         )}
-        {!!zapAmount && <div className="text-sm">{formatAmount(zapAmount)}</div>}
+        {!hideCount && !!zapAmount && <div className="text-sm">{formatAmount(zapAmount)}</div>}
       </button>
       <ZapDialog
         open={openZapDialog}

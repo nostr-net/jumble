@@ -1,6 +1,7 @@
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { ExtendedKind } from '@/constants'
+import { shouldHideInteractions } from '@/lib/event-filtering'
 import { Event } from 'nostr-tools'
 import { useState } from 'react'
 import HideUntrustedContentButton from '../HideUntrustedContentButton'
@@ -22,6 +23,11 @@ export default function NoteInteractions({
   const [type, setType] = useState<TTabValue>('replies')
   const [replySort, setReplySort] = useState<ReplySortOption>('oldest')
   const isDiscussion = event.kind === ExtendedKind.DISCUSSION
+  
+  // Hide interactions if event is in quiet mode
+  if (shouldHideInteractions(event)) {
+    return null
+  }
   
   let list
   switch (type) {

@@ -112,6 +112,10 @@ export async function createShortTextNoteDraftEvent(
     addClientTag?: boolean
     protectedEvent?: boolean
     isNsfw?: boolean
+    addExpirationTag?: boolean
+    expirationMonths?: number
+    addQuietTag?: boolean
+    quietDays?: number
   } = {}
 ): Promise<TDraftEvent> {
   // Process content to prefix nostr addresses before other transformations
@@ -158,6 +162,14 @@ export async function createShortTextNoteDraftEvent(
     tags.push(buildProtectedTag())
   }
 
+  if (options.addExpirationTag && options.expirationMonths) {
+    tags.push(buildExpirationTag(options.expirationMonths))
+  }
+
+  if (options.addQuietTag && options.quietDays) {
+    tags.push(buildQuietTag(options.quietDays))
+  }
+
   const baseDraft = {
     kind: kinds.ShortTextNote,
     content: transformedEmojisContent,
@@ -189,6 +201,10 @@ export async function createCommentDraftEvent(
     addClientTag?: boolean
     protectedEvent?: boolean
     isNsfw?: boolean
+    addExpirationTag?: boolean
+    expirationMonths?: number
+    addQuietTag?: boolean
+    quietDays?: number
   } = {}
 ): Promise<TDraftEvent> {
   // Process content to prefix nostr addresses before other transformations
@@ -256,6 +272,14 @@ export async function createCommentDraftEvent(
     tags.push(buildProtectedTag())
   }
 
+  if (options.addExpirationTag && options.expirationMonths) {
+    tags.push(buildExpirationTag(options.expirationMonths))
+  }
+
+  if (options.addQuietTag && options.quietDays) {
+    tags.push(buildQuietTag(options.quietDays))
+  }
+
   const baseDraft = {
     kind: ExtendedKind.COMMENT,
     content: transformedEmojisContent,
@@ -272,6 +296,10 @@ export async function createPublicMessageReplyDraftEvent(
   options: {
     addClientTag?: boolean
     isNsfw?: boolean
+    addExpirationTag?: boolean
+    expirationMonths?: number
+    addQuietTag?: boolean
+    quietDays?: number
   } = {}
 ): Promise<TDraftEvent> {
   // Process content to prefix nostr addresses before other transformations
@@ -321,6 +349,14 @@ export async function createPublicMessageReplyDraftEvent(
     tags.push(buildNsfwTag())
   }
 
+  if (options.addExpirationTag && options.expirationMonths) {
+    tags.push(buildExpirationTag(options.expirationMonths))
+  }
+
+  if (options.addQuietTag && options.quietDays) {
+    tags.push(buildQuietTag(options.quietDays))
+  }
+
   // console.log('📝 Final public message reply draft tags:', {
   //   pTags: tags.filter(tag => tag[0] === 'p'),
   //   qTags: tags.filter(tag => tag[0] === 'q'),
@@ -342,6 +378,10 @@ export async function createPublicMessageDraftEvent(
   options: {
     addClientTag?: boolean
     isNsfw?: boolean
+    addExpirationTag?: boolean
+    expirationMonths?: number
+    addQuietTag?: boolean
+    quietDays?: number
   } = {}
 ): Promise<TDraftEvent> {
   // Process content to prefix nostr addresses before other transformations
@@ -369,6 +409,14 @@ export async function createPublicMessageDraftEvent(
 
   if (options.isNsfw) {
     tags.push(buildNsfwTag())
+  }
+
+  if (options.addExpirationTag && options.expirationMonths) {
+    tags.push(buildExpirationTag(options.expirationMonths))
+  }
+
+  if (options.addQuietTag && options.quietDays) {
+    tags.push(buildQuietTag(options.quietDays))
   }
 
   const baseDraft = {
@@ -495,10 +543,18 @@ export async function createPollDraftEvent(
   { isMultipleChoice, relays, options, endsAt }: TPollCreateData,
   {
     addClientTag,
-    isNsfw
+    isNsfw,
+    addExpirationTag,
+    expirationMonths,
+    addQuietTag,
+    quietDays
   }: {
     addClientTag?: boolean
     isNsfw?: boolean
+    addExpirationTag?: boolean
+    expirationMonths?: number
+    addQuietTag?: boolean
+    quietDays?: number
   } = {}
 ): Promise<TDraftEvent> {
   const { content: transformedEmojisContent, emojiTags } = transformCustomEmojisInContent(question)
@@ -545,6 +601,14 @@ export async function createPollDraftEvent(
 
   if (isNsfw) {
     tags.push(buildNsfwTag())
+  }
+
+  if (addExpirationTag && expirationMonths) {
+    tags.push(buildExpirationTag(expirationMonths))
+  }
+
+  if (addQuietTag && quietDays) {
+    tags.push(buildQuietTag(quietDays))
   }
 
   const baseDraft = {
@@ -895,6 +959,16 @@ function buildProtectedTag() {
   return ['-']
 }
 
+function buildExpirationTag(months: number): string[] {
+  const expirationTime = dayjs().add(months, 'month').unix()
+  return ['expiration', expirationTime.toString()]
+}
+
+function buildQuietTag(days: number): string[] {
+  const quietEndTime = dayjs().add(days, 'day').unix()
+  return ['quiet', quietEndTime.toString()]
+}
+
 function trimTagEnd(tag: string[]) {
   let endIndex = tag.length - 1
   while (endIndex >= 0 && tag[endIndex] === '') {
@@ -921,6 +995,10 @@ export async function createHighlightDraftEvent(
   options?: {
     addClientTag?: boolean
     isNsfw?: boolean
+    addExpirationTag?: boolean
+    expirationMonths?: number
+    addQuietTag?: boolean
+    quietDays?: number
   }
 ): Promise<TDraftEvent> {
   const tags: string[][] = []
@@ -1044,6 +1122,14 @@ export async function createHighlightDraftEvent(
 
   if (options?.isNsfw) {
     tags.push(buildNsfwTag())
+  }
+
+  if (options?.addExpirationTag && options?.expirationMonths) {
+    tags.push(buildExpirationTag(options.expirationMonths))
+  }
+
+  if (options?.addQuietTag && options?.quietDays) {
+    tags.push(buildQuietTag(options.quietDays))
   }
 
   return setDraftEventCache({

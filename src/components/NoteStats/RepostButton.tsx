@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next'
 import PostEditor from '../PostEditor'
 import { formatCount } from './utils'
 
-export default function RepostButton({ event }: { event: Event }) {
+export default function RepostButton({ event, hideCount = false }: { event: Event; hideCount?: boolean }) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
   const { hideUntrustedInteractions, isUserTrusted } = useUserTrust()
@@ -82,7 +82,7 @@ export default function RepostButton({ event }: { event: Event }) {
       }}
     >
       {reposting ? <Loader className="animate-spin" /> : <Repeat />}
-      {!!repostCount && <div className="text-sm">{formatCount(repostCount)}</div>}
+      {!hideCount && !!repostCount && <div className="text-sm">{formatCount(repostCount)}</div>}
     </button>
   )
 

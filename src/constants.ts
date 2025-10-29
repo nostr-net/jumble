@@ -46,6 +46,12 @@ export const StorageKey = {
   MEDIA_AUTO_LOAD_POLICY: 'mediaAutoLoadPolicy',
   SHOWN_CREATE_WALLET_GUIDE_TOAST_PUBKEYS: 'shownCreateWalletGuideToastPubkeys',
   SHOW_RECOMMENDED_RELAYS_PANEL: 'showRecommendedRelaysPanel',
+  DEFAULT_EXPIRATION_ENABLED: 'defaultExpirationEnabled',
+  DEFAULT_EXPIRATION_MONTHS: 'defaultExpirationMonths',
+  DEFAULT_QUIET_ENABLED: 'defaultQuietEnabled',
+  DEFAULT_QUIET_DAYS: 'defaultQuietDays',
+  RESPECT_QUIET_TAGS: 'respectQuietTags',
+  GLOBAL_QUIET_MODE: 'globalQuietMode',
   MEDIA_UPLOAD_SERVICE: 'mediaUploadService', // deprecated
   HIDE_UNTRUSTED_EVENTS: 'hideUntrustedEvents', // deprecated
   ACCOUNT_RELAY_LIST_EVENT_MAP: 'accountRelayListEventMap', // deprecated

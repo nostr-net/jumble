@@ -5,6 +5,7 @@ import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import noteStatsService from '@/services/note-stats.service'
 import { ExtendedKind } from '@/constants'
 import { getRootEventHexId } from '@/lib/event'
+import { shouldHideInteractions } from '@/lib/event-filtering'
 import client from '@/services/client.service'
 import { Event } from 'nostr-tools'
 import { useEffect, useState, useMemo } from 'react'
@@ -40,6 +41,9 @@ export default function NoteStats({
   // Hide repost button for discussion events and replies to discussions
   const isDiscussion = event.kind === ExtendedKind.DISCUSSION
   const [isReplyToDiscussion, setIsReplyToDiscussion] = useState(false)
+  
+  // Hide interaction counts if event is in quiet mode
+  const hideInteractions = shouldHideInteractions(event)
   
   useMemo(() => {
     if (isDiscussion) return // Already a discussion event
@@ -80,10 +84,10 @@ export default function NoteStats({
             classNames?.buttonBar
           )}
         >
-          <ReplyButton event={event} />
-          {!isDiscussion && !isReplyToDiscussion && <RepostButton event={event} />}
-          <LikeButton event={event} />
-          <ZapButton event={event} />
+          <ReplyButton event={event} hideCount={hideInteractions} />
+          {!isDiscussion && !isReplyToDiscussion && <RepostButton event={event} hideCount={hideInteractions} />}
+          <LikeButton event={event} hideCount={hideInteractions} />
+          <ZapButton event={event} hideCount={hideInteractions} />
           <BookmarkButton event={event} />
           <SeenOnButton event={event} />
         </div>
@@ -103,10 +107,10 @@ export default function NoteStats({
         <div
           className={cn('flex items-center', loading ? 'animate-pulse' : '')}
         >
-          <ReplyButton event={event} />
-          {!isDiscussion && !isReplyToDiscussion && <RepostButton event={event} />}
-          <LikeButton event={event} />
-          <ZapButton event={event} />
+          <ReplyButton event={event} hideCount={hideInteractions} />
+          {!isDiscussion && !isReplyToDiscussion && <RepostButton event={event} hideCount={hideInteractions} />}
+          <LikeButton event={event} hideCount={hideInteractions} />
+          <ZapButton event={event} hideCount={hideInteractions} />
         </div>
         <div className="flex items-center">
           <BookmarkButton event={event} />

@@ -51,6 +51,12 @@ class LocalStorageService {
   private mediaAutoLoadPolicy: TMediaAutoLoadPolicy = MEDIA_AUTO_LOAD_POLICY.ALWAYS
   private showRecommendedRelaysPanel: boolean = false
   private shownCreateWalletGuideToastPubkeys: Set<string> = new Set()
+  private defaultExpirationEnabled: boolean = false
+  private defaultExpirationMonths: number = 6
+  private defaultQuietEnabled: boolean = false
+  private defaultQuietDays: number = 7
+  private respectQuietTags: boolean = true
+  private globalQuietMode: boolean = false
 
   constructor() {
     if (!LocalStorageService.instance) {
@@ -217,6 +223,35 @@ class LocalStorageService {
     this.shownCreateWalletGuideToastPubkeys = shownCreateWalletGuideToastPubkeysStr
       ? new Set(JSON.parse(shownCreateWalletGuideToastPubkeysStr))
       : new Set()
+
+    // Initialize expiration and quiet settings
+    const defaultExpirationEnabledStr = window.localStorage.getItem(StorageKey.DEFAULT_EXPIRATION_ENABLED)
+    this.defaultExpirationEnabled = defaultExpirationEnabledStr === 'true'
+
+    const defaultExpirationMonthsStr = window.localStorage.getItem(StorageKey.DEFAULT_EXPIRATION_MONTHS)
+    if (defaultExpirationMonthsStr) {
+      const num = parseInt(defaultExpirationMonthsStr)
+      if (!isNaN(num) && num >= 0 && Number.isInteger(num)) {
+        this.defaultExpirationMonths = num
+      }
+    }
+
+    const defaultQuietEnabledStr = window.localStorage.getItem(StorageKey.DEFAULT_QUIET_ENABLED)
+    this.defaultQuietEnabled = defaultQuietEnabledStr === 'true'
+
+    const defaultQuietDaysStr = window.localStorage.getItem(StorageKey.DEFAULT_QUIET_DAYS)
+    if (defaultQuietDaysStr) {
+      const num = parseInt(defaultQuietDaysStr)
+      if (!isNaN(num) && num >= 0 && Number.isInteger(num)) {
+        this.defaultQuietDays = num
+      }
+    }
+
+    const respectQuietTagsStr = window.localStorage.getItem(StorageKey.RESPECT_QUIET_TAGS)
+    this.respectQuietTags = respectQuietTagsStr === null ? true : respectQuietTagsStr === 'true'
+
+    const globalQuietModeStr = window.localStorage.getItem(StorageKey.GLOBAL_QUIET_MODE)
+    this.globalQuietMode = globalQuietModeStr === 'true'
 
     // Clean up deprecated data
     window.localStorage.removeItem(StorageKey.ACCOUNT_PROFILE_EVENT_MAP)
@@ -518,6 +553,66 @@ class LocalStorageService {
       StorageKey.SHOWN_CREATE_WALLET_GUIDE_TOAST_PUBKEYS,
       JSON.stringify(Array.from(this.shownCreateWalletGuideToastPubkeys))
     )
+  }
+
+  // Expiration settings
+  getDefaultExpirationEnabled() {
+    return this.defaultExpirationEnabled
+  }
+
+  setDefaultExpirationEnabled(enabled: boolean) {
+    this.defaultExpirationEnabled = enabled
+    window.localStorage.setItem(StorageKey.DEFAULT_EXPIRATION_ENABLED, enabled.toString())
+  }
+
+  getDefaultExpirationMonths() {
+    return this.defaultExpirationMonths
+  }
+
+  setDefaultExpirationMonths(months: number) {
+    if (Number.isInteger(months) && months >= 0) {
+      this.defaultExpirationMonths = months
+      window.localStorage.setItem(StorageKey.DEFAULT_EXPIRATION_MONTHS, months.toString())
+    }
+  }
+
+  // Quiet settings
+  getDefaultQuietEnabled() {
+    return this.defaultQuietEnabled
+  }
+
+  setDefaultQuietEnabled(enabled: boolean) {
+    this.defaultQuietEnabled = enabled
+    window.localStorage.setItem(StorageKey.DEFAULT_QUIET_ENABLED, enabled.toString())
+  }
+
+  getDefaultQuietDays() {
+    return this.defaultQuietDays
+  }
+
+  setDefaultQuietDays(days: number) {
+    if (Number.isInteger(days) && days >= 0) {
+      this.defaultQuietDays = days
+      window.localStorage.setItem(StorageKey.DEFAULT_QUIET_DAYS, days.toString())
+    }
+  }
+
+  getRespectQuietTags() {
+    return this.respectQuietTags
+  }
+
+  setRespectQuietTags(respect: boolean) {
+    this.respectQuietTags = respect
+    window.localStorage.setItem(StorageKey.RESPECT_QUIET_TAGS, respect.toString())
+  }
+
+  getGlobalQuietMode() {
+    return this.globalQuietMode
+  }
+
+  setGlobalQuietMode(enabled: boolean) {
+    this.globalQuietMode = enabled
+    window.localStorage.setItem(StorageKey.GLOBAL_QUIET_MODE, enabled.toString())
   }
 }
 

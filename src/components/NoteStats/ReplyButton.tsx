@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next'
 import PostEditor from '../PostEditor'
 import { formatCount } from './utils'
 
-export default function ReplyButton({ event }: { event: Event }) {
+export default function ReplyButton({ event, hideCount = false }: { event: Event; hideCount?: boolean }) {
   const { t } = useTranslation()
   const { pubkey, checkLogin } = useNostr()
   const noteStats = useNoteStatsById(event.id)
@@ -44,7 +44,7 @@ export default function ReplyButton({ event }: { event: Event }) {
         title={t('Reply')}
       >
         <MessageCircle />
-        {!!replyCount && <div className="text-sm">{formatCount(replyCount)}</div>}
+        {!hideCount && !!replyCount && <div className="text-sm">{formatCount(replyCount)}</div>}
       </button>
       <PostEditor parentEvent={event} open={open} setOpen={setOpen} />
     </>

@@ -17,6 +17,7 @@ import { useFeed } from '@/providers/FeedProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import { normalizeUrl, cleanUrl } from '@/lib/url'
 import postEditorCache from '@/services/post-editor-cache.service'
+import storage from '@/services/local-storage.service'
 import { TPollCreateData } from '@/types'
 import { ImageUp, ListTodo, LoaderCircle, MessageCircle, Settings, Smile, X, Highlighter } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
@@ -202,6 +203,12 @@ export default function PostContent({
           }
         )
         
+        // Get expiration and quiet settings
+        const addExpirationTag = storage.getDefaultExpirationEnabled()
+        const expirationMonths = storage.getDefaultExpirationMonths()
+        const addQuietTag = storage.getDefaultQuietEnabled()
+        const quietDays = storage.getDefaultQuietDays()
+
         if (isHighlight) {
           // For highlights, pass the original sourceValue which contains the full identifier
           // The createHighlightDraftEvent function will parse it correctly
@@ -213,36 +220,60 @@ export default function PostContent({
           undefined, // description parameter (not used)
           {
             addClientTag,
-            isNsfw
+            isNsfw,
+            addExpirationTag,
+            expirationMonths,
+            addQuietTag,
+            quietDays
           }
         )
         } else if (isPublicMessage) {
           draftEvent = await createPublicMessageDraftEvent(cleanedText, extractedMentions, {
             addClientTag,
-            isNsfw
+            isNsfw,
+            addExpirationTag,
+            expirationMonths,
+            addQuietTag,
+            quietDays
           })
         } else if (parentEvent && parentEvent.kind === ExtendedKind.PUBLIC_MESSAGE) {
           draftEvent = await createPublicMessageReplyDraftEvent(cleanedText, parentEvent, mentions, {
             addClientTag,
-            isNsfw
+            isNsfw,
+            addExpirationTag,
+            expirationMonths,
+            addQuietTag,
+            quietDays
           })
         } else if (parentEvent && parentEvent.kind !== kinds.ShortTextNote) {
           draftEvent = await createCommentDraftEvent(cleanedText, parentEvent, mentions, {
             addClientTag,
             protectedEvent: isProtectedEvent,
-            isNsfw
+            isNsfw,
+            addExpirationTag,
+            expirationMonths,
+            addQuietTag,
+            quietDays
           })
         } else if (isPoll) {
           draftEvent = await createPollDraftEvent(pubkey!, cleanedText, mentions, pollCreateData, {
             addClientTag,
-            isNsfw
+            isNsfw,
+            addExpirationTag,
+            expirationMonths,
+            addQuietTag,
+            quietDays
           })
         } else {
           draftEvent = await createShortTextNoteDraftEvent(cleanedText, mentions, {
             parentEvent,
             addClientTag,
             protectedEvent: isProtectedEvent,
-            isNsfw
+            isNsfw,
+            addExpirationTag,
+            expirationMonths,
+            addQuietTag,
+            quietDays
           })
         }
 

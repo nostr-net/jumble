@@ -24,7 +24,7 @@ import SuggestedEmojis from '../SuggestedEmojis'
 import DiscussionEmojis from '../SuggestedEmojis/DiscussionEmojis'
 import { formatCount } from './utils'
 
-export default function LikeButton({ event }: { event: Event }) {
+export default function LikeButton({ event, hideCount = false }: { event: Event; hideCount?: boolean }) {
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
   const { pubkey, publish, checkLogin } = useNostr()
@@ -144,12 +144,12 @@ export default function LikeButton({ event }: { event: Event }) {
       ) : myLastEmoji ? (
         <>
           <Emoji emoji={myLastEmoji} classNames={{ img: 'size-4' }} />
-          {!!likeCount && <div className="text-sm">{formatCount(likeCount)}</div>}
+          {!hideCount && !!likeCount && <div className="text-sm">{formatCount(likeCount)}</div>}
         </>
       ) : (
         <>
           <SmilePlus />
-          {!!likeCount && <div className="text-sm">{formatCount(likeCount)}</div>}
+          {!hideCount && !!likeCount && <div className="text-sm">{formatCount(likeCount)}</div>}
         </>
       )}
     </button>

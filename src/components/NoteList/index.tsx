@@ -6,6 +6,7 @@ import {
   isReplaceableEvent,
   isReplyNoteEvent
 } from '@/lib/event'
+import { shouldFilterEvent } from '@/lib/event-filtering'
 import { isTouchDevice } from '@/lib/utils'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useDeletedEvent } from '@/providers/DeletedEventProvider'
@@ -101,6 +102,9 @@ const NoteList = forwardRef(
         ) {
           return true
         }
+
+        // Filter out expired events
+        if (shouldFilterEvent(evt)) return true
 
         return false
       },
