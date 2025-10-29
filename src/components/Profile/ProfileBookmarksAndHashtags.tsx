@@ -9,21 +9,19 @@ import logger from '@/lib/logger'
 import { normalizeUrl } from '@/lib/url'
 import NoteCard from '../NoteCard'
 import { Skeleton } from '../ui/skeleton'
-import Tabs from '../Tabs'
 
 type TabValue = 'bookmarks' | 'hashtags' | 'pins'
 
 export default function ProfileBookmarksAndHashtags({
   pubkey,
-  topSpace = 0
+  initialTab = 'pins'
 }: {
   pubkey: string
-  topSpace?: number
+  initialTab?: TabValue
 }) {
   const { t } = useTranslation()
   const { pubkey: myPubkey } = useNostr()
   const { favoriteRelays } = useFavoriteRelays()
-  const [activeTab, setActiveTab] = useState<TabValue>('pins')
   const [bookmarkEvents, setBookmarkEvents] = useState<Event[]>([])
   const [hashtagEvents, setHashtagEvents] = useState<Event[]>([])
   const [pinEvents, setPinEvents] = useState<Event[]>([])
@@ -182,6 +180,8 @@ export default function ProfileBookmarksAndHashtags({
     try {
       const comprehensiveRelays = await buildComprehensiveRelayList()
       
+      logger.component('ProfileBookmarksAndHashtags', 'Fetching pins for pubkey', { pubkey, relayCount: comprehensiveRelays.length })
+      
       // Try to fetch pin list event from comprehensive relay list first
       let pinList = null
       try {
@@ -191,9 +191,11 @@ export default function ProfileBookmarksAndHashtags({
           limit: 1
         })
         pinList = pinListEvents[0] || null
+        logger.component('ProfileBookmarksAndHashtags', 'Found pin list event', { found: !!pinList })
       } catch (error) {
         logger.component('ProfileBookmarksAndHashtags', 'Error fetching pin list from comprehensive relays, falling back to default method', { error: (error as Error).message })
         pinList = await client.fetchPinListEvent(pubkey)
+        logger.component('ProfileBookmarksAndHashtags', 'Fallback pin list event', { found: !!pinList })
       }
       
       // console.log('[ProfileBookmarksAndHashtags] Pin list event:', pinList)
@@ -235,6 +237,7 @@ export default function ProfileBookmarksAndHashtags({
     }
   }, [pubkey, buildComprehensiveRelayList])
 
+
   // Fetch data when component mounts or pubkey changes
   useEffect(() => {
     fetchBookmarks()
@@ -242,62 +245,52 @@ export default function ProfileBookmarksAndHashtags({
     fetchPins()
   }, [fetchBookmarks, fetchHashtags, fetchPins])
 
-  // Define tabs
-  const tabs = useMemo(() => {
-    const _tabs = []
-    
-    // Only show pins tab if user has pin list (first/leftmost)
-    if (pinListEvent || loadingPins) {
-      _tabs.push({
-        value: 'pins',
-        label: t('Pins')
-      })
+  // Check if the requested tab has content
+  const hasContent = useMemo(() => {
+    switch (initialTab) {
+      case 'pins':
+        return pinListEvent || loadingPins
+      case 'bookmarks':
+        return bookmarkListEvent || loadingBookmarks
+      case 'hashtags':
+        return interestListEvent || loadingHashtags
+      default:
+        return false
     }
-    
-    // Only show bookmarks tab if user has bookmarks
-    if (bookmarkListEvent || loadingBookmarks) {
-      _tabs.push({
-        value: 'bookmarks',
-        label: t('Bookmarks')
-      })
-    }
-    
-    // Only show hashtags tab if user has interest list
-    if (interestListEvent || loadingHashtags) {
-      _tabs.push({
-        value: 'hashtags',
-        label: t('Hashtags')
-      })
-    }
-    
-    return _tabs
-  }, [bookmarkListEvent, interestListEvent, pinListEvent, loadingBookmarks, loadingHashtags, loadingPins, t])
+  }, [initialTab, pinListEvent, bookmarkListEvent, interestListEvent, loadingPins, loadingBookmarks, loadingHashtags])
 
-  // Render loading state
-  if (loadingBookmarks && loadingHashtags && loadingPins) {
+  // Render loading state for the specific tab
+  const isLoading = useMemo(() => {
+    switch (initialTab) {
+      case 'pins':
+        return loadingPins
+      case 'bookmarks':
+        return loadingBookmarks
+      case 'hashtags':
+        return loadingHashtags
+      default:
+        return false
+    }
+  }, [initialTab, loadingPins, loadingBookmarks, loadingHashtags])
+
+  if (isLoading) {
     return (
-      <div className="space-y-4">
-        <div className="flex gap-2">
-          <Skeleton className="h-10 w-24" />
-          <Skeleton className="h-10 w-24" />
-        </div>
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
-          ))}
-        </div>
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-32 w-full" />
+        ))}
       </div>
     )
   }
 
-  // If no tabs available, don't render anything
-  if (tabs.length === 0) {
+  // If no content available for this tab, don't render anything
+  if (!hasContent) {
     return null
   }
 
-  // Render content based on active tab
+  // Render content based on initial tab
   const renderContent = () => {
-    if (activeTab === 'pins') {
+    if (initialTab === 'pins') {
       if (loadingPins) {
         return (
           <div className="space-y-2">
@@ -332,7 +325,7 @@ export default function ProfileBookmarksAndHashtags({
       )
     }
     
-    if (activeTab === 'bookmarks') {
+    if (initialTab === 'bookmarks') {
       if (loadingBookmarks) {
         return (
           <div className="space-y-2">
@@ -367,7 +360,7 @@ export default function ProfileBookmarksAndHashtags({
       )
     }
     
-    if (activeTab === 'hashtags') {
+    if (initialTab === 'hashtags') {
       if (loadingHashtags) {
         return (
           <div className="space-y-2">
@@ -405,15 +398,5 @@ export default function ProfileBookmarksAndHashtags({
     return null
   }
 
-  return (
-    <div className="space-y-4">
-      <Tabs
-        value={activeTab}
-        tabs={tabs}
-        onTabChange={(tab) => setActiveTab(tab as TabValue)}
-        threshold={Math.max(800, topSpace)}
-      />
-      {renderContent()}
-    </div>
-  )
+  return renderContent()
 }

@@ -7,6 +7,7 @@ import ProfileBanner from '@/components/ProfileBanner'
 import ProfileOptions from '@/components/ProfileOptions'
 import ProfileZapButton from '@/components/ProfileZapButton'
 import PubkeyCopy from '@/components/PubkeyCopy'
+import Tabs from '@/components/Tabs'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -17,21 +18,25 @@ import { useSecondaryPage } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
 import { Link, Zap } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import logger from '@/lib/logger'
 import NotFound from '../NotFound'
 import FollowedBy from './FollowedBy'
 import ProfileFeed from './ProfileFeed'
+import ProfileBookmarksAndHashtags from './ProfileBookmarksAndHashtags'
 import SmartFollowings from './SmartFollowings'
 import SmartMuteLink from './SmartMuteLink'
 import SmartRelays from './SmartRelays'
+
+type ProfileTabValue = 'posts' | 'pins' | 'bookmarks' | 'interests'
 
 export default function Profile({ id }: { id?: string }) {
   const { t } = useTranslation()
   const { push } = useSecondaryPage()
   const { profile, isFetching } = useFetchProfile(id)
   const { pubkey: accountPubkey } = useNostr()
+  const [activeTab, setActiveTab] = useState<ProfileTabValue>('posts')
   const isFollowingYou = useMemo(() => {
     // This will be handled by the FollowedBy component
     return false
@@ -40,14 +45,27 @@ export default function Profile({ id }: { id?: string }) {
     () => (profile?.pubkey ? generateImageByPubkey(profile?.pubkey) : ''),
     [profile]
   )
-  const [topContainerHeight, setTopContainerHeight] = useState(0)
   const isSelf = accountPubkey === profile?.pubkey
-  const [topContainer, setTopContainer] = useState<HTMLDivElement | null>(null)
-  const topContainerRef = useCallback((node: HTMLDivElement | null) => {
-    if (node) {
-      setTopContainer(node)
+
+  // Define tabs
+  const tabs = useMemo(() => [
+    {
+      value: 'posts',
+      label: 'Posts'
+    },
+    {
+      value: 'pins',
+      label: 'Pins'
+    },
+    {
+      value: 'bookmarks',
+      label: 'Bookmarks'
+    },
+    {
+      value: 'interests',
+      label: 'Interests'
     }
-  }, [])
+  ], [])
 
   useEffect(() => {
     if (!profile?.pubkey) return
@@ -61,25 +79,6 @@ export default function Profile({ id }: { id?: string }) {
     forceUpdateCache()
   }, [profile?.pubkey])
 
-  useEffect(() => {
-    if (!topContainer) return
-
-    const checkHeight = () => {
-      setTopContainerHeight(topContainer.scrollHeight)
-    }
-
-    checkHeight()
-
-    const observer = new ResizeObserver(() => {
-      checkHeight()
-    })
-
-    observer.observe(topContainer)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [topContainer])
 
   if (!profile && isFetching) {
     return (
@@ -110,7 +109,7 @@ export default function Profile({ id }: { id?: string }) {
   })
   return (
     <>
-      <div ref={topContainerRef}>
+      <div>
         <div className="relative bg-cover bg-center mb-2">
           <ProfileBanner banner={banner} pubkey={pubkey} className="w-full aspect-[3/1]" />
           <Avatar className="w-24 h-24 absolute left-3 bottom-0 translate-y-1/2 border-4 border-background">
@@ -187,10 +186,23 @@ export default function Profile({ id }: { id?: string }) {
           </div>
         </div>
       </div>
-      {(() => {
-        logger.component('Profile', 'Rendering ProfileFeed', { pubkey, topSpace: topContainerHeight + 100, profile: !!profile, isFetching })
-        return <ProfileFeed pubkey={pubkey} topSpace={topContainerHeight + 100} />
-      })()}
+      <div>
+        <Tabs
+          value={activeTab}
+          tabs={tabs}
+          onTabChange={(tab) => setActiveTab(tab as ProfileTabValue)}
+          threshold={800}
+        />
+        {activeTab === 'posts' && (
+          <ProfileFeed pubkey={pubkey} topSpace={0} />
+        )}
+        {(activeTab === 'pins' || activeTab === 'bookmarks' || activeTab === 'interests') && (
+          <ProfileBookmarksAndHashtags 
+            pubkey={pubkey} 
+            initialTab={activeTab === 'pins' ? 'pins' : activeTab === 'bookmarks' ? 'bookmarks' : 'hashtags'}
+          />
+        )}
+      </div>
     </>
   )
 }
