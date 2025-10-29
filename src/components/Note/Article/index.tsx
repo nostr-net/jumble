@@ -1,21 +1,16 @@
 import { useSecondaryPage } from '@/PageManager'
 import ImageWithLightbox from '@/components/ImageWithLightbox'
-import ImageGallery from '@/components/ImageGallery'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNoteList } from '@/lib/link'
-import { ExternalLink } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
-import { useMemo } from 'react'
-import Markdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import NostrNode from '../LongFormArticle/NostrNode'
-import { remarkNostr } from '../LongFormArticle/remarkNostr'
-import { Components } from '../LongFormArticle/types'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useEventFieldParser } from '@/hooks/useContentParser'
 import WebPreview from '../../WebPreview'
-import 'katex/dist/katex.min.css'
+import HighlightSourcePreview from '../../UniversalContent/HighlightSourcePreview'
+import TableOfContents from '../../UniversalContent/TableOfContents'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 export default function Article({
   event,
@@ -26,6 +21,7 @@ export default function Article({
 }) {
   const { push } = useSecondaryPage()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
+  const [isInfoOpen, setIsInfoOpen] = useState(false)
   
   // Use the comprehensive content parser
   const { parsedContent, isLoading, error } = useEventFieldParser(event, 'content', {
@@ -33,48 +29,70 @@ export default function Article({
     enableSyntaxHighlighting: true
   })
 
-  const components = useMemo(
-    () =>
-      ({
-        nostr: ({ rawText, bech32Id }) => <NostrNode rawText={rawText} bech32Id={bech32Id} />,
-        a: ({ href, children, ...props }) => {
-          if (href?.startsWith('nostr:')) {
-            return <NostrNode rawText={href} bech32Id={href.slice(6)} />
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Handle wikilink clicks
+  useEffect(() => {
+    if (!contentRef.current) return
+
+    const handleWikilinkClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (target.classList.contains('wikilink')) {
+        event.preventDefault()
+        const dTag = target.getAttribute('data-dtag')
+        const displayText = target.getAttribute('data-display')
+        
+        if (dTag && displayText) {
+          // Create a simple dropdown menu
+          const existingDropdown = document.querySelector('.wikilink-dropdown')
+          if (existingDropdown) {
+            existingDropdown.remove()
           }
-          return (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="break-words inline-flex items-baseline gap-1"
-              {...props}
-            >
-              {children}
-              <ExternalLink className="size-3" />
-            </a>
-          )
-        },
-        p: (props) => {
-          // Check if paragraph contains only an image
-          if (props.children && typeof props.children === 'string' && props.children.match(/^!\[.*\]\(.*\)$/)) {
-            return <div {...props} />
+
+          const dropdown = document.createElement('div')
+          dropdown.className = 'wikilink-dropdown fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 p-2'
+          dropdown.style.left = `${event.pageX}px`
+          dropdown.style.top = `${event.pageY + 10}px`
+
+          const wikistrButton = document.createElement('button')
+          wikistrButton.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2'
+          wikistrButton.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>View on Wikistr'
+          wikistrButton.onclick = () => {
+            window.open(`https://wikistr.imwald.eu/${dTag}`, '_blank', 'noopener,noreferrer')
+            dropdown.remove()
           }
-          return <p {...props} className="break-words" />
-        },
-        div: (props) => <div {...props} className="break-words" />,
-        code: (props) => <code {...props} className="break-words whitespace-pre-wrap" />,
-        img: (props) => (
-          <ImageWithLightbox
-            image={{ url: props.src || '', pubkey: event.pubkey }}
-            className="max-h-[80vh] sm:max-h-[50vh] object-contain my-0 max-w-[400px]"
-            classNames={{
-              wrapper: 'w-fit max-w-[400px]'
-            }}
-          />
-        )
-      }) as Components,
-    [event.pubkey]
-  )
+
+          const alexandriaButton = document.createElement('button')
+          alexandriaButton.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2'
+          alexandriaButton.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>View on Alexandria'
+          alexandriaButton.onclick = () => {
+            window.open(`https://next-alexandria.gitcitadel.eu/events?d=${dTag}`, '_blank', 'noopener,noreferrer')
+            dropdown.remove()
+          }
+
+          dropdown.appendChild(wikistrButton)
+          dropdown.appendChild(alexandriaButton)
+          document.body.appendChild(dropdown)
+
+          // Close dropdown when clicking outside
+          const closeDropdown = (e: MouseEvent) => {
+            if (!dropdown.contains(e.target as Node)) {
+              dropdown.remove()
+              document.removeEventListener('click', closeDropdown)
+            }
+          }
+          setTimeout(() => document.addEventListener('click', closeDropdown), 0)
+        }
+      }
+    }
+
+    contentRef.current.addEventListener('click', handleWikilinkClick)
+    
+    return () => {
+      contentRef.current?.removeEventListener('click', handleWikilinkClick)
+    }
+  }, [parsedContent])
+
 
   if (isLoading) {
     return (
@@ -117,26 +135,14 @@ export default function Article({
       )}
 
 
-      {/* Render content based on markup type */}
-      {parsedContent.markupType === 'asciidoc' ? (
-        // AsciiDoc content (already processed to HTML)
-        <div dangerouslySetInnerHTML={{ __html: parsedContent.html }} />
-      ) : (
-        // Markdown content (let react-markdown handle it)
-        <Markdown
-          remarkPlugins={[remarkGfm, remarkMath, remarkNostr]}
-          rehypePlugins={[rehypeKatex]}
-          urlTransform={(url) => {
-            if (url.startsWith('nostr:')) {
-              return url.slice(6) // Remove 'nostr:' prefix for rendering
-            }
-            return url
-          }}
-          components={components}
-        >
-          {event.content}
-        </Markdown>
-      )}
+      {/* Table of Contents */}
+      <TableOfContents 
+        content={parsedContent.html} 
+        className="mb-6" 
+      />
+
+      {/* Render AsciiDoc content (everything is now processed as AsciiDoc) */}
+      <div ref={contentRef} dangerouslySetInnerHTML={{ __html: parsedContent.html }} />
 
       {/* Hashtags */}
       {parsedContent.hashtags.length > 0 && (
@@ -157,55 +163,84 @@ export default function Article({
         </div>
       )}
 
-      {/* Media thumbnails */}
-      {parsedContent.media.length > 0 && (
-        <div className="mt-4 p-4 bg-muted rounded-lg">
-          <h4 className="text-sm font-semibold mb-3">Images in this article:</h4>
-          <div className="grid grid-cols-8 sm:grid-cols-12 md:grid-cols-16 gap-1">
-            {parsedContent.media.map((media, index) => (
-              <div key={index} className="aspect-square">
-                <ImageWithLightbox
-                  image={media}
-                  className="w-full h-full object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
-                  classNames={{
-                    wrapper: 'w-full h-full'
-                  }}
-                />
+      {/* Collapsible Article Info */}
+      {(parsedContent.media.length > 0 || parsedContent.links.length > 0 || parsedContent.nostrLinks.length > 0 || parsedContent.highlightSources.length > 0) && (
+        <Collapsible open={isInfoOpen} onOpenChange={setIsInfoOpen} className="mt-4">
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" className="w-full justify-between">
+              <span>Article Info</span>
+              {isInfoOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4 mt-2">
+            {/* Media thumbnails */}
+            {parsedContent.media.length > 0 && (
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="text-sm font-semibold mb-3">Images in this article:</h4>
+                <div className="grid grid-cols-8 sm:grid-cols-12 md:grid-cols-16 gap-1">
+                  {parsedContent.media.map((media, index) => (
+                    <div key={index} className="aspect-square">
+                      <ImageWithLightbox
+                        image={media}
+                        className="w-full h-full object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                        classNames={{
+                          wrapper: 'w-full h-full'
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* Links summary with OpenGraph previews */}
-      {parsedContent.links.length > 0 && (
-        <div className="mt-4 p-4 bg-muted rounded-lg">
-          <h4 className="text-sm font-semibold mb-3">Links in this article:</h4>
-          <div className="space-y-3">
-            {parsedContent.links.map((link, index) => (
-              <WebPreview
-                key={index}
-                url={link.url}
-                className="w-full"
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Nostr links summary */}
-      {parsedContent.nostrLinks.length > 0 && (
-        <div className="mt-4 p-4 bg-muted rounded-lg">
-          <h4 className="text-sm font-semibold mb-2">Nostr references:</h4>
-          <div className="space-y-1">
-            {parsedContent.nostrLinks.map((link, index) => (
-              <div key={index} className="text-sm">
-                <span className="font-mono text-blue-600">{link.type}:</span>{' '}
-                <span className="font-mono">{link.id}</span>
+            {/* Links summary with OpenGraph previews */}
+            {parsedContent.links.length > 0 && (
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="text-sm font-semibold mb-3">Links in this article:</h4>
+                <div className="space-y-3">
+                  {parsedContent.links.map((link, index) => (
+                    <WebPreview
+                      key={index}
+                      url={link.url}
+                      className="w-full"
+                    />
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
+            )}
+
+            {/* Nostr links summary */}
+            {parsedContent.nostrLinks.length > 0 && (
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="text-sm font-semibold mb-2">Nostr references:</h4>
+                <div className="space-y-1">
+                  {parsedContent.nostrLinks.map((link, index) => (
+                    <div key={index} className="text-sm">
+                      <span className="font-mono text-blue-600">{link.type}:</span>{' '}
+                      <span className="font-mono">{link.id}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Highlight sources */}
+            {parsedContent.highlightSources.length > 0 && (
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="text-sm font-semibold mb-3">Highlight sources:</h4>
+                <div className="space-y-3">
+                  {parsedContent.highlightSources.map((source, index) => (
+                    <HighlightSourcePreview
+                      key={index}
+                      source={source}
+                      className="w-full"
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </div>
   )

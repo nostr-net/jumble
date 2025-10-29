@@ -4,7 +4,7 @@
  */
 
 import { detectMarkupType, getMarkupClasses, MarkupType } from '@/lib/markup-detection'
-import { Event } from 'nostr-tools'
+import { Event, nip19 } from 'nostr-tools'
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { URL_REGEX } from '@/constants'
 import { TImetaInfo } from '@/types'
@@ -18,6 +18,7 @@ export interface ParsedContent {
   links: Array<{ url: string; text: string; isExternal: boolean }>
   hashtags: string[]
   nostrLinks: Array<{ type: 'npub' | 'nprofile' | 'nevent' | 'naddr' | 'note'; id: string; text: string }>
+  highlightSources: Array<{ type: 'event' | 'addressable' | 'url'; value: string; bech32: string }>
 }
 
 export interface ParseOptions {
@@ -68,54 +69,38 @@ class ContentParserService {
     const cssClasses = getMarkupClasses(markupType)
 
     // Extract all content elements
-    const media = this.extractAllMedia(content, event)
-    const links = this.extractLinks(content)
-    const hashtags = this.extractHashtags(content)
-    const nostrLinks = this.extractNostrLinks(content)
+            const media = this.extractAllMedia(content, event)
+            const links = this.extractLinks(content)
+            const hashtags = this.extractHashtags(content)
+            const nostrLinks = this.extractNostrLinks(content)
+            const highlightSources = event ? this.extractHighlightSources(event) : []
 
     // Check for LaTeX math
     const hasMath = enableMath && this.hasMathContent(content)
 
     let html = ''
-    let processedContent = content
 
     try {
-      switch (markupType) {
-        case 'asciidoc':
-          html = await this.parseAsciidoc(content, { enableMath, enableSyntaxHighlighting })
-          break
-
-        case 'advanced-markdown':
-          processedContent = this.preprocessAdvancedMarkdown(content)
-          html = await this.parseAdvancedMarkdown(processedContent, { enableMath, enableSyntaxHighlighting })
-          break
-
-        case 'basic-markdown':
-          processedContent = this.preprocessBasicMarkdown(content)
-          html = await this.parseBasicMarkdown(processedContent)
-          break
-
-        case 'plain-text':
-        default:
-          html = this.parsePlainText(content)
-          break
-      }
+      // Convert everything to AsciiDoc format and process as AsciiDoc
+      const asciidocContent = this.convertToAsciidoc(content, markupType)
+      html = await this.parseAsciidoc(asciidocContent, { enableMath, enableSyntaxHighlighting })
     } catch (error) {
       console.error('Content parsing error:', error)
       // Fallback to plain text
       html = this.parsePlainText(content)
     }
 
-    return {
-      html,
-      markupType,
-      cssClasses,
-      hasMath,
-      media,
-      links,
-      hashtags,
-      nostrLinks
-    }
+            return {
+              html,
+              markupType: 'asciidoc',
+              cssClasses,
+              hasMath,
+              media,
+              links,
+              hashtags,
+              nostrLinks,
+              highlightSources
+            }
   }
 
   /**
@@ -143,8 +128,11 @@ class ContentParserService {
 
       const htmlString = typeof result === 'string' ? result : result.toString()
       
+      // Process wikilinks in the HTML output
+      const processedHtml = this.processWikilinksInHtml(htmlString)
+      
       // Clean up any leftover markdown syntax
-      return this.cleanupMarkdown(htmlString)
+      return this.cleanupMarkdown(processedHtml)
     } catch (error) {
       console.error('AsciiDoc parsing error:', error)
       return this.parsePlainText(content)
@@ -152,48 +140,134 @@ class ContentParserService {
   }
 
   /**
-   * Parse advanced Markdown content
+   * Convert content to AsciiDoc format based on markup type
    */
-  private async parseAdvancedMarkdown(content: string, _options: { enableMath: boolean; enableSyntaxHighlighting: boolean }): Promise<string> {
-    // This will be handled by react-markdown with plugins
-    // Return the processed content for react-markdown to handle
-    return content
+  private convertToAsciidoc(content: string, markupType: string): string {
+    let asciidoc = ''
+    
+    switch (markupType) {
+      case 'asciidoc':
+        asciidoc = content
+        break
+
+      case 'advanced-markdown':
+      case 'basic-markdown':
+        asciidoc = this.convertMarkdownToAsciidoc(content)
+        break
+
+      case 'plain-text':
+      default:
+        asciidoc = this.convertPlainTextToAsciidoc(content)
+        break
+    }
+
+    // Process wikilinks for all content types
+    return this.processWikilinks(asciidoc)
   }
 
   /**
-   * Parse basic Markdown content
+   * Convert Markdown to AsciiDoc format
    */
-  private parseBasicMarkdown(content: string): string {
-    // Basic markdown processing
+  private convertMarkdownToAsciidoc(content: string): string {
+    let asciidoc = content
+
+    // Convert headers
+    asciidoc = asciidoc.replace(/^#{6}\s+(.+)$/gm, '====== $1 ======')
+    asciidoc = asciidoc.replace(/^#{5}\s+(.+)$/gm, '===== $1 =====')
+    asciidoc = asciidoc.replace(/^#{4}\s+(.+)$/gm, '==== $1 ====')
+    asciidoc = asciidoc.replace(/^#{3}\s+(.+)$/gm, '=== $1 ===')
+    asciidoc = asciidoc.replace(/^#{2}\s+(.+)$/gm, '== $1 ==')
+    asciidoc = asciidoc.replace(/^#{1}\s+(.+)$/gm, '= $1 =')
+
+    // Convert emphasis
+    asciidoc = asciidoc.replace(/\*\*(.+?)\*\*/g, '*$1*') // Bold
+    asciidoc = asciidoc.replace(/\*(.+?)\*/g, '_$1_') // Italic
+    asciidoc = asciidoc.replace(/~~(.+?)~~/g, '[line-through]#$1#') // Strikethrough
+
+    // Convert code
+    asciidoc = asciidoc.replace(/```(\w+)?\n([\s\S]*?)```/g, (_match, lang, code) => {
+      return `[source${lang ? ',' + lang : ''}]\n----\n${code.trim()}\n----`
+    })
+    asciidoc = asciidoc.replace(/`([^`]+)`/g, '`$1`') // Inline code
+
+    // Convert blockquotes
+    asciidoc = asciidoc.replace(/^>\s+(.+)$/gm, '____\n$1\n____')
+
+    // Convert lists
+    asciidoc = asciidoc.replace(/^(\s*)\*\s+(.+)$/gm, '$1* $2') // Unordered lists
+    asciidoc = asciidoc.replace(/^(\s*)\d+\.\s+(.+)$/gm, '$1. $2') // Ordered lists
+
+    // Convert links
+    asciidoc = asciidoc.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1[$2]')
+
+    // Convert images
+    asciidoc = asciidoc.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, 'image::$2[$1]')
+
+    // Convert tables (basic support)
+    asciidoc = asciidoc.replace(/^\|(.+)\|$/gm, '|$1|')
+
+    // Convert horizontal rules
+    asciidoc = asciidoc.replace(/^---$/gm, '\'\'\'')
+
+    return asciidoc
+  }
+
+  /**
+   * Process wikilinks in content (both standard and bookstr macro)
+   */
+  private processWikilinks(content: string): string {
     let processed = content
 
-    // Headers
-    processed = processed.replace(/^### (.*$)/gim, '<h3>$1</h3>')
-    processed = processed.replace(/^## (.*$)/gim, '<h2>$1</h2>')
-    processed = processed.replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    // Process bookstr macro wikilinks: [[book:...]] where ... can be any book type and reference
+    processed = processed.replace(/\[\[book:([^\]]+)\]\]/g, (_match, bookContent) => {
+      const cleanContent = bookContent.trim()
+      const dTag = this.normalizeDtag(cleanContent)
+      
+      return `wikilink:${dTag}[${cleanContent}]`
+    })
 
-    // Bold and italic
-    processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>')
-    processed = processed.replace(/_(.*?)_/g, '<em>$1</em>')
-    processed = processed.replace(/~(.*?)~/g, '<del>$1</del>')
-
-    // Links and images
-    processed = this.processLinks(processed)
-    processed = this.processImages(processed)
-
-    // Lists
-    processed = this.processLists(processed)
-
-    // Blockquotes
-    processed = processed.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>')
-
-    // Line breaks
-    processed = processed.replace(/\n\n/g, '</p><p>')
-    processed = `<p>${processed}</p>`
+    // Process standard wikilinks: [[Target Page]] or [[target page|see this]]
+    processed = processed.replace(/\[\[([^|\]]+)(?:\|([^\]]+))?\]\]/g, (_match, target, displayText) => {
+      const cleanTarget = target.trim()
+      const cleanDisplay = displayText ? displayText.trim() : cleanTarget
+      const dTag = this.normalizeDtag(cleanTarget)
+      
+      return `wikilink:${dTag}[${cleanDisplay}]`
+    })
 
     return processed
   }
+
+  /**
+   * Normalize text to d-tag format (lowercase, non-letters to dashes)
+   */
+  private normalizeDtag(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+  }
+
+  /**
+   * Process wikilinks in HTML output
+   */
+  private processWikilinksInHtml(html: string): string {
+    // Convert wikilink:dtag[display] format to HTML with data attributes
+    return html.replace(/wikilink:([^[]+)\[([^\]]+)\]/g, (_match, dTag, displayText) => {
+      return `<span class="wikilink cursor-pointer text-blue-600 hover:text-blue-800 hover:underline border-b border-dotted border-blue-300" data-dtag="${dTag}" data-display="${displayText}">${displayText}</span>`
+    })
+  }
+
+  /**
+   * Convert plain text to AsciiDoc format
+   */
+  private convertPlainTextToAsciidoc(content: string): string {
+    // Convert line breaks to AsciiDoc format
+    return content
+      .replace(/\n\n/g, '\n\n')
+      .replace(/\n/g, ' +\n')
+  }
+
 
   /**
    * Parse plain text content
@@ -207,85 +281,7 @@ class ContentParserService {
       .replace(/$/, '</p>')
   }
 
-  /**
-   * Preprocess advanced Markdown content
-   */
-  private preprocessAdvancedMarkdown(content: string): string {
-    // Handle wikilinks: [[NIP-54]] -> [NIP-54](https://next-alexandria.gitcitadel.eu/publication?d=nip-54)
-    content = content.replace(/\[\[([^\]]+)\]\]/g, (_match, text) => {
-      const slug = text.toLowerCase().replace(/\s+/g, '-')
-      return `[${text}](https://next-alexandria.gitcitadel.eu/publication?d=${slug})`
-    })
 
-    // Handle hashtags: #hashtag -> [#hashtag](/hashtag/hashtag)
-    content = content.replace(/#([a-zA-Z0-9_]+)/g, (_match, tag) => {
-      return `[#${tag}](/hashtag/${tag})`
-    })
-
-    return content
-  }
-
-  /**
-   * Preprocess basic Markdown content
-   */
-  private preprocessBasicMarkdown(content: string): string {
-    // Handle hashtags
-    content = content.replace(/#([a-zA-Z0-9_]+)/g, (_match, tag) => {
-      return `[#${tag}](/hashtag/${tag})`
-    })
-
-    // Handle emoji shortcodes
-    content = content.replace(/:([a-zA-Z0-9_]+):/g, (_match, _emoji) => {
-      // This would need an emoji mapping - for now just return as-is
-      return _match
-    })
-
-    return content
-  }
-
-  /**
-   * Process markdown links
-   */
-  private processLinks(content: string): string {
-    return content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
-      // Check if it's already an HTML link
-      if (content.includes(`href="${url}"`)) {
-        return match
-      }
-      
-      // Handle nostr: prefixes
-      if (url.startsWith('nostr:')) {
-        return `<span class="nostr-link" data-nostr="${url}">${text}</span>`
-      }
-      
-      return `<a href="${url}" target="_blank" rel="noreferrer noopener" class="break-words inline-flex items-baseline gap-1">${text} <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg></a>`
-    })
-  }
-
-  /**
-   * Process markdown images
-   */
-  private processImages(content: string): string {
-    return content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, url) => {
-      const altText = alt || ''
-      return `<img src="${url}" alt="${altText}" class="max-w-[400px] object-contain my-0" />`
-    })
-  }
-
-  /**
-   * Process markdown lists
-   */
-  private processLists(content: string): string {
-    // Unordered lists
-    content = content.replace(/^[\s]*\* (.+)$/gm, '<li>$1</li>')
-    content = content.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-
-    // Ordered lists
-    content = content.replace(/^[\s]*\d+\. (.+)$/gm, '<li>$1</li>')
-    content = content.replace(/(<li>.*<\/li>)/s, '<ol>$1</ol>')
-
-    return content
-  }
 
   /**
    * Clean up leftover markdown syntax after AsciiDoc processing
@@ -563,6 +559,77 @@ class ContentParserService {
   }
 
   /**
+   * Extract highlight sources from event tags
+   */
+  private extractHighlightSources(event: Event): Array<{ type: 'event' | 'addressable' | 'url'; value: string; bech32: string }> {
+    const sources: Array<{ type: 'event' | 'addressable' | 'url'; value: string; bech32: string }> = []
+
+    // Check for 'source' marker first (highest priority)
+    let sourceTag: string[] | undefined
+    for (const tag of event.tags) {
+      if (tag[2] === 'source' || tag[3] === 'source') {
+        sourceTag = tag
+        break
+      }
+    }
+
+    // If no 'source' marker found, process tags in priority order: e > a > r
+    if (!sourceTag) {
+      for (const tag of event.tags) {
+        // Give 'e' tags highest priority
+        if (tag[0] === 'e') {
+          sourceTag = tag
+          continue
+        }
+
+        // Give 'a' tags second priority (but don't override 'e' tags)
+        if (tag[0] === 'a' && (!sourceTag || sourceTag[0] !== 'e')) {
+          sourceTag = tag
+          continue
+        }
+
+        // Give 'r' tags lowest priority
+        if (tag[0] === 'r' && (!sourceTag || sourceTag[0] === 'r')) {
+          sourceTag = tag
+          continue
+        }
+      }
+    }
+
+    // Process the selected source tag
+    if (sourceTag) {
+      if (sourceTag[0] === 'e') {
+        sources.push({
+          type: 'event',
+          value: sourceTag[1],
+          bech32: nip19.noteEncode(sourceTag[1])
+        })
+      } else if (sourceTag[0] === 'a') {
+        const [kind, pubkey, identifier] = sourceTag[1].split(':')
+        const relay = sourceTag[2]
+        sources.push({
+          type: 'addressable',
+          value: sourceTag[1],
+          bech32: nip19.naddrEncode({
+            kind: parseInt(kind),
+            pubkey,
+            identifier: identifier || '',
+            relays: relay ? [relay] : []
+          })
+        })
+      } else if (sourceTag[0] === 'r') {
+        sources.push({
+          type: 'url',
+          value: sourceTag[1],
+          bech32: sourceTag[1]
+        })
+      }
+    }
+
+    return sources
+  }
+
+  /**
    * Get Nostr identifier type
    */
   private getNostrType(id: string): 'npub' | 'nprofile' | 'nevent' | 'naddr' | 'note' | null {
@@ -605,7 +672,8 @@ class ContentParserService {
         media: [],
         links: [],
         hashtags: [],
-        nostrLinks: []
+        nostrLinks: [],
+        highlightSources: []
       }
     }
 
