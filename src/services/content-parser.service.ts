@@ -211,6 +211,9 @@ class ContentParserService {
     // Process nostr: addresses - convert them to proper AsciiDoc format
     result = this.processNostrAddresses(result)
     
+    // Process hashtags - convert them to proper AsciiDoc format
+    result = this.processHashtags(result)
+    
     // Debug: log the converted AsciiDoc for troubleshooting
     if (process.env.NODE_ENV === 'development') {
       console.log('Converted AsciiDoc:', result)
@@ -452,6 +455,24 @@ class ContentParserService {
   }
 
   /**
+   * Process hashtags in content
+   */
+  private processHashtags(content: string): string {
+    let processed = content
+
+    // Convert hashtags to AsciiDoc link format: #hashtag -> hashtag:tag[#tag]
+    // This regex matches # followed by word characters, avoiding those in URLs, code blocks, etc.
+    // Using word boundary approach to avoid matching # in URLs
+    processed = processed.replace(/\B#([a-zA-Z0-9_]+)/g, (_match, hashtag) => {
+      // Normalize hashtag to lowercase for consistency
+      const normalizedHashtag = hashtag.toLowerCase()
+      return `hashtag:${normalizedHashtag}[#${hashtag}]`
+    })
+
+    return processed
+  }
+
+  /**
    * Process wikilinks in content (both standard and bookstr macro)
    */
   private processWikilinks(content: string): string {
@@ -492,6 +513,11 @@ class ContentParserService {
    */
   private processWikilinksInHtml(html: string): string {
     let processed = html
+    
+    // Convert hashtag links to HTML with green styling
+    processed = processed.replace(/hashtag:([^[]+)\[([^\]]+)\]/g, (_match, normalizedHashtag, displayText) => {
+      return `<a href="/notes?t=${normalizedHashtag}" class="hashtag-link text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline">${displayText}</a>`
+    })
     
     // Convert wikilink:dtag[display] format to HTML with data attributes
     processed = processed.replace(/wikilink:([^[]+)\[([^\]]+)\]/g, (_match, dTag, displayText) => {
