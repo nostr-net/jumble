@@ -7,14 +7,7 @@ import { generateBech32IdFromATag } from '@/lib/tag'
 import client from '@/services/client.service'
 import logger from '@/lib/logger'
 import { Button } from '@/components/ui/button'
-import { contentParserService } from '@/services/content-parser.service'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { MoreVertical, FileDown } from 'lucide-react'
+import { MoreVertical } from 'lucide-react'
 
 interface PublicationReference {
   coordinate: string
@@ -147,8 +140,8 @@ export default function PublicationIndex({
     }
   }
 
-  // Export publication in different formats
-  const exportPublication = async (format: 'pdf' | 'epub' | 'latex' | 'adoc' | 'html') => {
+  // Export publication as AsciiDoc
+  const exportPublication = async () => {
     try {
       // Collect all content from references
       const contentParts: string[] = []
@@ -159,107 +152,15 @@ export default function PublicationIndex({
         // Extract title
         const title = ref.event.tags.find(tag => tag[0] === 'title')?.[1] || 'Untitled'
         
-        // Extract raw content
-        let content = ref.event.content
-        
-        if (format === 'adoc') {
-          // For AsciiDoc, output the raw content with title
-          contentParts.push(`= ${title}\n\n${content}\n\n`)
-        } else if (format === 'html') {
-          // For HTML, parse the AsciiDoc content to HTML
-          const parsedContent = await contentParserService.parseContent(content, {
-            eventKind: ref.kind,
-            enableMath: true,
-            enableSyntaxHighlighting: true
-          })
-          
-          contentParts.push(`<article>
-            <h1>${title}</h1>
-            ${parsedContent.html}
-          </article>`)
-        } else if (format === 'latex') {
-          // Convert to LaTeX
-          content = content.replace(/^= (.+)$/gm, '\\section{$1}')
-          content = content.replace(/^== (.+)$/gm, '\\subsection{$1}')
-          content = content.replace(/^=== (.+)$/gm, '\\subsubsection{$1}')
-          contentParts.push(`\\section*{${title}}\n\n${content}\n\n`)
-        } else if (format === 'pdf' || format === 'epub') {
-          // For PDF/EPUB, we need to export as HTML that can be converted
-          // Parse the AsciiDoc content to HTML using the content parser
-          const parsedContent = await contentParserService.parseContent(content, {
-            eventKind: ref.kind,
-            enableMath: true,
-            enableSyntaxHighlighting: true
-          })
-          
-          contentParts.push(`<article>
-            <h1>${title}</h1>
-            ${parsedContent.html}
-          </article>`)
-        }
+        // For AsciiDoc, output the raw content with title
+        contentParts.push(`= ${title}\n\n${ref.event.content}\n\n`)
       }
       
       const fullContent = contentParts.join('\n')
-      const filename = `${metadata.title || 'publication'}.${format}`
+      const filename = `${metadata.title || 'publication'}.adoc`
       
-      let blob: Blob = new Blob([''])
-      
-      if (format === 'html') {
-        // For HTML, wrap the content in a full HTML document
-        const htmlDocument = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>${metadata.title || 'Publication'}</title>
-  <style>
-    body { font-family: Georgia, serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
-    h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
-    h2 { color: #555; margin-top: 30px; }
-    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
-    pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
-    blockquote { border-left: 4px solid #ddd; margin-left: 0; padding-left: 20px; color: #666; }
-    table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #f2f2f2; }
-  </style>
-</head>
-<body>
-  ${fullContent}
-</body>
-</html>`
-        
-        blob = new Blob([htmlDocument], { type: 'text/html' })
-      } else if (format === 'pdf' || format === 'epub') {
-        // For PDF/EPUB, wrap the HTML content in a full HTML document
-        const htmlDocument = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>${metadata.title || 'Publication'}</title>
-  <style>
-    body { font-family: Georgia, serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.6; }
-    h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
-    h2 { color: #555; margin-top: 30px; }
-    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
-    pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
-    blockquote { border-left: 4px solid #ddd; margin-left: 0; padding-left: 20px; color: #666; }
-    table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #f2f2f2; }
-  </style>
-</head>
-<body>
-  ${fullContent}
-</body>
-</html>`
-        
-        blob = new Blob([htmlDocument], { type: 'text/html' })
-      } else {
-        // For AsciiDoc or LaTeX formats, use the raw content
-        blob = new Blob([fullContent], { 
-          type: format === 'latex' ? 'text/plain' : 'text/plain' 
-        })
-      }
+      // Export as AsciiDoc
+      const blob = new Blob([fullContent], { type: 'text/plain' })
       
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -270,7 +171,7 @@ export default function PublicationIndex({
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       
-      logger.info(`[PublicationIndex] Exported publication as ${format}`)
+      logger.info('[PublicationIndex] Exported publication as .adoc')
     } catch (error) {
       logger.error('[PublicationIndex] Error exporting publication:', error)
       alert('Failed to export publication. Please try again.')
@@ -315,10 +216,13 @@ export default function PublicationIndex({
       setIsLoading(true)
       const fetchedRefs: PublicationReference[] = []
       
+      // Capture current visitedIndices at the start of the fetch
+      const currentVisited = visitedIndices
+      
       for (const ref of referencesData) {
         // Skip if this is a 30040 event we've already visited (prevent circular references)
         if (ref.kind === ExtendedKind.PUBLICATION) {
-          if (visitedIndices.has(ref.coordinate)) {
+          if (currentVisited.has(ref.coordinate)) {
             logger.debug('[PublicationIndex] Skipping visited 30040 index:', ref.coordinate)
             fetchedRefs.push({ ...ref, event: undefined })
             continue
@@ -357,7 +261,7 @@ export default function PublicationIndex({
     } else {
       setIsLoading(false)
     }
-  }, [referencesData, visitedIndices])
+  }, [referencesData, visitedIndices]) // Now include visitedIndices but capture it inside
 
   return (
     <div className={cn('space-y-6', className)}>
@@ -366,35 +270,15 @@ export default function PublicationIndex({
         <header className="mb-8 border-b pb-6">
           <div className="flex items-start justify-between gap-4 mb-4">
             <h1 className="text-4xl font-bold leading-tight break-words flex-1">{metadata.title}</h1>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="shrink-0">
-                  <MoreVertical className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => exportPublication('html')}>
-                  <FileDown className="mr-2 h-4 w-4" />
-                  Export as HTML
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportPublication('adoc')}>
-                  <FileDown className="mr-2 h-4 w-4" />
-                  Export as AsciiDoc
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportPublication('pdf')}>
-                  <FileDown className="mr-2 h-4 w-4" />
-                  Export as PDF
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportPublication('epub')}>
-                  <FileDown className="mr-2 h-4 w-4" />
-                  Export as EPUB
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportPublication('latex')}>
-                  <FileDown className="mr-2 h-4 w-4" />
-                  Export as LaTeX
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="shrink-0"
+              onClick={exportPublication}
+              title="Export as AsciiDoc"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </Button>
           </div>
           {metadata.summary && (
             <blockquote className="border-l-4 border-primary pl-6 italic text-muted-foreground mb-4 text-lg leading-relaxed">
@@ -506,7 +390,7 @@ function ToCItemComponent({
     <li className={cn('list-none', indentClass)}>
       <button
         onClick={() => onItemClick(item.coordinate)}
-        className="text-left text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline cursor-pointer"
+        className="text-left text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer"
       >
         {item.title}
       </button>

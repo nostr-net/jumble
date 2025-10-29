@@ -1,16 +1,18 @@
 import { SecondaryPageLink, useSecondaryPage } from '@/PageManager'
 import ImageWithLightbox from '@/components/ImageWithLightbox'
 import ImageCarousel from '@/components/ImageCarousel/ImageCarousel'
+import MediaPlayer from '@/components/MediaPlayer'
+import Wikilink from '@/components/UniversalContent/Wikilink'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNote, toNoteList, toProfile } from '@/lib/link'
 import { extractAllImagesFromEvent } from '@/lib/image-extraction'
+import { getImetaInfosFromEvent } from '@/lib/event'
 import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
 import React, { useMemo, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import NostrNode from './NostrNode'
 import { remarkNostr } from './remarkNostr'
@@ -34,6 +36,92 @@ export default function MarkdownArticle({
   // Extract all images from the event
   const allImages = useMemo(() => extractAllImagesFromEvent(event), [event])
   const contentRef = useRef<HTMLDivElement>(null)
+  
+  // Extract, normalize, and deduplicate all media URLs (images, audio, video)
+  // from content, imeta tags, and image tags
+  const mediaUrls = useMemo(() => {
+    if (showImageGallery) return [] // Don't render inline for article content
+    
+    const seenUrls = new Set<string>()
+    const mediaUrls: string[] = []
+    
+    // Helper to normalize and add URL
+    const addUrl = (url: string) => {
+      if (!url) return
+      
+      // Normalize URL by removing tracking parameters and cleaning it
+      let normalizedUrl = url
+        .replace(/[?&](utm_[^&]*)/g, '')
+        .replace(/[?&](fbclid|gclid|msclkid)=[^&]*/g, '')
+        .replace(/[?&]w=\d+/g, '')
+        .replace(/[?&]h=\d+/g, '')
+        .replace(/[?&]q=\d+/g, '')
+        .replace(/[?&]f=\w+/g, '')
+        .replace(/[?&]auto=\w+/g, '')
+        .replace(/[?&]format=\w+/g, '')
+        .replace(/[?&]fit=\w+/g, '')
+        .replace(/[?&]crop=\w+/g, '')
+        .replace(/[?&]&+/g, '&')
+        .replace(/[?&]$/, '')
+        .replace(/\?$/, '')
+      
+      try {
+        // Validate URL
+        const parsedUrl = new URL(normalizedUrl)
+        const extension = parsedUrl.pathname.split('.').pop()?.toLowerCase()
+        
+        // Check if it's a media file
+        const isMedia = 
+          // Audio extensions
+          (extension && ['mp3', 'wav', 'flac', 'aac', 'm4a', 'opus', 'wma'].includes(extension)) ||
+          // Video extensions
+          (extension && ['mp4', 'webm', 'ogg', 'avi', 'mov', 'mkv', 'm4v', '3gp'].includes(extension)) ||
+          // Image extensions
+          (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff'].includes(extension))
+        
+        if (isMedia && !seenUrls.has(normalizedUrl)) {
+          mediaUrls.push(normalizedUrl)
+          seenUrls.add(normalizedUrl)
+        }
+      } catch {
+        // Invalid URL, skip
+      }
+    }
+    
+    // 1. Extract from content - all URLs (need to match exactly what markdown will find)
+    const content = event.content || ''
+    // Match URLs that could be in markdown links or plain text
+    const urlMatches = content.match(/https?:\/\/[^\s<>"']+/g) || []
+    urlMatches.forEach(url => {
+      // Normalize the URL before adding
+      const normalized = url.replace(/[?&](utm_[^&]*)/g, '')
+        .replace(/[?&](fbclid|gclid|msclkid)=[^&]*/g, '')
+        .replace(/[?&]w=\d+/g, '')
+        .replace(/[?&]h=\d+/g, '')
+        .replace(/[?&]q=\d+/g, '')
+        .replace(/[?&]f=\w+/g, '')
+        .replace(/[?&]auto=\w+/g, '')
+        .replace(/[?&]format=\w+/g, '')
+        .replace(/[?&]fit=\w+/g, '')
+        .replace(/[?&]crop=\w+/g, '')
+        .replace(/[?&]&+/g, '&')
+        .replace(/[?&]$/, '')
+        .replace(/\?$/, '')
+      addUrl(normalized)
+    })
+    
+    // 2. Extract from imeta tags
+    const imetaInfos = getImetaInfosFromEvent(event)
+    imetaInfos.forEach(info => addUrl(info.url))
+    
+    // 3. Extract from image tag
+    const imageTag = event.tags.find(tag => tag[0] === 'image' && tag[1])
+    if (imageTag?.[1]) {
+      addUrl(imageTag[1])
+    }
+    
+    return mediaUrls
+  }, [event.content, event.tags, event.pubkey, showImageGallery])
 
   // Initialize highlight.js for syntax highlighting
   useEffect(() => {
@@ -67,6 +155,24 @@ export default function MarkdownArticle({
           if (!href) {
             return <span {...props} className="break-words" />
           }
+          
+          // Handle hashtag links (format: /notes?t=tag)
+          if (href.startsWith('/notes?t=') || href.startsWith('notes?t=')) {
+            // Normalize href to include leading slash if missing
+            const normalizedHref = href.startsWith('/') ? href : `/${href}`
+            return (
+              <SecondaryPageLink
+                to={normalizedHref}
+                className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline"
+              >
+                {children}
+              </SecondaryPageLink>
+            )
+          }
+          
+          // Handle wikilinks - only handle if href looks like a wikilink format
+          // (we'll handle wikilinks in the text component below)
+          
           if (href.startsWith('note1') || href.startsWith('nevent1') || href.startsWith('naddr1')) {
             return (
               <SecondaryPageLink
@@ -87,6 +193,30 @@ export default function MarkdownArticle({
               </SecondaryPageLink>
             )
           }
+          
+          // Check if this is a media URL that should be rendered inline (for non-article content)
+          // If so, don't render it as a link - it will be rendered as inline media below
+          if (!showImageGallery) {
+            // Normalize the href to match the normalized mediaUrls
+            const normalizedHref = href.replace(/[?&](utm_[^&]*)/g, '')
+              .replace(/[?&](fbclid|gclid|msclkid)=[^&]*/g, '')
+              .replace(/[?&]w=\d+/g, '')
+              .replace(/[?&]h=\d+/g, '')
+              .replace(/[?&]q=\d+/g, '')
+              .replace(/[?&]f=\w+/g, '')
+              .replace(/[?&]auto=\w+/g, '')
+              .replace(/[?&]format=\w+/g, '')
+              .replace(/[?&]fit=\w+/g, '')
+              .replace(/[?&]crop=\w+/g, '')
+              .replace(/[?&]&+/g, '&')
+              .replace(/[?&]$/, '')
+              .replace(/\?$/, '')
+            
+            if (mediaUrls.includes(normalizedHref)) {
+              return null
+            }
+          }
+          
           return (
             <a
               {...props}
@@ -128,43 +258,74 @@ export default function MarkdownArticle({
           )
         },
         text: ({ children }) => {
-          // Handle hashtags in text
-          if (typeof children === 'string') {
-            const hashtagRegex = /#(\w+)/g
-            const parts = []
-            let lastIndex = 0
-            let match
-            
-            while ((match = hashtagRegex.exec(children)) !== null) {
-              // Add text before the hashtag
-              if (match.index > lastIndex) {
-                parts.push(children.slice(lastIndex, match.index))
-              }
-              
-              // Add the hashtag as a clickable link
-              const hashtag = match[1]
-              parts.push(
-                <SecondaryPageLink
-                  key={match.index}
-                  to={toNoteList({ hashtag, kinds: [kinds.LongFormArticle] })}
-                  className="text-green-600 dark:text-green-400 hover:underline"
-                >
-                  #{hashtag}
-                </SecondaryPageLink>
-              )
-              
-              lastIndex = match.index + match[0].length
-            }
-            
-            // Add remaining text
-            if (lastIndex < children.length) {
-              parts.push(children.slice(lastIndex))
-            }
-            
-            return <>{parts}</>
+          if (typeof children !== 'string') {
+            return <>{children}</>
           }
           
-          return <>{children}</>
+          // Handle hashtags and wikilinks
+          const hashtagRegex = /#(\w+)/g
+          const wikilinkRegex = /\[\[([^\]]+)\]\]/g
+          const allMatches: Array<{index: number, end: number, type: 'hashtag' | 'wikilink', data: any}> = []
+          
+          let match
+          while ((match = hashtagRegex.exec(children)) !== null) {
+            allMatches.push({
+              index: match.index,
+              end: match.index + match[0].length,
+              type: 'hashtag',
+              data: match[1]
+            })
+          }
+          
+          while ((match = wikilinkRegex.exec(children)) !== null) {
+            const content = match[1]
+            let target = content.includes('|') ? content.split('|')[0].trim() : content.trim()
+            let displayText = content.includes('|') ? content.split('|')[1].trim() : content.trim()
+            
+            if (content.startsWith('book:')) {
+              target = content.replace('book:', '').trim()
+            }
+            
+            const dtag = target.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+            
+            allMatches.push({
+              index: match.index,
+              end: match.index + match[0].length,
+              type: 'wikilink',
+              data: { dtag, displayText }
+            })
+          }
+          
+          if (allMatches.length === 0) return <>{children}</>
+          
+          allMatches.sort((a, b) => a.index - b.index)
+          
+          const parts: (string | JSX.Element)[] = []
+          let lastIndex = 0
+          
+          for (const match of allMatches) {
+            if (match.index > lastIndex) {
+              parts.push(children.slice(lastIndex, match.index))
+            }
+            
+            if (match.type === 'hashtag') {
+              parts.push(
+                <SecondaryPageLink key={`h-${match.index}`} to={`/notes?t=${match.data.toLowerCase()}`} className="text-green-600 dark:text-green-400 hover:underline">
+                  #{match.data}
+                </SecondaryPageLink>
+              )
+            } else {
+              parts.push(<Wikilink key={`w-${match.index}`} dTag={match.data.dtag} displayText={match.data.displayText} />)
+            }
+            
+            lastIndex = match.end
+          }
+          
+          if (lastIndex < children.length) {
+            parts.push(children.slice(lastIndex))
+          }
+          
+          return <>{parts}</>
         },
         img: ({ src }) => {
           if (!src) return null
@@ -183,7 +344,7 @@ export default function MarkdownArticle({
           )
         }
       }) as Components,
-    [showImageGallery, event.pubkey]
+    [showImageGallery, event.pubkey, mediaUrls, event.kind]
   )
 
   return (
@@ -273,19 +434,76 @@ export default function MarkdownArticle({
           className="w-full max-w-[400px] aspect-[3/1] object-cover my-0"
         />
       )}
-      <Markdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkNostr]}
-        rehypePlugins={[rehypeKatex]}
-        urlTransform={(url) => {
-          if (url.startsWith('nostr:')) {
-            return url.slice(6) // Remove 'nostr:' prefix for rendering
+      <div className="break-words whitespace-pre-wrap">
+        {event.content.split(/(#\w+|\[\[[^\]]+\]\])/).map((part, index, array) => {
+          // Check if this part is a hashtag
+          if (part.match(/^#\w+$/)) {
+            const hashtag = part.slice(1)
+            
+            // Add spaces before and after unless at start/end of line
+            const isStartOfLine = index === 0 || array[index - 1].match(/^[\s]*$/) !== null
+            const isEndOfLine = index === array.length - 1 || array[index + 1].match(/^[\s]*$/) !== null
+            
+            const beforeSpace = isStartOfLine ? '' : ' '
+            const afterSpace = isEndOfLine ? '' : ' '
+            
+            return (
+              <span key={`hashtag-wrapper-${index}`}>
+                {beforeSpace && beforeSpace}
+                <a
+                  href={`/notes?t=${hashtag.toLowerCase()}`}
+                  className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const url = `/notes?t=${hashtag.toLowerCase()}`
+                    console.log('[MarkdownArticle] Clicking hashtag, navigating to:', url)
+                    push(url)
+                  }}
+                >
+                  {part}
+                </a>
+                {afterSpace && afterSpace}
+              </span>
+            )
           }
-          return url
-        }}
-        components={components}
-      >
-        {event.content}
-      </Markdown>
+          // Check if this part is a wikilink
+          if (part.match(/^\[\[([^\]]+)\]\]$/)) {
+            const content = part.slice(2, -2)
+            let target = content.includes('|') ? content.split('|')[0].trim() : content.trim()
+            let displayText = content.includes('|') ? content.split('|')[1].trim() : content.trim()
+            
+            if (content.startsWith('book:')) {
+              target = content.replace('book:', '').trim()
+            }
+            
+            const dtag = target.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+            
+            return <Wikilink key={`wikilink-${index}`} dTag={dtag} displayText={displayText} />
+          }
+          // Regular text
+          return <Markdown key={`text-${index}`} remarkPlugins={[remarkGfm, remarkMath, remarkNostr]} components={components}>{part}</Markdown>
+        })}
+      </div>
+      
+      {/* Inline Media - Show for non-article content (kinds 1, 11, 1111) */}
+      {!showImageGallery && mediaUrls.length > 0 && (
+        <div className="space-y-4 mt-4">
+          {mediaUrls.map((url) => {
+            const extension = url.split('.').pop()?.toLowerCase()
+            
+            // Images are already handled by the img component
+            if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
+              return null
+            }
+            
+            // Render audio and video
+            return (
+              <MediaPlayer key={url} src={url} mustLoad={true} className="w-full" />
+            )
+          })}
+        </div>
+      )}
       
       {/* Image Carousel - Only show for article content (30023, 30041, 30818) */}
       {showImageGallery && allImages.length > 0 && (
