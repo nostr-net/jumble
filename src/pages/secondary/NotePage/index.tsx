@@ -109,7 +109,7 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
 
   return (
     <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : getNoteTypeTitle(finalEvent.kind)} displayScrollToTopButton>
-      <div className="px-4 pt-3 max-w-4xl mx-auto">
+      <div className="px-4 pt-3 w-full">
         {rootITag && <ExternalRoot value={rootITag[1]} />}
         {rootEventId && rootEventId !== parentEventId && (
           <ParentNote
@@ -139,7 +139,7 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
         <NoteStats className="mt-3" event={finalEvent} fetchIfNotExisting displayTopZapsAndLikes />
       </div>
       <Separator className="mt-4" />
-      <div className="px-4 pb-4 max-w-4xl mx-auto">
+      <div className="px-4 pb-4 w-full">
         <NoteInteractions key={`note-interactions-${finalEvent.id}`} pageIndex={index} event={finalEvent} />
       </div>
     </SecondaryPageLayout>

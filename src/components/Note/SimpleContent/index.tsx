@@ -1,5 +1,7 @@
 import { Event } from 'nostr-tools'
-import { useEventFieldParser } from '@/hooks/useContentParser'
+import { useMemo } from 'react'
+import { parseNostrContent, renderNostrContent } from '@/lib/nostr-parser.tsx'
+import { cn } from '@/lib/utils'
 
 export default function SimpleContent({
   event,
@@ -8,28 +10,9 @@ export default function SimpleContent({
   event: Event
   className?: string
 }) {
-  // Use the comprehensive content parser but without ToC
-  const { parsedContent, isLoading, error } = useEventFieldParser(event, 'content', {
-    enableMath: true,
-    enableSyntaxHighlighting: true
-  })
+  const parsedContent = useMemo(() => {
+    return parseNostrContent(event.content, event)
+  }, [event.content, event])
 
-  if (isLoading) {
-    return <div className={className}>Loading...</div>
-  }
-
-  if (error) {
-    return <div className={className}>Error loading content</div>
-  }
-
-  if (!parsedContent) {
-    return <div className={className}>No content available</div>
-  }
-
-  return (
-    <div className={`${parsedContent.cssClasses} ${className || ''}`}>
-      {/* Render content without ToC and Article Info */}
-      <div className="simple-content" dangerouslySetInnerHTML={{ __html: parsedContent.html }} />
-    </div>
-  )
+  return renderNostrContent(parsedContent, cn('prose prose-sm prose-zinc max-w-none break-words dark:prose-invert w-full', className))
 }

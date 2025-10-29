@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ClientTag from '../ClientTag'
 import Collapsible from '../Collapsible'
-import EnhancedContent from '../UniversalContent/EnhancedContent'
+import { parseNostrContent, renderNostrContent } from '@/lib/nostr-parser.tsx'
 import { FormattedTimestamp } from '../FormattedTimestamp'
 import Nip05 from '../Nip05'
 import NoteOptions from '../NoteOptions'
@@ -103,7 +103,10 @@ export default function ReplyNote({
               />
             )}
             {show ? (
-              <EnhancedContent className="mt-2" event={event} useEnhancedParsing={true} />
+              (() => {
+                const parsedContent = parseNostrContent(event.content, event)
+                return renderNostrContent(parsedContent, 'mt-2 prose prose-sm prose-zinc max-w-none break-words dark:prose-invert w-full')
+              })()
             ) : (
               <Button
                 variant="outline"

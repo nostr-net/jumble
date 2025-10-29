@@ -1,5 +1,7 @@
 import { Event } from 'nostr-tools'
-import ParsedContent from '../../UniversalContent/ParsedContent'
+import { useMemo } from 'react'
+import { parseNostrContent, renderNostrContent } from '@/lib/nostr-parser.tsx'
+import { cn } from '@/lib/utils'
 
 export default function DiscussionContent({
   event,
@@ -8,15 +10,9 @@ export default function DiscussionContent({
   event: Event
   className?: string
 }) {
-  return (
-    <ParsedContent
-      event={event}
-      field="content"
-      className={className}
-      showMedia={true}
-      showLinks={false}
-      showHashtags={true}
-      showNostrLinks={false}
-    />
-  )
+  const parsedContent = useMemo(() => {
+    return parseNostrContent(event.content, event)
+  }, [event.content, event])
+
+  return renderNostrContent(parsedContent, cn('prose prose-sm prose-zinc max-w-none break-words dark:prose-invert w-full', className))
 }
