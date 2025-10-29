@@ -204,26 +204,26 @@ export default function Profile({ id }: { id?: string }) {
         </div>
       </div>
       <div>
-        <Tabs
-          value={activeTab}
-          tabs={tabs}
-          onTabChange={(tab) => setActiveTab(tab as ProfileTabValue)}
-          threshold={800}
-          options={
-            <div className="flex items-center gap-2 pr-2">
-              <ProfileSearchBar
-                onSearch={setSearchQuery}
-                placeholder={`Search ${activeTab}...`}
-                className="w-64"
-              />
-              <RetroRefreshButton
-                onClick={handleRefresh}
-                size="sm"
-                className="flex-shrink-0"
-              />
-            </div>
-          }
-        />
+        <div className="space-y-2">
+          <Tabs
+            value={activeTab}
+            tabs={tabs}
+            onTabChange={(tab) => setActiveTab(tab as ProfileTabValue)}
+            threshold={800}
+          />
+          <div className="flex items-center gap-2 pr-2 px-1">
+            <ProfileSearchBar
+              onSearch={setSearchQuery}
+              placeholder={`Search ${activeTab}...`}
+              className="w-64"
+            />
+            <RetroRefreshButton
+              onClick={handleRefresh}
+              size="sm"
+              className="flex-shrink-0"
+            />
+          </div>
+        </div>
         {activeTab === 'posts' && (
           <ProfileFeed 
             ref={profileFeedRef} 
