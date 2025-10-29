@@ -8,6 +8,7 @@ import { nip19 } from 'nostr-tools'
 import { useMemo } from 'react'
 import { BookOpen, Globe } from 'lucide-react'
 import Image from '../Image'
+import ArticleExportMenu from '../ArticleExportMenu/ArticleExportMenu'
 
 export default function WikiCard({
   event,
@@ -87,9 +88,10 @@ export default function WikiCard({
   const summaryComponent = metadata.summary && (
     <div className="text-sm text-muted-foreground line-clamp-4">{metadata.summary}</div>
   )
-
+  
   const buttons = (
-    <div className="flex gap-2 flex-wrap">
+    <div className="flex gap-2 flex-wrap items-center">
+      <ArticleExportMenu event={event} title={metadata.title || 'Article'} />
       {dTag && (
         <button
           onClick={handleWikistrClick}

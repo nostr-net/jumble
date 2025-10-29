@@ -8,6 +8,7 @@ import { nip19 } from 'nostr-tools'
 import { useMemo } from 'react'
 import { BookOpen } from 'lucide-react'
 import Image from '../Image'
+import ArticleExportMenu from '../ArticleExportMenu/ArticleExportMenu'
 
 export default function PublicationCard({
   event,
@@ -105,7 +106,8 @@ export default function PublicationCard({
             {titleComponent}
             {summaryComponent}
             {tagsComponent}
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2 items-center">
+              <ArticleExportMenu event={event} title={metadata.title || 'Article'} />
               {alexandriaButton}
             </div>
           </div>
@@ -132,7 +134,8 @@ export default function PublicationCard({
             {titleComponent}
             {summaryComponent}
             {tagsComponent}
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2 items-center">
+              <ArticleExportMenu event={event} title={metadata.title || 'Article'} />
               {alexandriaButton}
             </div>
           </div>

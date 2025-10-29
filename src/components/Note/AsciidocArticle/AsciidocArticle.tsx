@@ -16,10 +16,12 @@ import { ExtendedKind } from '@/constants'
 
 export default function AsciidocArticle({
   event,
-  className
+  className,
+  hideImagesAndInfo = false
 }: {
   event: Event
   className?: string
+  hideImagesAndInfo?: boolean
 }) {
   const { push } = useSecondaryPage()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
@@ -309,7 +311,7 @@ export default function AsciidocArticle({
       />
 
       {/* Image Carousel - Collapsible */}
-      {allImages.length > 0 && (
+      {!hideImagesAndInfo && allImages.length > 0 && (
         <Collapsible open={isImagesOpen} onOpenChange={setIsImagesOpen} className="mt-8">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
@@ -324,7 +326,7 @@ export default function AsciidocArticle({
       )}
 
       {/* Collapsible Article Info - only for article-type events */}
-      {isArticleType && (parsedContent?.links?.length > 0 || parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
+      {!hideImagesAndInfo && isArticleType && (parsedContent?.links?.length > 0 || parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
         <Collapsible open={isInfoOpen} onOpenChange={setIsInfoOpen} className="mt-4">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">

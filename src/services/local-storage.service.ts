@@ -195,10 +195,22 @@ class LocalStorageService {
           showKinds.splice(repostIndex, 1)
         }
       }
+      if (showKindsVersion < 4) {
+        // Add publications and wiki articles to existing users' filters
+        if (!showKinds.includes(ExtendedKind.PUBLICATION)) {
+          showKinds.push(ExtendedKind.PUBLICATION)
+        }
+        if (!showKinds.includes(ExtendedKind.PUBLICATION_CONTENT)) {
+          showKinds.push(ExtendedKind.PUBLICATION_CONTENT)
+        }
+        if (!showKinds.includes(ExtendedKind.WIKI_ARTICLE)) {
+          showKinds.push(ExtendedKind.WIKI_ARTICLE)
+        }
+      }
       this.showKinds = showKinds
     }
     window.localStorage.setItem(StorageKey.SHOW_KINDS, JSON.stringify(this.showKinds))
-    window.localStorage.setItem(StorageKey.SHOW_KINDS_VERSION, '3')
+    window.localStorage.setItem(StorageKey.SHOW_KINDS_VERSION, '4')
 
     this.hideContentMentioningMutedUsers =
       window.localStorage.getItem(StorageKey.HIDE_CONTENT_MENTIONING_MUTED_USERS) === 'true'

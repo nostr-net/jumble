@@ -120,7 +120,7 @@ export default function Note({
     )
   } else if (event.kind === kinds.LongFormArticle) {
     content = showFull ? (
-      <MarkdownArticle className="mt-2" event={event} />
+      <MarkdownArticle className="mt-2" event={event} showImageGallery={true} />
     ) : (
       <LongFormArticlePreview className="mt-2" event={event} />
     )
@@ -159,8 +159,12 @@ export default function Note({
   } else if (event.kind === ExtendedKind.ZAP_REQUEST || event.kind === ExtendedKind.ZAP_RECEIPT) {
     content = <Zap className="mt-2" event={event} />
   } else {
-    // Use MarkdownArticle for all other kinds (including kinds 1 and 11)
-    content = <MarkdownArticle className="mt-2" event={event} />
+    // Use MarkdownArticle for all other kinds
+    // Only 30023, 30041, and 30818 will show image gallery and article info
+    const showImageGallery = event.kind === kinds.LongFormArticle || 
+                            event.kind === ExtendedKind.PUBLICATION_CONTENT || 
+                            event.kind === ExtendedKind.WIKI_ARTICLE
+    content = <MarkdownArticle className="mt-2" event={event} showImageGallery={showImageGallery} />
   }
 
   return (

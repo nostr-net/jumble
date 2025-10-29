@@ -20,10 +20,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 
 export default function MarkdownArticle({
   event,
-  className
+  className,
+  showImageGallery = false
 }: {
   event: Event
   className?: string
+  showImageGallery?: boolean
 }) {
   const { push } = useSecondaryPage()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
@@ -164,12 +166,24 @@ export default function MarkdownArticle({
           
           return <>{children}</>
         },
-        img: () => {
-          // Don't render inline images - they'll be shown in the carousel
-          return null
+        img: ({ src }) => {
+          if (!src) return null
+          
+          // If showing image gallery, don't render inline images - they'll be shown in the carousel
+          if (showImageGallery) {
+            return null
+          }
+          
+          // For all other content, render images inline
+          return (
+            <ImageWithLightbox
+              image={{ url: src, pubkey: event.pubkey }}
+              className="max-w-full rounded-lg my-2"
+            />
+          )
         }
       }) as Components,
-    []
+    [showImageGallery, event.pubkey]
   )
 
   return (
@@ -273,8 +287,8 @@ export default function MarkdownArticle({
         {event.content}
       </Markdown>
       
-      {/* Image Carousel - Collapsible */}
-      {allImages.length > 0 && (
+      {/* Image Carousel - Only show for article content (30023, 30041, 30818) */}
+      {showImageGallery && allImages.length > 0 && (
         <Collapsible open={isImagesOpen} onOpenChange={setIsImagesOpen} className="mt-8">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
