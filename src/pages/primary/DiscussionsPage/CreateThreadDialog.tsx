@@ -45,6 +45,10 @@ function buildClientTag(): string[] {
   return ['client', 'jumble']
 }
 
+function buildAltTag(): string[] {
+  return ['alt', 'This event was published by https://jumble.imwald.eu.']
+}
+
 
 interface DynamicTopic {
   id: string
@@ -406,6 +410,7 @@ export default function CreateThreadDialog({
       // Add client tag if enabled
       if (addClientTag) {
         tags.push(buildClientTag())
+        tags.push(buildAltTag())
       }
       
       // Create the thread event (kind 11)

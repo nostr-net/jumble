@@ -868,7 +868,18 @@ function buildResponseTag(value: string) {
   return ['response', value]
 }
 
-function buildClientTag() {
+function buildClientTag(handlerPubkey?: string, handlerIdentifier?: string, relay?: string) {
+  // Use NIP-89 format if handler information is provided
+  if (handlerPubkey && handlerIdentifier) {
+    const aTag = `31990:${handlerPubkey}:${handlerIdentifier}`
+    const tag = ['client', 'Jumble ImWald', aTag]
+    if (relay) {
+      tag.push(relay)
+    }
+    return tag
+  }
+  
+  // Fallback to simple format for backward compatibility
   return ['client', 'jumble']
 }
 
