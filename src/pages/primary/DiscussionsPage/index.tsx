@@ -15,6 +15,7 @@ import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 import ThreadCard from './ThreadCard'
 import CreateThreadDialog from './CreateThreadDialog'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
+import { extractGroupInfo } from '@/lib/discussion-topics'
 
 // Simple event map type
 type EventMapEntry = {
@@ -29,6 +30,11 @@ type EventMapEntry = {
   lastVoteTime: number
   upVotes: number
   downVotes: number
+  // Group-related fields
+  groupId: string | null
+  groupRelay: string | null
+  groupDisplayName: string | null
+  isGroupDiscussion: boolean
 }
 
 // Vote counting function - separate and clean
@@ -117,7 +123,12 @@ function countCommentsForThread(threadId: string, comments: NostrEvent[], thread
 }
 
 // Topic categorization function
-function getTopicFromTags(allTopics: string[], predefinedTopicIds: string[]): string {
+function getTopicFromTags(allTopics: string[], predefinedTopicIds: string[], isGroupDiscussion: boolean = false): string {
+  // If it's a group discussion, categorize as 'groups'
+  if (isGroupDiscussion) {
+    return 'groups'
+  }
+  
   for (const topic of allTopics) {
     if (predefinedTopicIds.includes(topic)) {
       return topic
@@ -201,6 +212,7 @@ function analyzeDynamicTopics(entries: EventMapEntry[]): {
   allTopics: DynamicTopic[]
 } {
   const hashtagCounts = new Map<string, number>()
+  const groupCounts = new Map<string, number>()
   const predefinedTopicIds = DISCUSSION_TOPICS.map(t => t.id)
   
   // Count hashtag frequency
@@ -211,6 +223,11 @@ function analyzeDynamicTopics(entries: EventMapEntry[]): {
         hashtagCounts.set(topic, (hashtagCounts.get(topic) || 0) + 1)
       }
     })
+    
+    // Count group discussions
+    if (entry.isGroupDiscussion && entry.groupDisplayName) {
+      groupCounts.set(entry.groupDisplayName, (groupCounts.get(entry.groupDisplayName) || 0) + 1)
+    }
   })
   
   const mainTopics: DynamicTopic[] = []
@@ -233,6 +250,32 @@ function analyzeDynamicTopics(entries: EventMapEntry[]): {
     }
   })
   
+  // Add "Groups" as a pseudo main-topic if we have group discussions
+  if (groupCounts.size > 0) {
+    const totalGroupDiscussions = Array.from(groupCounts.values()).reduce((sum, count) => sum + count, 0)
+    const groupsMainTopic: DynamicTopic = {
+      id: 'groups',
+      label: 'Groups',
+      count: totalGroupDiscussions,
+      isMainTopic: true,
+      isSubtopic: false
+    }
+    mainTopics.push(groupsMainTopic)
+    
+    // Add individual groups as subtopics under "Groups"
+    groupCounts.forEach((count, groupDisplayName) => {
+      const groupSubtopic: DynamicTopic = {
+        id: `groups-${groupDisplayName}`,
+        label: groupDisplayName,
+        count,
+        isMainTopic: false,
+        isSubtopic: true,
+        parentTopic: 'groups'
+      }
+      subtopics.push(groupSubtopic)
+    })
+  }
+  
   // Sort by count (most popular first)
   mainTopics.sort((a, b) => b.count - a.count)
   subtopics.sort((a, b) => b.count - a.count)
@@ -251,7 +294,12 @@ function analyzeDynamicTopics(entries: EventMapEntry[]): {
 }
 
 // Enhanced topic categorization with dynamic topics
-function getEnhancedTopicFromTags(allTopics: string[], predefinedTopicIds: string[], dynamicTopics: DynamicTopic[]): string {
+function getEnhancedTopicFromTags(allTopics: string[], predefinedTopicIds: string[], dynamicTopics: DynamicTopic[], isGroupDiscussion: boolean = false): string {
+  // If it's a group discussion, categorize as 'groups'
+  if (isGroupDiscussion) {
+    return 'groups'
+  }
+  
   // First check predefined topics (these are main topics)
   for (const topic of allTopics) {
     if (predefinedTopicIds.includes(topic)) {
@@ -416,7 +464,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
         
         // Categorize topic (will be updated after dynamic topics are analyzed)
         const predefinedTopicIds = DISCUSSION_TOPICS.map((t: any) => t.id)
-        const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds)
+        const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds, groupInfo.isGroupDiscussion)
         
         // Normalize topics
         const tTags = tTagsRaw.map((tag: string) => normalizeTopic(tag))
@@ -426,6 +474,9 @@ const DiscussionsPage = forwardRef((_, ref) => {
         // Get relay sources
         const eventHints = client.getEventHints(threadId)
         const relaySources = eventHints.length > 0 ? eventHints : ['unknown']
+        
+        // Extract group information
+        const groupInfo = extractGroupInfo(thread, relaySources)
         
         newEventMap.set(threadId, {
           event: thread,
@@ -438,7 +489,12 @@ const DiscussionsPage = forwardRef((_, ref) => {
           lastCommentTime: commentStats.lastCommentTime,
           lastVoteTime: voteStats.lastVoteTime,
           upVotes: voteStats.upVotes,
-          downVotes: voteStats.downVotes
+          downVotes: voteStats.downVotes,
+          // Group-related fields
+          groupId: groupInfo.groupId,
+          groupRelay: groupInfo.groupRelay,
+          groupDisplayName: groupInfo.groupDisplayName,
+          isGroupDiscussion: groupInfo.isGroupDiscussion
         })
       })
       
@@ -462,7 +518,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
       const updatedEventMap = new Map<string, EventMapEntry>()
       newEventMap.forEach((entry, threadId) => {
         const predefinedTopicIds = DISCUSSION_TOPICS.map((t: any) => t.id)
-        const enhancedTopic = getEnhancedTopicFromTags(entry.allTopics, predefinedTopicIds, dynamicTopicsAnalysis.allTopics)
+        const enhancedTopic = getEnhancedTopicFromTags(entry.allTopics, predefinedTopicIds, dynamicTopicsAnalysis.allTopics, entry.isGroupDiscussion)
         
         updatedEventMap.set(threadId, {
           ...entry,
@@ -537,8 +593,21 @@ const DiscussionsPage = forwardRef((_, ref) => {
         passesTimeFilter = mostRecentActivity > timeSpanAgo
       }
       
-      // Filter by topic
-      const passesTopicFilter = selectedTopic === 'all' || entry.categorizedTopic === selectedTopic
+      // Filter by topic (including group filtering)
+      let passesTopicFilter = false
+      if (selectedTopic === 'all') {
+        passesTopicFilter = true
+      } else if (selectedTopic === 'groups') {
+        // Show all group discussions when "Groups" main topic is selected
+        passesTopicFilter = entry.isGroupDiscussion
+      } else if (selectedTopic.startsWith('groups-')) {
+        // Show specific group when group subtopic is selected
+        const groupDisplayName = selectedTopic.replace('groups-', '')
+        passesTopicFilter = entry.isGroupDiscussion && entry.groupDisplayName === groupDisplayName
+      } else {
+        // Regular topic filtering
+        passesTopicFilter = entry.categorizedTopic === selectedTopic
+      }
       
       if (passesTimeFilter && passesTopicFilter) {
         filteredMap.set(entry.event.id, entry)
@@ -746,27 +815,35 @@ const DiscussionsPage = forwardRef((_, ref) => {
     const threadId = publishedEvent.id
     const tTagsRaw = publishedEvent.tags.filter((tag: string[]) => tag[0] === 't' && tag[1]).map((tag: string[]) => tag[1].toLowerCase())
     const hashtagsRaw = (publishedEvent.content.match(/#\w+/g) || []).map((tag: string) => tag.slice(1).toLowerCase())
-      const allTopicsRaw = [...new Set([...tTagsRaw, ...hashtagsRaw])]
+    const allTopicsRaw = [...new Set([...tTagsRaw, ...hashtagsRaw])]
     const predefinedTopicIds = DISCUSSION_TOPICS.map((t: any) => t.id)
-      const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds)
     const tTags = tTagsRaw.map((tag: string) => normalizeTopic(tag))
     const hashtags = hashtagsRaw.map((tag: string) => normalizeTopic(tag))
-        const allTopics = [...new Set([...tTags, ...hashtags])]
+    const allTopics = [...new Set([...tTags, ...hashtags])]
     const eventHints = client.getEventHints(threadId)
     const relaySources = eventHints.length > 0 ? eventHints : ['unknown']
     
+    // Extract group information
+    const groupInfo = extractGroupInfo(publishedEvent, relaySources)
+    const categorizedTopic = getTopicFromTags(allTopicsRaw, predefinedTopicIds, groupInfo.isGroupDiscussion)
+    
     const newEntry: EventMapEntry = {
-          event: publishedEvent,
-          relaySources,
-          tTags,
-          hashtags,
-          allTopics,
+      event: publishedEvent,
+      relaySources,
+      tTags,
+      hashtags,
+      allTopics,
       categorizedTopic,
       commentCount: 0,
       lastCommentTime: 0,
       lastVoteTime: 0,
       upVotes: 0,
-      downVotes: 0
+      downVotes: 0,
+      // Group-related fields
+      groupId: groupInfo.groupId,
+      groupRelay: groupInfo.groupRelay,
+      groupDisplayName: groupInfo.groupDisplayName,
+      isGroupDiscussion: groupInfo.isGroupDiscussion
     }
     
     setAllEventMap(prev => new Map(prev).set(threadId, newEntry))

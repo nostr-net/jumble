@@ -225,3 +225,98 @@ export function getCategorizedTopic(
   return 'general'
 }
 
+/**
+ * Extract h-tag (group ID) from event tags
+ */
+export function extractHTagFromEvent(event: NostrEvent): string | null {
+  const hTag = event.tags.find(tag => tag[0] === 'h' && tag[1])
+  return hTag ? hTag[1] : null
+}
+
+/**
+ * Parse group identifier from h-tag and relay sources
+ * Supports both "relay'group-id" format and bare group IDs
+ */
+export function parseGroupIdentifier(
+  hTag: string, 
+  relaySources: string[]
+): { groupId: string; groupRelay: string | null; fullIdentifier: string } {
+  // Check if h-tag already contains relay'group-id format
+  if (hTag.includes("'")) {
+    const [relay, groupId] = hTag.split("'", 2)
+    return {
+      groupId,
+      groupRelay: relay,
+      fullIdentifier: hTag
+    }
+  }
+  
+  // For bare group IDs, use the first relay source
+  const groupRelay = relaySources.length > 0 ? relaySources[0] : null
+  const fullIdentifier = groupRelay ? `${groupRelay}'${hTag}` : hTag
+  
+  return {
+    groupId: hTag,
+    groupRelay,
+    fullIdentifier
+  }
+}
+
+/**
+ * Check if a discussion belongs to a group
+ */
+export function isGroupDiscussion(event: NostrEvent): boolean {
+  return extractHTagFromEvent(event) !== null
+}
+
+/**
+ * Build display name for a group
+ */
+export function buildGroupDisplayName(
+  groupId: string,
+  groupRelay: string | null
+): string {
+  if (!groupRelay) {
+    return groupId
+  }
+  
+  // Extract hostname from relay URL for cleaner display
+  try {
+    const url = new URL(groupRelay)
+    const hostname = url.hostname
+    return `${hostname}'${groupId}`
+  } catch {
+    // Fallback to full relay URL if parsing fails
+    return `${groupRelay}'${groupId}`
+  }
+}
+
+/**
+ * Extract group information from event
+ */
+export function extractGroupInfo(
+  event: NostrEvent,
+  relaySources: string[]
+): { groupId: string | null; groupRelay: string | null; groupDisplayName: string | null; isGroupDiscussion: boolean } {
+  const hTag = extractHTagFromEvent(event)
+  
+  if (!hTag) {
+    return {
+      groupId: null,
+      groupRelay: null,
+      groupDisplayName: null,
+      isGroupDiscussion: false
+    }
+  }
+  
+  const { groupId, groupRelay, fullIdentifier } = parseGroupIdentifier(hTag, relaySources)
+  const groupDisplayName = buildGroupDisplayName(groupId, groupRelay)
+  
+  return {
+    groupId,
+    groupRelay,
+    groupDisplayName,
+    isGroupDiscussion: true
+  }
+}
+

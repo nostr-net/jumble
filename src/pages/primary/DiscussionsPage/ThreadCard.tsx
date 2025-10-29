@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Clock, Hash } from 'lucide-react'
+import { Clock, Hash, Users } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { formatDistanceToNow } from 'date-fns'
 import { useTranslation } from 'react-i18next'
@@ -9,7 +9,7 @@ import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 import Username from '@/components/Username'
 import UserAvatar from '@/components/UserAvatar'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
-import { extractAllTopics } from '@/lib/discussion-topics'
+import { extractAllTopics, extractGroupInfo } from '@/lib/discussion-topics'
 
 interface ThreadCardProps {
   thread: NostrEvent
@@ -45,6 +45,9 @@ export default function ThreadCard({
     label: topic, 
     icon: Hash
   }
+
+  // Extract group information
+  const groupInfo = extractGroupInfo(thread, ['unknown'])
 
   // Get all topics from this thread
   const allTopics = extractAllTopics(thread)
@@ -95,6 +98,12 @@ export default function ThreadCard({
                     <topicInfo.icon className="w-4 h-4" />
                     <span className="text-xs">{topicInfo.id}</span>
                   </div>
+                  {groupInfo.isGroupDiscussion && groupInfo.groupDisplayName && (
+                    <Badge variant="outline" className="text-xs">
+                      <Users className="w-3 h-3 mr-1" />
+                      {groupInfo.groupDisplayName}
+                    </Badge>
+                  )}
                   {allTopics.slice(0, 3).map(topic => (
                     <Badge key={topic} variant="outline" className="text-xs">
                       <Hash className="w-3 h-3 mr-1" />
@@ -142,6 +151,12 @@ export default function ThreadCard({
                     <topicInfo.icon className="w-3 h-3 mr-1" />
                     {topicInfo.label}
                   </Badge>
+                  {groupInfo.isGroupDiscussion && groupInfo.groupDisplayName && (
+                    <Badge variant="outline" className="text-xs">
+                      <Users className="w-3 h-3 mr-1" />
+                      {groupInfo.groupDisplayName}
+                    </Badge>
+                  )}
                   {allTopics.slice(0, 3).map(topic => (
                     <Badge key={topic} variant="outline" className="text-xs">
                       <Hash className="w-3 h-3 mr-1" />

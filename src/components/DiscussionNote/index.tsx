@@ -1,10 +1,11 @@
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { MessageCircle, Hash } from 'lucide-react'
+import { MessageCircle, Hash, Users } from 'lucide-react'
 import { Event } from 'nostr-tools'
 import { cn } from '@/lib/utils'
 import { useTranslation } from 'react-i18next'
 import { DISCUSSION_TOPICS } from '@/pages/primary/DiscussionsPage/CreateThreadDialog'
+import { extractGroupInfo } from '@/lib/discussion-topics'
 
 interface DiscussionNoteProps {
   event: Event
@@ -20,6 +21,9 @@ export default function DiscussionNote({ event, className, size = 'normal' }: Di
   const topicTag = event.tags.find(tag => tag[0] === 't')
   const title = titleTag?.[1] || 'Untitled Discussion'
   const topic = topicTag?.[1] || 'general'
+  
+  // Extract group information
+  const groupInfo = extractGroupInfo(event, ['unknown'])
   
   // Get topic info
   const topicInfo = DISCUSSION_TOPICS.find(t => t.id === topic) || { 
@@ -44,6 +48,12 @@ export default function DiscussionNote({ event, className, size = 'normal' }: Di
                 <topicInfo.icon className="w-3 h-3 mr-1" />
                 {topicInfo.label}
               </Badge>
+              {groupInfo.isGroupDiscussion && groupInfo.groupDisplayName && (
+                <Badge variant="outline" className="text-xs">
+                  <Users className="w-3 h-3 mr-1" />
+                  {groupInfo.groupDisplayName}
+                </Badge>
+              )}
               <span className={cn('text-xs text-muted-foreground', isSmall && 'text-xs')}>
                 {t('Discussion')}
               </span>

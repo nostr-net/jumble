@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ChevronDown, Grid3X3 } from 'lucide-react'
+import { ChevronDown, Grid3X3, Users } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -53,8 +53,16 @@ export default function TopicFilter({ topics, selectedTopic, onTopicChange, thre
   // Create all topics option
   const allTopicsOption = { id: 'all', label: t('All Topics'), icon: Grid3X3 }
   
+  // Create groups option if there are group discussions
+  const hasGroupDiscussions = threads.some(thread => 
+    thread.tags.some(tag => tag[0] === 'h' && tag[1])
+  )
+  const groupsOption = hasGroupDiscussions ? { id: 'groups', label: t('Groups'), icon: Users } : null
+  
   const selectedTopicInfo = selectedTopic === 'all' 
     ? allTopicsOption 
+    : selectedTopic === 'groups' && groupsOption
+    ? groupsOption
     : sortedTopics.find(topic => topic.id === selectedTopic) || sortedTopics[0]
 
   return (
@@ -80,6 +88,19 @@ export default function TopicFilter({ topics, selectedTopic, onTopicChange, thre
             <span className="ml-auto text-primary">✓</span>
           )}
         </DropdownMenuItem>
+        {groupsOption && (
+          <DropdownMenuItem
+            key="groups"
+            onClick={() => onTopicChange('groups')}
+            className="flex items-center gap-2"
+          >
+            <Users className="w-4 h-4" />
+            <span>{t('Groups')}</span>
+            {selectedTopic === 'groups' && (
+              <span className="ml-auto text-primary">✓</span>
+            )}
+          </DropdownMenuItem>
+        )}
         {sortedTopics.map(topic => (
           <DropdownMenuItem
             key={topic.id}

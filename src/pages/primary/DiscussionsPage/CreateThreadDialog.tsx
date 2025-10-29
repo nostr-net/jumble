@@ -15,6 +15,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
+import { useGroupList } from '@/providers/GroupListProvider'
 import { TDraftEvent, TRelaySet } from '@/types'
 import { NostrEvent } from 'nostr-tools'
 import { prefixNostrAddresses } from '@/lib/nostr-address'
@@ -92,7 +93,8 @@ export const DISCUSSION_TOPICS = [
   { id: 'travel', label: 'Travel & Adventure', icon: MapPin },
   { id: 'home', label: 'Home & Garden', icon: Home },
   { id: 'pets', label: 'Pets & Animals', icon: PawPrint },
-  { id: 'fashion', label: 'Fashion & Beauty', icon: Shirt }
+  { id: 'fashion', label: 'Fashion & Beauty', icon: Shirt },
+  { id: 'groups', label: 'Groups', icon: Users }
 ]
 
 export default function CreateThreadDialog({ 
@@ -107,13 +109,14 @@ export default function CreateThreadDialog({
   const { t } = useTranslation()
   const { pubkey, publish, relayList } = useNostr()
   const { favoriteRelays, blockedRelays } = useFavoriteRelays()
+  const { userGroups } = useGroupList()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [selectedTopic, setSelectedTopic] = useState(initialTopic)
   const [selectedRelayUrls, setSelectedRelayUrls] = useState<string[]>([])
   const [selectableRelays, setSelectableRelays] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [errors, setErrors] = useState<{ title?: string; content?: string; relay?: string; author?: string; subject?: string }>({})
+  const [errors, setErrors] = useState<{ title?: string; content?: string; relay?: string; author?: string; subject?: string; group?: string }>({})
   const [isNsfw, setIsNsfw] = useState(false)
   const [addClientTag, setAddClientTag] = useState(true)
   const [minPow, setMinPow] = useState(0)
@@ -126,6 +129,10 @@ export default function CreateThreadDialog({
   const [author, setAuthor] = useState('')
   const [subject, setSubject] = useState('')
   const [showReadingsPanel, setShowReadingsPanel] = useState(false)
+  
+  // Group options state
+  const [selectedGroup, setSelectedGroup] = useState<string>('')
+  const [isGroupSelectorOpen, setIsGroupSelectorOpen] = useState(false)
 
   // Create combined topics list (predefined + dynamic) with hierarchy
   const allAvailableTopics = useMemo(() => {
@@ -255,7 +262,7 @@ export default function CreateThreadDialog({
   }
 
   const validateForm = () => {
-    const newErrors: { title?: string; content?: string; relay?: string; author?: string; subject?: string } = {}
+    const newErrors: { title?: string; content?: string; relay?: string; author?: string; subject?: string; group?: string } = {}
     
     if (!title.trim()) {
       newErrors.title = t('Title is required')
@@ -280,6 +287,13 @@ export default function CreateThreadDialog({
       }
       if (!subject.trim()) {
         newErrors.subject = t('Subject (book title) is required for reading groups')
+      }
+    }
+    
+    // Validate group selection if groups topic is selected
+    if (selectedTopic === 'groups') {
+      if (!selectedGroup.trim()) {
+        newErrors.group = t('Please select a group')
       }
     }
     
@@ -317,8 +331,13 @@ export default function CreateThreadDialog({
         ['-'] // Required tag for relay privacy
       ]
       
-      // Only add topic tag if it's a specific topic (not 'all' or 'general')
-      if (selectedTopic !== 'all' && selectedTopic !== 'general') {
+      // Add h tag for group discussions
+      if (selectedTopic === 'groups' && selectedGroup) {
+        tags.push(['h', selectedGroup])
+      }
+      
+      // Only add topic tag if it's a specific topic (not 'all' or 'general' or 'groups')
+      if (selectedTopic !== 'all' && selectedTopic !== 'general' && selectedTopic !== 'groups') {
         // Check if this is a dynamic subtopic
         const selectedDynamicTopic = dynamicTopics?.allTopics.find(dt => dt.id === selectedTopic)
         
@@ -549,6 +568,65 @@ export default function CreateThreadDialog({
                 {t('Threads are organized by topics. Choose a topic that best fits your discussion.')}
               </p>
             </div>
+
+            {/* Group Selection - Only show when Groups topic is selected */}
+            {selectedTopic === 'groups' && (
+              <div className="space-y-2">
+                <Label htmlFor="group">{t('Select Group')}</Label>
+                <Popover open={isGroupSelectorOpen} onOpenChange={setIsGroupSelectorOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={isGroupSelectorOpen}
+                      className="w-full justify-between"
+                    >
+                      {selectedGroup ? selectedGroup : t('Select group...')}
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent 
+                    className="w-[--radix-popover-trigger-width] p-2 z-[10000]" 
+                    align="start"
+                    side="bottom"
+                    sideOffset={4}
+                  >
+                    <div className="max-h-60 overflow-y-auto">
+                      {userGroups.length === 0 ? (
+                        <div className="p-2 text-sm text-muted-foreground text-center">
+                          {t('No groups available. Join some groups first.')}
+                        </div>
+                      ) : (
+                        userGroups.map((groupId) => (
+                          <div
+                            key={groupId}
+                            className="flex items-center p-2 hover:bg-accent cursor-pointer rounded"
+                            onClick={() => {
+                              setSelectedGroup(groupId)
+                              setIsGroupSelectorOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={`mr-2 h-4 w-4 ${
+                                selectedGroup === groupId ? 'opacity-100' : 'opacity-0'
+                              }`}
+                            />
+                            <Users className="mr-2 h-4 w-4" />
+                            {groupId}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {errors.group && (
+                  <p className="text-sm text-destructive">{errors.group}</p>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  {t('Select the group where you want to create this discussion.')}
+                </p>
+              </div>
+            )}
 
             {/* Title Input */}
             <div className="space-y-2">

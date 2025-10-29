@@ -8,6 +8,7 @@ import { DeletedEventProvider } from '@/providers/DeletedEventProvider'
 import { FavoriteRelaysProvider } from '@/providers/FavoriteRelaysProvider'
 import { FeedProvider } from '@/providers/FeedProvider'
 import { FollowListProvider } from '@/providers/FollowListProvider'
+import { GroupListProvider } from '@/providers/GroupListProvider'
 import { InterestListProvider } from '@/providers/InterestListProvider'
 import { KindFilterProvider } from '@/providers/KindFilterProvider'
 import { MediaUploadServiceProvider } from '@/providers/MediaUploadServiceProvider'
@@ -35,22 +36,24 @@ export default function App(): JSX.Element {
                     <FollowListProvider>
                       <MuteListProvider>
                         <InterestListProvider>
-                          <UserTrustProvider>
-                            <BookmarksProvider>
-                              <FeedProvider>
-                                <ReplyProvider>
-                                  <MediaUploadServiceProvider>
-                                    <KindFilterProvider>
-                                      <UserPreferencesProvider>
-                                        <PageManager />
-                                        <Toaster />
-                                      </UserPreferencesProvider>
-                                    </KindFilterProvider>
-                                  </MediaUploadServiceProvider>
-                                </ReplyProvider>
-                              </FeedProvider>
-                            </BookmarksProvider>
-                          </UserTrustProvider>
+                          <GroupListProvider>
+                            <UserTrustProvider>
+                              <BookmarksProvider>
+                                <FeedProvider>
+                                  <ReplyProvider>
+                                    <MediaUploadServiceProvider>
+                                      <KindFilterProvider>
+                                        <UserPreferencesProvider>
+                                          <PageManager />
+                                          <Toaster />
+                                        </UserPreferencesProvider>
+                                      </KindFilterProvider>
+                                    </MediaUploadServiceProvider>
+                                  </ReplyProvider>
+                                </FeedProvider>
+                              </BookmarksProvider>
+                            </UserTrustProvider>
+                          </GroupListProvider>
                         </InterestListProvider>
                       </MuteListProvider>
                     </FollowListProvider>
