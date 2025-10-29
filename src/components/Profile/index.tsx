@@ -26,12 +26,13 @@ import logger from '@/lib/logger'
 import NotFound from '../NotFound'
 import FollowedBy from './FollowedBy'
 import ProfileFeed from './ProfileFeed'
+import ProfileArticles from './ProfileArticles'
 import ProfileBookmarksAndHashtags from './ProfileBookmarksAndHashtags'
 import SmartFollowings from './SmartFollowings'
 import SmartMuteLink from './SmartMuteLink'
 import SmartRelays from './SmartRelays'
 
-type ProfileTabValue = 'posts' | 'pins' | 'bookmarks' | 'interests'
+type ProfileTabValue = 'posts' | 'pins' | 'bookmarks' | 'interests' | 'articles'
 
 export default function Profile({ id }: { id?: string }) {
   const { t } = useTranslation()
@@ -44,6 +45,7 @@ export default function Profile({ id }: { id?: string }) {
   // Refs for child components
   const profileFeedRef = useRef<{ refresh: () => void }>(null)
   const profileBookmarksRef = useRef<{ refresh: () => void }>(null)
+  const profileArticlesRef = useRef<{ refresh: () => void }>(null)
   
   const isFollowingYou = useMemo(() => {
     // This will be handled by the FollowedBy component
@@ -59,6 +61,8 @@ export default function Profile({ id }: { id?: string }) {
   const handleRefresh = () => {
     if (activeTab === 'posts') {
       profileFeedRef.current?.refresh()
+    } else if (activeTab === 'articles') {
+      profileArticlesRef.current?.refresh()
     } else {
       profileBookmarksRef.current?.refresh()
     }
@@ -69,6 +73,10 @@ export default function Profile({ id }: { id?: string }) {
     {
       value: 'posts',
       label: 'Posts'
+    },
+    {
+      value: 'articles',
+      label: 'Articles'
     },
     {
       value: 'pins',
@@ -227,6 +235,14 @@ export default function Profile({ id }: { id?: string }) {
         {activeTab === 'posts' && (
           <ProfileFeed 
             ref={profileFeedRef} 
+            pubkey={pubkey} 
+            topSpace={0} 
+            searchQuery={searchQuery}
+          />
+        )}
+        {activeTab === 'articles' && (
+          <ProfileArticles 
+            ref={profileArticlesRef} 
             pubkey={pubkey} 
             topSpace={0} 
             searchQuery={searchQuery}
