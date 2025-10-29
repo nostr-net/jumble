@@ -309,7 +309,7 @@ export function extractGroupInfo(
     }
   }
   
-  const { groupId, groupRelay, fullIdentifier } = parseGroupIdentifier(hTag, relaySources)
+  const { groupId, groupRelay } = parseGroupIdentifier(hTag, relaySources)
   const groupDisplayName = buildGroupDisplayName(groupId, groupRelay)
   
   return {

@@ -167,7 +167,7 @@ export default function Article({
   }
 
   return (
-    <div className={`${parsedContent.cssClasses} ${className || ''}`}>
+    <div className={`${parsedContent?.cssClasses || ''} ${className || ''}`}>
       {/* Article metadata */}
       <h1 className="break-words">{metadata.title}</h1>
       {metadata.summary && (
@@ -184,10 +184,10 @@ export default function Article({
 
 
       {/* Render AsciiDoc content (everything is now processed as AsciiDoc) */}
-      <div ref={contentRef} className={isArticleType ? "asciidoc-content" : "simple-content"} dangerouslySetInnerHTML={{ __html: parsedContent.html }} />
+      <div ref={contentRef} className={isArticleType ? "asciidoc-content" : "simple-content"} dangerouslySetInnerHTML={{ __html: parsedContent?.html || '' }} />
 
       {/* Collapsible Article Info - only for article-type events */}
-      {isArticleType && (parsedContent.media.length > 0 || parsedContent.links.length > 0 || parsedContent.nostrLinks.length > 0 || parsedContent.highlightSources.length > 0 || parsedContent.hashtags.length > 0) && (
+      {isArticleType && (parsedContent?.media?.length > 0 || parsedContent?.links?.length > 0 || parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
         <Collapsible open={isInfoOpen} onOpenChange={setIsInfoOpen} className="mt-4">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
@@ -197,11 +197,11 @@ export default function Article({
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-4 mt-2">
             {/* Media thumbnails */}
-            {parsedContent.media.length > 0 && (
+            {parsedContent?.media?.length > 0 && (
               <div className="p-4 bg-muted rounded-lg">
                 <h4 className="text-sm font-semibold mb-3">Images in this article:</h4>
                 <div className="grid grid-cols-8 sm:grid-cols-12 md:grid-cols-16 gap-1">
-                  {parsedContent.media.map((media, index) => (
+                  {parsedContent?.media?.map((media, index) => (
                     <div key={index} className="aspect-square">
                       <ImageWithLightbox
                         image={media}
@@ -217,11 +217,11 @@ export default function Article({
             )}
 
             {/* Links summary with OpenGraph previews */}
-            {parsedContent.links.length > 0 && (
+            {parsedContent?.links?.length > 0 && (
               <div className="p-4 bg-muted rounded-lg">
                 <h4 className="text-sm font-semibold mb-3">Links in this article:</h4>
                 <div className="space-y-3">
-                  {parsedContent.links.map((link, index) => (
+                  {parsedContent?.links?.map((link, index) => (
                     <WebPreview
                       key={index}
                       url={link.url}
@@ -233,11 +233,11 @@ export default function Article({
             )}
 
             {/* Nostr links summary */}
-            {parsedContent.nostrLinks.length > 0 && (
+            {parsedContent?.nostrLinks?.length > 0 && (
               <div className="p-4 bg-muted rounded-lg">
                 <h4 className="text-sm font-semibold mb-2">Nostr references:</h4>
                 <div className="space-y-1">
-                  {parsedContent.nostrLinks.map((link, index) => (
+                  {parsedContent?.nostrLinks?.map((link, index) => (
                     <div key={index} className="text-sm">
                       <span className="font-mono text-blue-600">{link.type}:</span>{' '}
                       <span className="font-mono">{link.id}</span>
@@ -248,11 +248,11 @@ export default function Article({
             )}
 
             {/* Highlight sources */}
-            {parsedContent.highlightSources.length > 0 && (
+            {parsedContent?.highlightSources?.length > 0 && (
               <div className="p-4 bg-muted rounded-lg">
                 <h4 className="text-sm font-semibold mb-3">Highlight sources:</h4>
                 <div className="space-y-3">
-                  {parsedContent.highlightSources.map((source, index) => (
+                  {parsedContent?.highlightSources?.map((source, index) => (
                     <HighlightSourcePreview
                       key={index}
                       source={source}
@@ -264,11 +264,11 @@ export default function Article({
             )}
 
             {/* Hashtags */}
-            {parsedContent.hashtags.length > 0 && (
+            {parsedContent?.hashtags?.length > 0 && (
               <div className="p-4 bg-muted rounded-lg">
                 <h4 className="text-sm font-semibold mb-3">Tags:</h4>
                 <div className="flex gap-2 flex-wrap">
-                  {parsedContent.hashtags.map((tag) => (
+                  {parsedContent?.hashtags?.map((tag) => (
                     <div
                       key={tag}
                       title={tag}

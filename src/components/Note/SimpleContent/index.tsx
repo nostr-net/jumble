@@ -22,6 +22,10 @@ export default function SimpleContent({
     return <div className={className}>Error loading content</div>
   }
 
+  if (!parsedContent) {
+    return <div className={className}>No content available</div>
+  }
+
   return (
     <div className={`${parsedContent.cssClasses} ${className || ''}`}>
       {/* Render content without ToC and Article Info */}

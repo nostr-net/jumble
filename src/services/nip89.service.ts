@@ -1,6 +1,5 @@
 import { ExtendedKind } from '@/constants'
 import { Event, kinds } from 'nostr-tools'
-import * as nip19 from 'nostr-tools/nip19'
 
 export interface ApplicationHandlerInfo {
   name: string
@@ -227,7 +226,6 @@ class Nip89Service {
         ExtendedKind.RELAY_REVIEW,
         ExtendedKind.PUBLICATION,
         ExtendedKind.WIKI_ARTICLE,
-        ExtendedKind.WIKI_CHAPTER
       ],
       platforms: {
         web: 'https://jumble.gitcitadel.eu/note/bech32',

@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
 import { useNostr } from '@/providers/NostrProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { ExtendedKind } from '@/constants'
@@ -26,8 +25,7 @@ export const useGroupList = () => {
 }
 
 export function GroupListProvider({ children }: { children: React.ReactNode }) {
-  const { t } = useTranslation()
-  const { pubkey: accountPubkey, publish, updateGroupListEvent } = useNostr()
+  const { pubkey: accountPubkey } = useNostr()
   const { favoriteRelays } = useFavoriteRelays()
   const [userGroups, setUserGroups] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)

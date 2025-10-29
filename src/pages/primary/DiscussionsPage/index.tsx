@@ -457,6 +457,13 @@ const DiscussionsPage = forwardRef((_, ref) => {
           logger.debug('[DiscussionsPage] Thread', threadId.substring(0, 8), 'has votes:', voteStats)
         }
         
+        // Get relay sources
+        const eventHints = client.getEventHints(threadId)
+        const relaySources = eventHints.length > 0 ? eventHints : ['unknown']
+        
+        // Extract group information
+        const groupInfo = extractGroupInfo(thread, relaySources)
+        
         // Extract topics
         const tTagsRaw = thread.tags.filter((tag: string[]) => tag[0] === 't' && tag[1]).map((tag: string[]) => tag[1].toLowerCase())
         const hashtagsRaw = (thread.content.match(/#\w+/g) || []).map((tag: string) => tag.slice(1).toLowerCase())
@@ -470,13 +477,6 @@ const DiscussionsPage = forwardRef((_, ref) => {
         const tTags = tTagsRaw.map((tag: string) => normalizeTopic(tag))
         const hashtags = hashtagsRaw.map((tag: string) => normalizeTopic(tag))
         const allTopics = [...new Set([...tTags, ...hashtags])]
-        
-        // Get relay sources
-        const eventHints = client.getEventHints(threadId)
-        const relaySources = eventHints.length > 0 ? eventHints : ['unknown']
-        
-        // Extract group information
-        const groupInfo = extractGroupInfo(thread, relaySources)
         
         newEventMap.set(threadId, {
           event: thread,
