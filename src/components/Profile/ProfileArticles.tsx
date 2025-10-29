@@ -80,18 +80,18 @@ const ProfileArticles = forwardRef<{ refresh: () => void }, ProfileArticlesProps
       const comprehensiveRelays = await buildComprehensiveRelayList()
       console.log('[ProfileArticles] Using comprehensive relay list:', comprehensiveRelays.length, 'relays')
       
-      // Fetch longform articles (kind 30023) and highlights (kind 9802)
+      // Fetch longform articles (kind 30023), wiki articles (kind 30818), publications (kind 30040), and highlights (kind 9802)
       const allEvents = await client.fetchEvents(comprehensiveRelays, {
         authors: [pubkey],
-        kinds: [kinds.LongFormArticle, kinds.Highlights], // LongFormArticle and Highlights
+        kinds: [kinds.LongFormArticle, 30818, 30040, kinds.Highlights], // LongFormArticle, WikiArticle, Publication, and Highlights
         limit: 100
       })
       
       console.log('[ProfileArticles] Fetched total events:', allEvents.length)
       console.log('[ProfileArticles] Sample events:', allEvents.slice(0, 3).map(e => ({ id: e.id, kind: e.kind, content: e.content.substring(0, 50) + '...', tags: e.tags.slice(0, 3) })))
       
-      // Show ALL events (both longform articles and highlights)
-      console.log('[ProfileArticles] Showing all events (articles + highlights):', allEvents.length)
+      // Show ALL events (longform articles, wiki articles, publications, and highlights)
+      console.log('[ProfileArticles] Showing all events (articles + publications + highlights):', allEvents.length)
       console.log('[ProfileArticles] Events sample:', allEvents.slice(0, 2).map(e => ({ id: e.id, kind: e.kind, content: e.content.substring(0, 50) + '...' })))
       
       const eventsToShow = allEvents
@@ -204,7 +204,7 @@ const ProfileArticles = forwardRef<{ refresh: () => void }, ProfileArticlesProps
   if (events.length === 0) {
     return (
       <div className="flex justify-center items-center py-8">
-        <div className="text-sm text-muted-foreground">No articles or highlights found</div>
+        <div className="text-sm text-muted-foreground">No articles, publications, or highlights found</div>
       </div>
     )
   }
@@ -212,7 +212,7 @@ const ProfileArticles = forwardRef<{ refresh: () => void }, ProfileArticlesProps
   if (filteredEvents.length === 0 && searchQuery.trim()) {
     return (
       <div className="flex justify-center items-center py-8">
-        <div className="text-sm text-muted-foreground">No articles or highlights match your search</div>
+        <div className="text-sm text-muted-foreground">No articles, publications, or highlights match your search</div>
       </div>
     )
   }

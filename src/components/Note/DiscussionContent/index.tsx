@@ -1,5 +1,5 @@
 import { Event } from 'nostr-tools'
-import SimpleContent from '../../UniversalContent/SimpleContent'
+import ParsedContent from '../../UniversalContent/ParsedContent'
 
 export default function DiscussionContent({
   event,
@@ -9,9 +9,14 @@ export default function DiscussionContent({
   className?: string
 }) {
   return (
-    <SimpleContent
+    <ParsedContent
       event={event}
+      field="content"
       className={className}
+      showMedia={true}
+      showLinks={false}
+      showHashtags={true}
+      showNostrLinks={false}
     />
   )
 }

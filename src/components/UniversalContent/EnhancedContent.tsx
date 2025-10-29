@@ -1,0 +1,216 @@
+/**
+ * Enhanced content component that uses the content parser service
+ * while maintaining compatibility with existing embedded content
+ */
+
+import { useTranslatedEvent } from '@/hooks'
+import {
+  EmbeddedEmojiParser,
+  EmbeddedEventParser,
+  EmbeddedHashtagParser,
+  EmbeddedLNInvoiceParser,
+  EmbeddedMentionParser,
+  EmbeddedUrlParser,
+  EmbeddedWebsocketUrlParser,
+  parseContent
+} from '@/lib/content-parser'
+import logger from '@/lib/logger'
+import { getImetaInfosFromEvent } from '@/lib/event'
+import { getEmojiInfosFromEmojiTags, getImetaInfoFromImetaTag } from '@/lib/tag'
+import { cn } from '@/lib/utils'
+import { cleanUrl } from '@/lib/url'
+import mediaUpload from '@/services/media-upload.service'
+import { TImetaInfo } from '@/types'
+import { Event } from 'nostr-tools'
+import { useMemo } from 'react'
+import {
+  EmbeddedHashtag,
+  EmbeddedLNInvoice,
+  EmbeddedMention,
+  EmbeddedNormalUrl,
+  EmbeddedNote,
+  EmbeddedWebsocketUrl
+} from '../Embedded'
+import Emoji from '../Emoji'
+import ImageGallery from '../ImageGallery'
+import MediaPlayer from '../MediaPlayer'
+import WebPreview from '../WebPreview'
+import YoutubeEmbeddedPlayer from '../YoutubeEmbeddedPlayer'
+import ParsedContent from './ParsedContent'
+
+export default function EnhancedContent({
+  event,
+  content,
+  className,
+  mustLoadMedia,
+  useEnhancedParsing = false
+}: {
+  event?: Event
+  content?: string
+  className?: string
+  mustLoadMedia?: boolean
+  useEnhancedParsing?: boolean
+}) {
+  const translatedEvent = useTranslatedEvent(event?.id)
+  
+  // If enhanced parsing is enabled and we have an event, use the new parser
+  if (useEnhancedParsing && event) {
+    return (
+      <ParsedContent
+        event={event}
+        field="content"
+        className={className}
+        showMedia={true}
+        showLinks={false}
+        showHashtags={false}
+        showNostrLinks={false}
+      />
+    )
+  }
+
+  // Fallback to original parsing logic
+  const { nodes, allImages, lastNormalUrl, emojiInfos } = useMemo(() => {
+    const _content = translatedEvent?.content ?? event?.content ?? content
+    if (!_content) return {}
+
+    const nodes = parseContent(_content, [
+      EmbeddedUrlParser,
+      EmbeddedLNInvoiceParser,
+      EmbeddedWebsocketUrlParser,
+      EmbeddedEventParser,
+      EmbeddedMentionParser,
+      EmbeddedHashtagParser,
+      EmbeddedEmojiParser
+    ])
+
+    const imetaInfos = event ? getImetaInfosFromEvent(event) : []
+    const allImages = nodes
+      .map((node) => {
+        if (node.type === 'image') {
+          // Always ensure we have a valid image info object
+          const imageInfo = imetaInfos.find((image) => image.url === node.data)
+          if (imageInfo) {
+            return imageInfo
+          }
+          
+          // Try to get imeta from media upload service
+          const tag = mediaUpload.getImetaTagByUrl(node.data)
+          if (tag) {
+            const parsedImeta = getImetaInfoFromImetaTag(tag, event?.pubkey)
+            if (parsedImeta) {
+              return parsedImeta
+            }
+          }
+          
+          // Fallback: always create a basic image info object with cleaned URL
+          return { url: cleanUrl(node.data), pubkey: event?.pubkey }
+        }
+        if (node.type === 'images') {
+          const urls = Array.isArray(node.data) ? node.data : [node.data]
+          return urls.map((url) => {
+            const imageInfo = imetaInfos.find((image) => image.url === url)
+            if (imageInfo) {
+              return imageInfo
+            }
+            
+            // Try to get imeta from media upload service
+            const tag = mediaUpload.getImetaTagByUrl(url)
+            if (tag) {
+              const parsedImeta = getImetaInfoFromImetaTag(tag, event?.pubkey)
+              if (parsedImeta) {
+                return parsedImeta
+              }
+            }
+            
+            // Fallback: always create a basic image info object with cleaned URL
+            return { url: cleanUrl(url), pubkey: event?.pubkey }
+          })
+        }
+        return null
+      })
+      .filter(Boolean)
+      .flat() as TImetaInfo[]
+
+    const emojiInfos = getEmojiInfosFromEmojiTags(event?.tags)
+
+    const lastNormalUrlNode = nodes.findLast((node) => node.type === 'url')
+    const lastNormalUrl =
+      typeof lastNormalUrlNode?.data === 'string' ? lastNormalUrlNode.data : undefined
+
+    return { nodes, allImages, emojiInfos, lastNormalUrl }
+  }, [event, translatedEvent, content])
+
+  if (!nodes || nodes.length === 0) {
+    return null
+  }
+
+  let imageIndex = 0
+  logger.debug('[Content] Parsed content:', { nodeCount: nodes.length, allImages: allImages.length, nodes: nodes.map(n => ({ type: n.type, data: Array.isArray(n.data) ? n.data.length : n.data })) })
+  return (
+    <div className={cn('text-wrap break-words whitespace-pre-wrap', className)}>
+      {nodes.map((node, index) => {
+        if (node.type === 'text') {
+          return node.data
+        }
+        if (node.type === 'image' || node.type === 'images') {
+          const start = imageIndex
+          const end = imageIndex + (Array.isArray(node.data) ? node.data.length : 1)
+          imageIndex = end
+          logger.debug('[Content] Creating ImageGallery:', { nodeType: node.type, start, end, totalImages: allImages.length, nodeData: Array.isArray(node.data) ? node.data.length : node.data })
+          return (
+            <ImageGallery
+              className="mt-2"
+              key={index}
+              images={allImages}
+              start={start}
+              end={end}
+              mustLoad={mustLoadMedia}
+            />
+          )
+        }
+        if (node.type === 'media') {
+          return (
+            <MediaPlayer className="mt-2" key={index} src={node.data} mustLoad={mustLoadMedia} />
+          )
+        }
+        if (node.type === 'url') {
+          return <EmbeddedNormalUrl url={node.data} key={index} />
+        }
+        if (node.type === 'invoice') {
+          return <EmbeddedLNInvoice invoice={node.data} key={index} className="mt-2" />
+        }
+        if (node.type === 'websocket-url') {
+          return <EmbeddedWebsocketUrl url={node.data} key={index} />
+        }
+        if (node.type === 'event') {
+          const id = node.data.split(':')[1]
+          return <EmbeddedNote key={index} noteId={id} className="mt-2" />
+        }
+        if (node.type === 'mention') {
+          return <EmbeddedMention key={index} userId={node.data.split(':')[1]} />
+        }
+        if (node.type === 'hashtag') {
+          return <EmbeddedHashtag hashtag={node.data} key={index} />
+        }
+        if (node.type === 'emoji') {
+          const shortcode = node.data.split(':')[1]
+          const emoji = emojiInfos.find((e) => e.shortcode === shortcode)
+          if (!emoji) return node.data
+          return <Emoji classNames={{ img: 'mb-1' }} emoji={emoji} key={index} />
+        }
+        if (node.type === 'youtube') {
+          return (
+            <YoutubeEmbeddedPlayer
+              key={index}
+              url={node.data}
+              className="mt-2"
+              mustLoad={mustLoadMedia}
+            />
+          )
+        }
+        return null
+      })}
+      {lastNormalUrl && <WebPreview className="mt-2" url={lastNormalUrl} />}
+    </div>
+  )
+}

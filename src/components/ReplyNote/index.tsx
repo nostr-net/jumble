@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ClientTag from '../ClientTag'
 import Collapsible from '../Collapsible'
-import Content from '../Content'
+import EnhancedContent from '../UniversalContent/EnhancedContent'
 import { FormattedTimestamp } from '../FormattedTimestamp'
 import Nip05 from '../Nip05'
 import NoteOptions from '../NoteOptions'
@@ -55,7 +55,14 @@ export default function ReplyNote({
   return (
     <div
       className={`pb-3 border-b transition-colors duration-500 clickable ${highlight ? 'bg-primary/50' : ''}`}
-      onClick={() => navigateToNote(toNote(event))}
+      onClick={(e) => {
+        // Don't navigate if clicking on interactive elements
+        const target = e.target as HTMLElement
+        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a')) {
+          return
+        }
+        navigateToNote(toNote(event))
+      }}
     >
       <Collapsible>
         <div className="flex space-x-2 items-start px-4 pt-3">
@@ -96,7 +103,7 @@ export default function ReplyNote({
               />
             )}
             {show ? (
-              <Content className="mt-2" event={event} />
+              <EnhancedContent className="mt-2" event={event} useEnhancedParsing={true} />
             ) : (
               <Button
                 variant="outline"

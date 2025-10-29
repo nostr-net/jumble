@@ -127,7 +127,10 @@ export const ExtendedKind = {
   RELAY_REVIEW: 31987,
   GROUP_METADATA: 39000,
   ZAP_REQUEST: 9734,
-  ZAP_RECEIPT: 9735
+  ZAP_RECEIPT: 9735,
+  PUBLICATION: 30040,
+  WIKI_ARTICLE: 30818,
+  WIKI_CHAPTER: 30041
 }
 
 export const SUPPORTED_KINDS = [
@@ -145,7 +148,10 @@ export const SUPPORTED_KINDS = [
   kinds.LongFormArticle,
   ExtendedKind.RELAY_REVIEW,
   ExtendedKind.DISCUSSION,
-  ExtendedKind.ZAP_RECEIPT
+  ExtendedKind.ZAP_RECEIPT,
+  ExtendedKind.PUBLICATION,
+  ExtendedKind.WIKI_ARTICLE,
+  ExtendedKind.WIKI_CHAPTER
 ]
 
 export const URL_REGEX =
