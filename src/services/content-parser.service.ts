@@ -131,11 +131,40 @@ class ContentParserService {
           'toclevels': 6,
           'toc-title': 'Table of Contents',
           'source-highlighter': options.enableSyntaxHighlighting ? 'highlight.js' : 'none',
-          'stem': options.enableMath ? 'latexmath' : 'none'
+          'stem': options.enableMath ? 'latexmath' : 'none',
+          'data-uri': true,
+          'imagesdir': '',
+          'linkcss': false,
+          'stylesheet': '',
+          'stylesdir': '',
+          'prewrap': true,
+          'sectnums': false,
+          'sectnumlevels': 6,
+          'experimental': true,
+          'compat-mode': false,
+          'attribute-missing': 'warn',
+          'attribute-undefined': 'warn',
+          'skip-front-matter': true,
+          'source-indent': 0,
+          'indent': 0,
+          'tabsize': 2,
+          'tabwidth': 2,
+          'hardbreaks': false,
+          'paragraph-rewrite': 'normal',
+          'sectids': true,
+          'idprefix': '',
+          'idseparator': '-',
+          'sectidprefix': '',
+          'sectidseparator': '-'
         }
       })
 
       const htmlString = typeof result === 'string' ? result : result.toString()
+      
+      // Debug: log the AsciiDoc HTML output for troubleshooting
+      if (process.env.NODE_ENV === 'development') {
+        console.log('AsciiDoc HTML output:', htmlString.substring(0, 1000) + '...')
+      }
       
       // Process wikilinks in the HTML output
       const processedHtml = this.processWikilinksInHtml(htmlString)
@@ -143,8 +172,11 @@ class ContentParserService {
       // Clean up any leftover markdown syntax and hide raw ToC text
       const cleanedHtml = this.cleanupMarkdown(processedHtml)
       
+      // Add proper CSS classes for styling
+      const styledHtml = this.addStylingClasses(cleanedHtml)
+      
       // Hide any raw AsciiDoc ToC text that might appear in the content
-      return this.hideRawTocText(cleanedHtml)
+      return this.hideRawTocText(styledHtml)
     } catch (error) {
       console.error('AsciiDoc parsing error:', error)
       return this.parsePlainText(content)
@@ -174,33 +206,114 @@ class ContentParserService {
     }
 
     // Process wikilinks for all content types
-    return this.processWikilinks(asciidoc)
+    let result = this.processWikilinks(asciidoc)
+    
+    // Process nostr: addresses - convert them to proper AsciiDoc format
+    result = this.processNostrAddresses(result)
+    
+    // Debug: log the converted AsciiDoc for troubleshooting
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Converted AsciiDoc:', result)
+    }
+    
+    return result
   }
 
   /**
    * Convert Markdown to AsciiDoc format
    */
   private convertMarkdownToAsciidoc(content: string): string {
-    let asciidoc = content
+    // Preprocess: convert escaped newlines to actual newlines
+    let asciidoc = content.replace(/\\n/g, '\n')
+    
+    // Preprocess: Fix the specific issue where backticks are used for inline code but not as code blocks
+    // Look for patterns like `sqlite` (databased) and convert them properly
+    asciidoc = asciidoc.replace(/`([^`\n]+)`\s*\(([^)]+)\)/g, '`$1` ($2)')
+    
+    // Fix spacing issues where text runs together
+    asciidoc = asciidoc.replace(/([a-zA-Z0-9])`([^`\n]+)`([a-zA-Z0-9])/g, '$1 `$2` $3')
+    asciidoc = asciidoc.replace(/([a-zA-Z0-9])`([^`\n]+)`\s*\(/g, '$1 `$2` (')
+    asciidoc = asciidoc.replace(/\)`([^`\n]+)`([a-zA-Z0-9])/g, ') `$1` $2')
+    
+    // Fix specific pattern: text)text -> text) text
+    asciidoc = asciidoc.replace(/([a-zA-Z0-9])\)([a-zA-Z0-9])/g, '$1) $2')
+    
+    // Fix specific pattern: text== -> text ==
+    asciidoc = asciidoc.replace(/([a-zA-Z0-9])==/g, '$1 ==')
+    
+    // Handle nostr: addresses - preserve them as-is for now, they'll be processed later
+    // This prevents them from being converted to AsciiDoc link syntax
+    asciidoc = asciidoc.replace(/nostr:([a-z0-9]+)/g, 'nostr:$1')
 
-    // Convert headers
+    // Convert headers - process in order from most specific to least specific
     asciidoc = asciidoc.replace(/^#{6}\s+(.+)$/gm, '====== $1 ======')
     asciidoc = asciidoc.replace(/^#{5}\s+(.+)$/gm, '===== $1 =====')
     asciidoc = asciidoc.replace(/^#{4}\s+(.+)$/gm, '==== $1 ====')
     asciidoc = asciidoc.replace(/^#{3}\s+(.+)$/gm, '=== $1 ===')
     asciidoc = asciidoc.replace(/^#{2}\s+(.+)$/gm, '== $1 ==')
     asciidoc = asciidoc.replace(/^#{1}\s+(.+)$/gm, '= $1 =')
+    
+    // Convert markdown-style == headers to AsciiDoc
+    asciidoc = asciidoc.replace(/^==\s+(.+?)\s+==$/gm, '== $1 ==')
+    
+    // Also handle inline == headers that might appear in the middle of text
+    asciidoc = asciidoc.replace(/\s==\s+([^=]+?)\s+==\s/g, ' == $1 == ')
 
-    // Convert emphasis
-    asciidoc = asciidoc.replace(/\*\*(.+?)\*\*/g, '*$1*') // Bold
-    asciidoc = asciidoc.replace(/\*(.+?)\*/g, '_$1_') // Italic
+    // Convert emphasis - handle both single and double asterisks/underscores
+    asciidoc = asciidoc.replace(/\*\*(.+?)\*\*/g, '*$1*') // Bold **text**
+    asciidoc = asciidoc.replace(/__(.+?)__/g, '*$1*') // Bold __text__
+    asciidoc = asciidoc.replace(/\*(.+?)\*/g, '_$1_') // Italic *text*
+    asciidoc = asciidoc.replace(/_(.+?)_/g, '_$1_') // Italic _text_
     asciidoc = asciidoc.replace(/~~(.+?)~~/g, '[line-through]#$1#') // Strikethrough
+    asciidoc = asciidoc.replace(/~(.+?)~/g, '[subscript]#$1#') // Subscript
+    asciidoc = asciidoc.replace(/\^(.+?)\^/g, '[superscript]#$1#') // Superscript
 
-    // Convert code
-    asciidoc = asciidoc.replace(/```(\w+)?\n([\s\S]*?)```/g, (_match, lang, code) => {
-      return `[source${lang ? ',' + lang : ''}]\n----\n${code.trim()}\n----`
+    // Convert code blocks - use more precise matching to avoid capturing regular text
+    asciidoc = asciidoc.replace(/```(\w+)?\n([\s\S]*?)\n```/g, (_match, lang, code) => {
+      // Ensure we don't capture too much content and it looks like actual code
+      const trimmedCode = code.trim()
+      if (trimmedCode.length === 0) return ''
+      
+      // Check if this looks like actual code (has programming syntax patterns)
+      const hasCodePatterns = /[{}();=<>]|function|class|import|export|def |if |for |while |return |const |let |var |public |private |static |console\.log|var |let |const |if |for |while |return |function/.test(trimmedCode)
+      
+      // Additional checks for common non-code patterns
+      const isLikelyText = /^[A-Za-z\s.,!?\-'"]+$/.test(trimmedCode) && trimmedCode.length > 50
+      const hasTooManySpaces = (trimmedCode.match(/\s{3,}/g) || []).length > 3
+      const hasMarkdownPatterns = /^#{1,6}\s|^\*\s|^\d+\.\s|^\>\s|^\|.*\|/.test(trimmedCode)
+      
+      // If it doesn't look like code, has too many spaces, or looks like markdown, treat as regular text
+      if ((!hasCodePatterns && trimmedCode.length > 100) || isLikelyText || hasTooManySpaces || hasMarkdownPatterns) {
+        return _match // Return original markdown
+      }
+      
+      return `[source${lang ? ',' + lang : ''}]\n----\n${trimmedCode}\n----`
     })
     asciidoc = asciidoc.replace(/`([^`]+)`/g, '`$1`') // Inline code
+    
+    // Handle LaTeX math in inline code - preserve $...$ syntax
+    asciidoc = asciidoc.replace(/`\$([^$]+)\$`/g, '`$\\$1\\$$`')
+
+    // Convert images - use proper AsciiDoc image syntax
+    asciidoc = asciidoc.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, 'image::$2[$1,width=100%]')
+    
+    // Also handle the specific format: image::url[alt,width=100%] that's already in the content
+    // This ensures it's properly formatted for AsciiDoc
+    asciidoc = asciidoc.replace(/image::([^\[]+)\[([^\]]+),width=100%\]/g, 'image::$1[$2,width=100%]')
+
+    // Convert links
+    asciidoc = asciidoc.replace(/\[([^\]]+)\]\(([^)]+)\)/g, 'link:$2[$1]')
+
+    // Convert horizontal rules
+    asciidoc = asciidoc.replace(/^---$/gm, '\n---\n')
+
+    // Convert unordered lists
+    asciidoc = asciidoc.replace(/^(\s*)\*\s+(.+)$/gm, '$1* $2')
+    asciidoc = asciidoc.replace(/^(\s*)-\s+(.+)$/gm, '$1* $2')
+    asciidoc = asciidoc.replace(/^(\s*)\+\s+(.+)$/gm, '$1* $2')
+
+    // Convert ordered lists
+    asciidoc = asciidoc.replace(/^(\s*)\d+\.\s+(.+)$/gm, '$1. $2')
 
     // Convert blockquotes - handle multiline blockquotes properly with separate attribution
     asciidoc = asciidoc.replace(/^(>\s+.+(?:\n>\s+.+)*)/gm, (match) => {
@@ -263,8 +376,38 @@ class ContentParserService {
     // Convert images
     asciidoc = asciidoc.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, 'image::$2[$1]')
 
-    // Convert tables (basic support)
-    asciidoc = asciidoc.replace(/^\|(.+)\|$/gm, '|$1|')
+    // Convert tables (basic support) - handle markdown tables properly
+    asciidoc = asciidoc.replace(/^\|(.+)\|$/gm, (match, content) => {
+      // Check if this is a table row (not just a single cell)
+      const cells = content.split('|').map((cell: string) => cell.trim()).filter((cell: string) => cell)
+      if (cells.length > 1) {
+        return '|' + content + '|'
+      }
+      return match
+    })
+    
+    // Fix table rendering by ensuring proper AsciiDoc table format
+    asciidoc = asciidoc.replace(/(\|.*\|[\r\n]+\|[\s\-\|]*[\r\n]+(\|.*\|[\r\n]+)*)/g, (match) => {
+      const lines = match.trim().split('\n').filter(line => line.trim())
+      if (lines.length < 2) return match
+      
+      const headerRow = lines[0]
+      const separatorRow = lines[1]
+      const dataRows = lines.slice(2)
+      
+      // Check if it's actually a table (has separator row with dashes)
+      if (!separatorRow.includes('-')) return match
+      
+      // Convert to proper AsciiDoc table format
+      let tableAsciidoc = '[cols="1,1"]\n|===\n'
+      tableAsciidoc += headerRow + '\n'
+      dataRows.forEach(row => {
+        tableAsciidoc += row + '\n'
+      })
+      tableAsciidoc += '|==='
+      
+      return tableAsciidoc
+    })
 
     // Convert horizontal rules
     asciidoc = asciidoc.replace(/^---$/gm, '\'\'\'')
@@ -290,6 +433,22 @@ class ContentParserService {
     })
 
     return asciidoc
+  }
+
+  /**
+   * Process nostr: addresses in content
+   */
+  private processNostrAddresses(content: string): string {
+    let processed = content
+
+    // Process nostr: addresses - convert them to AsciiDoc link format
+    // This regex matches nostr: followed by any valid bech32 string
+    processed = processed.replace(/nostr:([a-z0-9]+[a-z0-9]{6,})/g, (_match, bech32Id) => {
+      // Create AsciiDoc link with nostr: prefix
+      return `link:nostr:${bech32Id}[${bech32Id}]`
+    })
+
+    return processed
   }
 
   /**
@@ -329,13 +488,33 @@ class ContentParserService {
   }
 
   /**
-   * Process wikilinks in HTML output
+   * Process wikilinks and nostr links in HTML output
    */
   private processWikilinksInHtml(html: string): string {
+    let processed = html
+    
     // Convert wikilink:dtag[display] format to HTML with data attributes
-    return html.replace(/wikilink:([^[]+)\[([^\]]+)\]/g, (_match, dTag, displayText) => {
+    processed = processed.replace(/wikilink:([^[]+)\[([^\]]+)\]/g, (_match, dTag, displayText) => {
       return `<span class="wikilink cursor-pointer text-blue-600 hover:text-blue-800 hover:underline border-b border-dotted border-blue-300" data-dtag="${dTag}" data-display="${displayText}">${displayText}</span>`
     })
+    
+    // Convert nostr: links to proper embedded components
+    processed = processed.replace(/link:nostr:([^[]+)\[([^\]]+)\]/g, (_match, bech32Id, displayText) => {
+      const nostrType = this.getNostrType(bech32Id)
+      
+      if (nostrType === 'nevent' || nostrType === 'naddr' || nostrType === 'note') {
+        // Render as embedded event
+        return `<div data-embedded-note="${bech32Id}" class="embedded-note-container">Loading embedded event...</div>`
+      } else if (nostrType === 'npub' || nostrType === 'nprofile') {
+        // Render as user handle
+        return `<span class="user-handle" data-pubkey="${bech32Id}">@${displayText}</span>`
+      } else {
+        // Fallback to regular link
+        return `<a href="nostr:${bech32Id}" class="nostr-link text-blue-600 hover:text-blue-800 hover:underline" data-nostr-type="${nostrType}" data-bech32="${bech32Id}">${displayText}</a>`
+      }
+    })
+    
+    return processed
   }
 
   /**
@@ -382,6 +561,16 @@ class ContentParserService {
         return _match
       }
       return `<a href="${url}" target="_blank" rel="noreferrer noopener" class="break-words inline-flex items-baseline gap-1">${text} <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg></a>`
+    })
+
+    // Fix broken HTML attributes that are being rendered as text
+    cleaned = cleaned.replace(/" target="_blank" rel="noreferrer noopener" class="break-words inline-flex items-baseline gap-1">([^<]+) <svg[^>]*><path[^>]*><\/path><\/svg><\/a>/g, (_match, text) => {
+      return `" target="_blank" rel="noreferrer noopener" class="break-words inline-flex items-baseline gap-1">${text} <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg></a>`
+    })
+
+    // Fix broken image HTML
+    cleaned = cleaned.replace(/" alt="([^"]*)" class="max-w-\[400px\] object-contain my-0" \/>/g, (_match, alt) => {
+      return `" alt="${alt}" class="max-w-[400px] object-contain my-0" />`
     })
 
     // Clean up markdown table syntax
@@ -780,6 +969,28 @@ class ContentParserService {
       default:
         return ''
     }
+  }
+
+  /**
+   * Add proper CSS classes for styling
+   */
+  private addStylingClasses(html: string): string {
+    let styled = html
+    
+    // Add strikethrough styling
+    styled = styled.replace(/<span class="line-through">([^<]+)<\/span>/g, '<span class="line-through line-through-2">$1</span>')
+    
+    // Add subscript styling
+    styled = styled.replace(/<span class="subscript">([^<]+)<\/span>/g, '<span class="subscript text-xs align-sub">$1</span>')
+    
+    // Add superscript styling
+    styled = styled.replace(/<span class="superscript">([^<]+)<\/span>/g, '<span class="superscript text-xs align-super">$1</span>')
+    
+    // Add code highlighting classes
+    styled = styled.replace(/<pre class="highlightjs[^"]*">/g, '<pre class="highlightjs hljs">')
+    styled = styled.replace(/<code class="highlightjs[^"]*">/g, '<code class="highlightjs hljs">')
+    
+    return styled
   }
 
   /**

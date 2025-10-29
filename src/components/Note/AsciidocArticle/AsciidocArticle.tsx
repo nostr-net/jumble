@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ExtendedKind } from '@/constants'
 
-export default function Article({
+export default function AsciidocArticle({
   event,
   className
 }: {
@@ -127,6 +127,60 @@ export default function Article({
           const usernameElement = document.createElement('span')
           usernameElement.innerHTML = `<span class="user-handle" data-pubkey="${pubkey}">@${handle.textContent}</span>`
           handle.parentNode?.replaceChild(usernameElement.firstChild!, handle)
+        }
+      })
+
+      // Process wikilinks
+      const wikilinks = contentRef.current?.querySelectorAll('.wikilink')
+      wikilinks?.forEach((wikilink) => {
+        const dTag = wikilink.getAttribute('data-dtag')
+        const displayText = wikilink.getAttribute('data-display')
+        if (dTag && displayText) {
+          // Add click handler for wikilinks
+          wikilink.addEventListener('click', (e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            const mouseEvent = e as MouseEvent
+            // Create dropdown menu similar to the original implementation
+            const existingDropdown = document.querySelector('.wikilink-dropdown')
+            if (existingDropdown) {
+              existingDropdown.remove()
+            }
+
+            const dropdown = document.createElement('div')
+            dropdown.className = 'wikilink-dropdown fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 p-2'
+            dropdown.style.left = `${mouseEvent.pageX}px`
+            dropdown.style.top = `${mouseEvent.pageY + 10}px`
+
+            const wikistrButton = document.createElement('button')
+            wikistrButton.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2'
+            wikistrButton.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>View on Wikistr'
+            wikistrButton.onclick = () => {
+              window.open(`https://wikistr.imwald.eu/${dTag}`, '_blank', 'noopener,noreferrer')
+              dropdown.remove()
+            }
+
+            const alexandriaButton = document.createElement('button')
+            alexandriaButton.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2'
+            alexandriaButton.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>View on Alexandria'
+            alexandriaButton.onclick = () => {
+              window.open(`https://next-alexandria.gitcitadel.eu/events?d=${dTag}`, '_blank', 'noopener,noreferrer')
+              dropdown.remove()
+            }
+
+            dropdown.appendChild(wikistrButton)
+            dropdown.appendChild(alexandriaButton)
+            document.body.appendChild(dropdown)
+
+            // Close dropdown when clicking outside
+            const closeDropdown = (e: MouseEvent) => {
+              if (!dropdown.contains(e.target as Node)) {
+                dropdown.remove()
+                document.removeEventListener('click', closeDropdown)
+              }
+            }
+            setTimeout(() => document.addEventListener('click', closeDropdown), 0)
+          })
         }
       })
     }

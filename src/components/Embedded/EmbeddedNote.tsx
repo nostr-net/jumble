@@ -51,12 +51,14 @@ export function EmbeddedNote({ noteId, className }: { noteId: string; className?
   }
 
   return (
-    <MainNoteCard
-      className={cn('w-full', className)}
-      event={finalEvent}
-      embedded
-      originalNoteId={noteId}
-    />
+    <div data-embedded-note>
+      <MainNoteCard
+        className={cn('w-full', className)}
+        event={finalEvent}
+        embedded
+        originalNoteId={noteId}
+      />
+    </div>
   )
 }
 

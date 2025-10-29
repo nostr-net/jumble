@@ -9,14 +9,19 @@ export type MarkupType = 'asciidoc' | 'advanced-markdown' | 'basic-markdown' | '
  */
 export function detectMarkupType(content: string, eventKind?: number): MarkupType {
   // Publications and wikis use AsciiDoc
-  if (eventKind === 30040 || eventKind === 30041 || eventKind === 30818) {
+  if (eventKind === 30041 || eventKind === 30818) {
     return 'asciidoc'
+  }
+  
+  // Long Form Articles (kind 30023) should use markdown detection
+  if (eventKind === 30023) {
+    // Force markdown detection for long form articles
+    return 'advanced-markdown'
   }
 
   // Check for AsciiDoc syntax patterns
   const asciidocPatterns = [
-    /^=+\s/,           // Headers: = Title, == Section
-    /^\*+\s/,          // Lists: * item
+    /^=+\s[^=]/,       // Headers: = Title (but not == Requirements ==)
     /^\.+\s/,          // Lists: . item
     /^\[\[/,           // Cross-references: [[ref]]
     /^<</,             // Cross-references: <<ref>>
@@ -49,6 +54,7 @@ export function detectMarkupType(content: string, eventKind?: number): MarkupTyp
     /\[\^[\w\d]+\]/,   // Footnotes: [^1]
     /\[\^[\w\d]+\]:/,  // Footnote references: [^1]:
     /\[\[[\w\-\s]+\]\]/, // Wikilinks: [[NIP-54]]
+    /^==\s+[^=]/,      // Markdown-style headers: == Requirements ==
   ]
 
   const hasAdvancedMarkdown = advancedMarkdownPatterns.some(pattern => pattern.test(content))

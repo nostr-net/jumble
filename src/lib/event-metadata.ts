@@ -237,7 +237,7 @@ export function getLongFormArticleMetadataFromEvent(event: Event) {
   })
 
   if (!title) {
-    title = event.tags.find(tagNameEquals('d'))?.[1] ?? 'no title'
+    title = event.tags.find(tagNameEquals('d'))?.[1]
   }
 
   return { title, summary, image, tags: Array.from(tags) }

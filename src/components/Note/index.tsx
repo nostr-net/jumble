@@ -27,8 +27,8 @@ import Highlight from './Highlight'
 import IValue from './IValue'
 import LiveEvent from './LiveEvent'
 import LongFormArticlePreview from './LongFormArticlePreview'
-import Article from './Article'
-import SimpleContent from './SimpleContent'
+import MarkdownArticle from './MarkdownArticle/MarkdownArticle'
+import AsciidocArticle from './AsciidocArticle/AsciidocArticle'
 import PublicationCard from './PublicationCard'
 import WikiCard from './WikiCard'
 import MutedNote from './MutedNote'
@@ -99,23 +99,23 @@ export default function Note({
         <div>Context: {event.tags.find(tag => tag[0] === 'context')?.[1] || 'No context found'}</div>
       </div>
     }
-  } else if (event.kind === kinds.LongFormArticle) {
-    content = showFull ? (
-      <Article className="mt-2" event={event} />
-    ) : (
-      <LongFormArticlePreview className="mt-2" event={event} />
-    )
   } else if (event.kind === ExtendedKind.WIKI_ARTICLE) {
     content = showFull ? (
-      <Article className="mt-2" event={event} />
+      <AsciidocArticle className="mt-2" event={event} />
     ) : (
       <WikiCard className="mt-2" event={event} />
     )
   } else if (event.kind === ExtendedKind.PUBLICATION) {
     content = showFull ? (
-      <Article className="mt-2" event={event} />
+      <AsciidocArticle className="mt-2" event={event} />
     ) : (
       <PublicationCard className="mt-2" event={event} />
+    )
+  } else if (event.kind === kinds.LongFormArticle) {
+    content = showFull ? (
+      <MarkdownArticle className="mt-2" event={event} />
+    ) : (
+      <LongFormArticlePreview className="mt-2" event={event} />
     )
   } else if (event.kind === kinds.LiveEvent) {
     content = <LiveEvent className="mt-2" event={event} />
@@ -152,7 +152,8 @@ export default function Note({
   } else if (event.kind === ExtendedKind.ZAP_REQUEST || event.kind === ExtendedKind.ZAP_RECEIPT) {
     content = <Zap className="mt-2" event={event} />
   } else {
-    content = <SimpleContent className="mt-2" event={event} />
+    // Use MarkdownArticle for all other kinds (including kinds 1 and 11)
+    content = <MarkdownArticle className="mt-2" event={event} />
   }
 
   return (
@@ -161,7 +162,7 @@ export default function Note({
       onClick={(e) => {
         // Don't navigate if clicking on interactive elements
         const target = e.target as HTMLElement
-        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a')) {
+        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a') || target.closest('[data-embedded-note]')) {
           return
         }
         navigateToNote(toNote(event))

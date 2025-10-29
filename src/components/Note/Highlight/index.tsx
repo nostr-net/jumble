@@ -136,7 +136,9 @@ export default function Highlight({
                   <span
                     onClick={(e) => {
                       e.stopPropagation()
-                      navigateToNote(toNote(source.bech32))
+                      const noteUrl = toNote(source.bech32)
+                      console.log('Navigating to:', noteUrl, 'from source:', source)
+                      navigateToNote(noteUrl)
                     }}
                     className="text-blue-500 hover:underline font-mono cursor-pointer"
                   >
