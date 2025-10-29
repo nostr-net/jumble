@@ -1,10 +1,12 @@
 import { SecondaryPageLink, useSecondaryPage } from '@/PageManager'
 import ImageWithLightbox from '@/components/ImageWithLightbox'
+import ImageCarousel from '@/components/ImageCarousel/ImageCarousel'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNote, toNoteList, toProfile } from '@/lib/link'
-import { ExternalLink } from 'lucide-react'
+import { extractAllImagesFromEvent } from '@/lib/image-extraction'
+import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
-import React, { useMemo, useEffect, useRef } from 'react'
+import React, { useMemo, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -13,6 +15,8 @@ import 'katex/dist/katex.min.css'
 import NostrNode from './NostrNode'
 import { remarkNostr } from './remarkNostr'
 import { Components } from './types'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 export default function MarkdownArticle({
   event,
@@ -23,6 +27,10 @@ export default function MarkdownArticle({
 }) {
   const { push } = useSecondaryPage()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
+  const [isImagesOpen, setIsImagesOpen] = useState(false)
+  
+  // Extract all images from the event
+  const allImages = useMemo(() => extractAllImagesFromEvent(event), [event])
   const contentRef = useRef<HTMLDivElement>(null)
 
   // Initialize highlight.js for syntax highlighting
@@ -156,15 +164,10 @@ export default function MarkdownArticle({
           
           return <>{children}</>
         },
-        img: (props) => (
-          <ImageWithLightbox
-            image={{ url: props.src || '', pubkey: event.pubkey }}
-            className="max-w-[400px] object-contain my-0"
-            classNames={{
-              wrapper: 'w-fit max-w-[400px]'
-            }}
-          />
-        )
+        img: () => {
+          // Don't render inline images - they'll be shown in the carousel
+          return null
+        }
       }) as Components,
     []
   )
@@ -269,6 +272,21 @@ export default function MarkdownArticle({
       >
         {event.content}
       </Markdown>
+      
+      {/* Image Carousel - Collapsible */}
+      {allImages.length > 0 && (
+        <Collapsible open={isImagesOpen} onOpenChange={setIsImagesOpen} className="mt-8">
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" className="w-full justify-between">
+              <span>Images in this article ({allImages.length})</span>
+              {isImagesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-4">
+            <ImageCarousel images={allImages} />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
       {metadata.tags.length > 0 && (
         <div className="flex gap-2 flex-wrap pb-2">
           {metadata.tags.map((tag) => (

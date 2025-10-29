@@ -1,5 +1,5 @@
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
-import { toNoteList } from '@/lib/link'
+import { toNote, toNoteList } from '@/lib/link'
 import { useSecondaryPage } from '@/PageManager'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
@@ -18,6 +18,11 @@ export default function LongFormArticlePreview({
   const { push } = useSecondaryPage()
   const { autoLoadMedia } = useContentPolicy()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    push(toNote(event.id))
+  }
 
   const titleComponent = <div className="text-xl font-semibold line-clamp-2">{metadata.title}</div>
 
@@ -45,17 +50,22 @@ export default function LongFormArticlePreview({
   if (isSmallScreen) {
     return (
       <div className={className}>
-        {metadata.image && autoLoadMedia && (
-          <Image
-            image={{ url: metadata.image, pubkey: event.pubkey }}
-            className="w-full max-w-[400px] aspect-video"
-            hideIfError
-          />
-        )}
-        <div className="space-y-1">
-          {titleComponent}
-          {summaryComponent}
-          {tagsComponent}
+        <div 
+          className="cursor-pointer rounded-lg border p-4 hover:bg-muted/50 transition-colors"
+          onClick={handleCardClick}
+        >
+          {metadata.image && autoLoadMedia && (
+            <Image
+              image={{ url: metadata.image, pubkey: event.pubkey }}
+              className="w-full max-w-[400px] aspect-video mb-3"
+              hideIfError
+            />
+          )}
+          <div className="space-y-1">
+            {titleComponent}
+            {summaryComponent}
+            {tagsComponent}
+          </div>
         </div>
       </div>
     )
@@ -63,18 +73,23 @@ export default function LongFormArticlePreview({
 
   return (
     <div className={className}>
-      <div className="flex gap-4">
-        {metadata.image && autoLoadMedia && (
-          <Image
-            image={{ url: metadata.image, pubkey: event.pubkey }}
-            className="rounded-lg aspect-[4/3] xl:aspect-video object-cover bg-foreground h-44 max-w-[400px]"
-            hideIfError
-          />
-        )}
-        <div className="flex-1 w-0 space-y-1">
-          {titleComponent}
-          {summaryComponent}
-          {tagsComponent}
+      <div 
+        className="cursor-pointer rounded-lg border p-4 hover:bg-muted/50 transition-colors"
+        onClick={handleCardClick}
+      >
+        <div className="flex gap-4">
+          {metadata.image && autoLoadMedia && (
+            <Image
+              image={{ url: metadata.image, pubkey: event.pubkey }}
+              className="rounded-lg aspect-[4/3] xl:aspect-video object-cover bg-foreground h-44 max-w-[400px]"
+              hideIfError
+            />
+          )}
+          <div className="flex-1 w-0 space-y-1">
+            {titleComponent}
+            {summaryComponent}
+            {tagsComponent}
+          </div>
         </div>
       </div>
     </div>

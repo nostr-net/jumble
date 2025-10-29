@@ -106,6 +106,8 @@ export default function Note({
       <WikiCard className="mt-2" event={event} />
     )
   } else if (event.kind === ExtendedKind.PUBLICATION) {
+    content = <PublicationCard className="mt-2" event={event} />
+  } else if (event.kind === ExtendedKind.PUBLICATION_CONTENT) {
     content = showFull ? (
       <AsciidocArticle className="mt-2" event={event} />
     ) : (
