@@ -8,6 +8,7 @@ import client from '@/services/client.service'
 import logger from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { MoreVertical } from 'lucide-react'
+import indexedDb from '@/services/indexed-db.service'
 
 interface PublicationReference {
   coordinate: string
@@ -208,10 +209,17 @@ export default function PublicationIndex({
 
   useEffect(() => {
     setVisitedIndices(prev => new Set([...prev, currentCoordinate]))
-  }, [currentCoordinate])
+    
+    // Cache the current publication index event using its actual event ID
+    indexedDb.putPublicationEvent(event).catch(err => {
+      logger.error('[PublicationIndex] Error caching publication event:', err)
+    })
+  }, [currentCoordinate, event])
 
   // Fetch referenced events
   useEffect(() => {
+    let isMounted = true
+    
     const fetchReferences = async () => {
       setIsLoading(true)
       const fetchedRefs: PublicationReference[] = []
@@ -219,47 +227,88 @@ export default function PublicationIndex({
       // Capture current visitedIndices at the start of the fetch
       const currentVisited = visitedIndices
       
-      for (const ref of referencesData) {
-        // Skip if this is a 30040 event we've already visited (prevent circular references)
-        if (ref.kind === ExtendedKind.PUBLICATION) {
-          if (currentVisited.has(ref.coordinate)) {
-            logger.debug('[PublicationIndex] Skipping visited 30040 index:', ref.coordinate)
-            fetchedRefs.push({ ...ref, event: undefined })
-            continue
-          }
+      // Add a timeout to prevent infinite loading on mobile
+      const timeout = setTimeout(() => {
+        if (isMounted) {
+          logger.warn('[PublicationIndex] Fetch timeout reached, setting loaded state')
+          setIsLoading(false)
         }
-
-        try {
-          // Generate bech32 ID from the 'a' tag
-          const aTag = ['a', ref.coordinate, ref.relay || '', ref.eventId || '']
-          const bech32Id = generateBech32IdFromATag(aTag)
+      }, 30000) // 30 second timeout
+      
+      try {
+        for (const ref of referencesData) {
+          if (!isMounted) break
           
-          if (bech32Id) {
-            const fetchedEvent = await client.fetchEvent(bech32Id)
-            if (fetchedEvent) {
-              fetchedRefs.push({ ...ref, event: fetchedEvent })
-            } else {
-              logger.warn('[PublicationIndex] Could not fetch event for:', ref.coordinate)
+          // Skip if this is a 30040 event we've already visited (prevent circular references)
+          if (ref.kind === ExtendedKind.PUBLICATION) {
+            if (currentVisited.has(ref.coordinate)) {
+              logger.debug('[PublicationIndex] Skipping visited 30040 index:', ref.coordinate)
+              fetchedRefs.push({ ...ref, event: undefined })
+              continue
+            }
+          }
+
+          try {
+            // Generate bech32 ID from the 'a' tag
+            const aTag = ['a', ref.coordinate, ref.relay || '', ref.eventId || '']
+            const bech32Id = generateBech32IdFromATag(aTag)
+            
+            if (bech32Id) {
+              // First, check if we have this event by its eventId in the ref
+              let fetchedEvent: Event | undefined = undefined
+              
+              if (ref.eventId) {
+                // Try to get by event ID first
+                fetchedEvent = await indexedDb.getPublicationEvent(ref.eventId)
+              }
+              
+              // If not found by event ID, try to fetch from relay
+              if (!fetchedEvent) {
+                fetchedEvent = await client.fetchEvent(bech32Id)
+                // Save to cache using the fetched event's ID as the key
+                if (fetchedEvent) {
+                  await indexedDb.putPublicationEvent(fetchedEvent)
+                  logger.debug('[PublicationIndex] Cached event with ID:', fetchedEvent.id)
+                }
+              } else {
+                logger.debug('[PublicationIndex] Loaded from cache by event ID:', ref.eventId)
+              }
+              
+              if (fetchedEvent && isMounted) {
+                fetchedRefs.push({ ...ref, event: fetchedEvent })
+              } else if (isMounted) {
+                logger.warn('[PublicationIndex] Could not fetch event for:', ref.coordinate)
+                fetchedRefs.push({ ...ref, event: undefined })
+              }
+            } else if (isMounted) {
+              logger.warn('[PublicationIndex] Could not generate bech32 ID for:', ref.coordinate)
               fetchedRefs.push({ ...ref, event: undefined })
             }
-          } else {
-            logger.warn('[PublicationIndex] Could not generate bech32 ID for:', ref.coordinate)
-            fetchedRefs.push({ ...ref, event: undefined })
+          } catch (error) {
+            logger.error('[PublicationIndex] Error fetching reference:', error)
+            if (isMounted) {
+              fetchedRefs.push({ ...ref, event: undefined })
+            }
           }
-        } catch (error) {
-          logger.error('[PublicationIndex] Error fetching reference:', error)
-          fetchedRefs.push({ ...ref, event: undefined })
         }
+        
+        if (isMounted) {
+          setReferences(fetchedRefs)
+          setIsLoading(false)
+        }
+      } finally {
+        clearTimeout(timeout)
       }
-      
-      setReferences(fetchedRefs)
-      setIsLoading(false)
     }
 
     if (referencesData.length > 0) {
       fetchReferences()
     } else {
       setIsLoading(false)
+    }
+    
+    return () => {
+      isMounted = false
     }
   }, [referencesData, visitedIndices]) // Now include visitedIndices but capture it inside
 
@@ -326,7 +375,17 @@ export default function PublicationIndex({
 
       {/* Content - render referenced events */}
       {isLoading ? (
-        <div className="text-muted-foreground">Loading publication content...</div>
+        <div className="text-muted-foreground">
+          <div>Loading publication content...</div>
+          <div className="text-xs mt-2">If this takes too long, the content may not be available.</div>
+        </div>
+      ) : references.length === 0 ? (
+        <div className="p-6 border rounded-lg bg-muted/30 text-center">
+          <div className="text-lg font-semibold mb-2">No content loaded</div>
+          <div className="text-sm text-muted-foreground">
+            Unable to load publication content. The referenced events may not be available on the current relays.
+          </div>
+        </div>
       ) : (
         <div className="space-y-8">
           {references.map((ref, index) => {

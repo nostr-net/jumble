@@ -26,7 +26,8 @@ const StoreNames = {
   RELAY_SETS: 'relaySets',
   FOLLOWING_FAVORITE_RELAYS: 'followingFavoriteRelays',
   RELAY_INFOS: 'relayInfos',
-  RELAY_INFO_EVENTS: 'relayInfoEvents' // deprecated
+  RELAY_INFO_EVENTS: 'relayInfoEvents', // deprecated
+  PUBLICATION_EVENTS: 'publicationEvents'
 }
 
 class IndexedDbService {
@@ -45,7 +46,7 @@ class IndexedDbService {
   init(): Promise<void> {
     if (!this.initPromise) {
       this.initPromise = new Promise((resolve, reject) => {
-        const request = window.indexedDB.open('jumble', 11)
+        const request = window.indexedDB.open('jumble', 12)
 
         request.onerror = (event) => {
           reject(event)
@@ -108,6 +109,9 @@ class IndexedDbService {
           }
           if (db.objectStoreNames.contains(StoreNames.RELAY_INFO_EVENTS)) {
             db.deleteObjectStore(StoreNames.RELAY_INFO_EVENTS)
+          }
+          if (!db.objectStoreNames.contains(StoreNames.PUBLICATION_EVENTS)) {
+            db.createObjectStore(StoreNames.PUBLICATION_EVENTS, { keyPath: 'key' })
           }
           this.db = db
         }
@@ -477,9 +481,61 @@ class IndexedDbService {
         return StoreNames.USER_EMOJI_LIST_EVENTS
       case kinds.Emojisets:
         return StoreNames.EMOJI_SET_EVENTS
+      case ExtendedKind.PUBLICATION:
+      case ExtendedKind.PUBLICATION_CONTENT:
+      case ExtendedKind.WIKI_ARTICLE:
+      case kinds.LongFormArticle:
+        return StoreNames.PUBLICATION_EVENTS
       default:
         return undefined
     }
+  }
+
+  async putPublicationEvent(event: Event): Promise<Event> {
+    await this.initPromise
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        return reject('database not initialized')
+      }
+      const transaction = this.db.transaction(StoreNames.PUBLICATION_EVENTS, 'readwrite')
+      const store = transaction.objectStore(StoreNames.PUBLICATION_EVENTS)
+
+      const key = event.id
+      // Always update, as these are not replaceable events
+      const putRequest = store.put(this.formatValue(key, event))
+      putRequest.onsuccess = () => {
+        transaction.commit()
+        resolve(event)
+      }
+
+      putRequest.onerror = (event) => {
+        transaction.commit()
+        reject(event)
+      }
+    })
+  }
+
+  async getPublicationEvent(eventId: string): Promise<Event | undefined> {
+    await this.initPromise
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        return reject('database not initialized')
+      }
+      const transaction = this.db.transaction(StoreNames.PUBLICATION_EVENTS, 'readonly')
+      const store = transaction.objectStore(StoreNames.PUBLICATION_EVENTS)
+      const request = store.get(eventId)
+
+      request.onsuccess = () => {
+        transaction.commit()
+        const cachedValue = (request.result as TValue<Event>)?.value
+        resolve(cachedValue || undefined)
+      }
+
+      request.onerror = (event) => {
+        transaction.commit()
+        reject(event)
+      }
+    })
   }
 
   private formatValue<T>(key: string, value: T): TValue<T> {
