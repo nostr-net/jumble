@@ -1,5 +1,5 @@
 import { Event } from 'nostr-tools'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, forwardRef, useImperativeHandle } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useNostr } from '@/providers/NostrProvider'
@@ -12,13 +12,11 @@ import { Skeleton } from '../ui/skeleton'
 
 type TabValue = 'bookmarks' | 'hashtags' | 'pins'
 
-export default function ProfileBookmarksAndHashtags({
-  pubkey,
-  initialTab = 'pins'
-}: {
+const ProfileBookmarksAndHashtags = forwardRef<{ refresh: () => void }, {
   pubkey: string
   initialTab?: TabValue
-}) {
+  searchQuery?: string
+}>(({ pubkey, initialTab = 'pins', searchQuery = '' }, ref) => {
   const { t } = useTranslation()
   const { pubkey: myPubkey } = useNostr()
   const { favoriteRelays } = useFavoriteRelays()
@@ -31,6 +29,16 @@ export default function ProfileBookmarksAndHashtags({
   const [bookmarkListEvent, setBookmarkListEvent] = useState<Event | null>(null)
   const [interestListEvent, setInterestListEvent] = useState<Event | null>(null)
   const [pinListEvent, setPinListEvent] = useState<Event | null>(null)
+  
+  // Retry state for each tab
+  const [retryCountBookmarks, setRetryCountBookmarks] = useState(0)
+  const [retryCountHashtags, setRetryCountHashtags] = useState(0)
+  const [retryCountPins, setRetryCountPins] = useState(0)
+  const [isRetryingBookmarks, setIsRetryingBookmarks] = useState(false)
+  const [isRetryingHashtags, setIsRetryingHashtags] = useState(false)
+  const [isRetryingPins, setIsRetryingPins] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const maxRetries = 3
 
   // Build comprehensive relay list for fetching bookmark and interest list events
   // Using the same comprehensive relay list construction as pin lists
@@ -57,8 +65,14 @@ export default function ProfileBookmarksAndHashtags({
   }, [myPubkey, favoriteRelays])
 
   // Fetch bookmark list event and associated events
-  const fetchBookmarks = useCallback(async () => {
-    setLoadingBookmarks(true)
+  const fetchBookmarks = useCallback(async (isRetry = false, isRefresh = false) => {
+    if (!isRetry && !isRefresh) {
+      setLoadingBookmarks(true)
+      setRetryCountBookmarks(0)
+    } else if (isRetry) {
+      setIsRetryingBookmarks(true)
+    }
+    
     try {
       const comprehensiveRelays = await buildComprehensiveRelayList()
       
@@ -96,7 +110,19 @@ export default function ProfileBookmarksAndHashtags({
               limit: 100
             })
             logger.debug('[ProfileBookmarksAndHashtags] Fetched', events.length, 'bookmark events')
-            setBookmarkEvents(events)
+            
+            if (isRefresh) {
+              // For refresh, append new events and deduplicate
+              setBookmarkEvents(prevEvents => {
+                const existingIds = new Set(prevEvents.map(e => e.id))
+                const newEvents = events.filter(event => !existingIds.has(event.id))
+                const combinedEvents = [...newEvents, ...prevEvents]
+                // Re-sort the combined events
+                return combinedEvents.sort((a, b) => b.created_at - a.created_at)
+              })
+            } else {
+              setBookmarkEvents(events)
+            }
           } catch (error) {
             logger.warn('[ProfileBookmarksAndHashtags] Error fetching bookmark events:', error)
             setBookmarkEvents([])
@@ -107,17 +133,44 @@ export default function ProfileBookmarksAndHashtags({
       } else {
         setBookmarkEvents([])
       }
+      
+      // Reset retry count on successful fetch
+      if (isRetry) {
+        setRetryCountBookmarks(0)
+      }
     } catch (error) {
-      logger.component('ProfileBookmarksAndHashtags', 'Error fetching bookmarks', { error: (error as Error).message })
-      setBookmarkEvents([])
+      logger.component('ProfileBookmarksAndHashtags', 'Error fetching bookmarks', { error: (error as Error).message, retryCount: isRetry ? retryCountBookmarks + 1 : 0 })
+      
+      // If this is not a retry and we haven't exceeded max retries, schedule a retry
+      if (!isRetry && retryCountBookmarks < maxRetries) {
+        console.log('[ProfileBookmarksAndHashtags] Scheduling bookmark retry', retryCountBookmarks + 1, 'of', maxRetries)
+        // Use shorter delays for initial retries, then exponential backoff
+        const delay = retryCountBookmarks === 0 ? 1000 : retryCountBookmarks === 1 ? 2000 : 3000
+        setTimeout(() => {
+          setRetryCountBookmarks(prev => prev + 1)
+          fetchBookmarks(true)
+        }, delay)
+      } else {
+        setBookmarkEvents([])
+      }
     } finally {
       setLoadingBookmarks(false)
+      setIsRetryingBookmarks(false)
+      if (isRefresh) {
+        setIsRefreshing(false)
+      }
     }
-  }, [pubkey, buildComprehensiveRelayList])
+  }, [pubkey, buildComprehensiveRelayList, retryCountBookmarks, maxRetries])
 
   // Fetch interest list event and associated events
-  const fetchHashtags = useCallback(async () => {
-    setLoadingHashtags(true)
+  const fetchHashtags = useCallback(async (isRetry = false, isRefresh = false) => {
+    if (!isRetry && !isRefresh) {
+      setLoadingHashtags(true)
+      setRetryCountHashtags(0)
+    } else if (isRetry) {
+      setIsRetryingHashtags(true)
+    }
+    
     try {
       const comprehensiveRelays = await buildComprehensiveRelayList()
       
@@ -155,7 +208,19 @@ export default function ProfileBookmarksAndHashtags({
               limit: 100
             })
             // console.log('[ProfileBookmarksAndHashtags] Fetched', events.length, 'hashtag events')
-            setHashtagEvents(events)
+            
+            if (isRefresh) {
+              // For refresh, append new events and deduplicate
+              setHashtagEvents(prevEvents => {
+                const existingIds = new Set(prevEvents.map(e => e.id))
+                const newEvents = events.filter(event => !existingIds.has(event.id))
+                const combinedEvents = [...newEvents, ...prevEvents]
+                // Re-sort the combined events
+                return combinedEvents.sort((a, b) => b.created_at - a.created_at)
+              })
+            } else {
+              setHashtagEvents(events)
+            }
           } catch (error) {
             logger.component('ProfileBookmarksAndHashtags', 'Error fetching hashtag events', { error: (error as Error).message })
             setHashtagEvents([])
@@ -166,17 +231,44 @@ export default function ProfileBookmarksAndHashtags({
       } else {
         setHashtagEvents([])
       }
+      
+      // Reset retry count on successful fetch
+      if (isRetry) {
+        setRetryCountHashtags(0)
+      }
     } catch (error) {
-      logger.component('ProfileBookmarksAndHashtags', 'Error fetching hashtags', { error: (error as Error).message })
-      setHashtagEvents([])
+      logger.component('ProfileBookmarksAndHashtags', 'Error fetching hashtags', { error: (error as Error).message, retryCount: isRetry ? retryCountHashtags + 1 : 0 })
+      
+      // If this is not a retry and we haven't exceeded max retries, schedule a retry
+      if (!isRetry && retryCountHashtags < maxRetries) {
+        console.log('[ProfileBookmarksAndHashtags] Scheduling hashtag retry', retryCountHashtags + 1, 'of', maxRetries)
+        // Use shorter delays for initial retries, then exponential backoff
+        const delay = retryCountHashtags === 0 ? 1000 : retryCountHashtags === 1 ? 2000 : 3000
+        setTimeout(() => {
+          setRetryCountHashtags(prev => prev + 1)
+          fetchHashtags(true)
+        }, delay)
+      } else {
+        setHashtagEvents([])
+      }
     } finally {
       setLoadingHashtags(false)
+      setIsRetryingHashtags(false)
+      if (isRefresh) {
+        setIsRefreshing(false)
+      }
     }
-  }, [pubkey, buildComprehensiveRelayList])
+  }, [pubkey, buildComprehensiveRelayList, retryCountHashtags, maxRetries])
 
   // Fetch pin list event and associated events
-  const fetchPins = useCallback(async () => {
-    setLoadingPins(true)
+  const fetchPins = useCallback(async (isRetry = false, isRefresh = false) => {
+    if (!isRetry && !isRefresh) {
+      setLoadingPins(true)
+      setRetryCountPins(0)
+    } else if (isRetry) {
+      setIsRetryingPins(true)
+    }
+    
     try {
       const comprehensiveRelays = await buildComprehensiveRelayList()
       
@@ -218,7 +310,19 @@ export default function ProfileBookmarksAndHashtags({
               limit: 100
             })
             logger.debug('[ProfileBookmarksAndHashtags] Fetched', events.length, 'pin events')
-            setPinEvents(events)
+            
+            if (isRefresh) {
+              // For refresh, append new events and deduplicate
+              setPinEvents(prevEvents => {
+                const existingIds = new Set(prevEvents.map(e => e.id))
+                const newEvents = events.filter(event => !existingIds.has(event.id))
+                const combinedEvents = [...newEvents, ...prevEvents]
+                // Re-sort the combined events
+                return combinedEvents.sort((a, b) => b.created_at - a.created_at)
+              })
+            } else {
+              setPinEvents(events)
+            }
           } catch (error) {
             logger.warn('[ProfileBookmarksAndHashtags] Error fetching pin events:', error)
             setPinEvents([])
@@ -229,21 +333,64 @@ export default function ProfileBookmarksAndHashtags({
       } else {
         setPinEvents([])
       }
+      
+      // Reset retry count on successful fetch
+      if (isRetry) {
+        setRetryCountPins(0)
+      }
     } catch (error) {
-      logger.component('ProfileBookmarksAndHashtags', 'Error fetching pins', { error: (error as Error).message })
-      setPinEvents([])
+      logger.component('ProfileBookmarksAndHashtags', 'Error fetching pins', { error: (error as Error).message, retryCount: isRetry ? retryCountPins + 1 : 0 })
+      
+      // If this is not a retry and we haven't exceeded max retries, schedule a retry
+      if (!isRetry && retryCountPins < maxRetries) {
+        console.log('[ProfileBookmarksAndHashtags] Scheduling pin retry', retryCountPins + 1, 'of', maxRetries)
+        // Use shorter delays for initial retries, then exponential backoff
+        const delay = retryCountPins === 0 ? 1000 : retryCountPins === 1 ? 2000 : 3000
+        setTimeout(() => {
+          setRetryCountPins(prev => prev + 1)
+          fetchPins(true)
+        }, delay)
+      } else {
+        setPinEvents([])
+      }
     } finally {
       setLoadingPins(false)
+      setIsRetryingPins(false)
+      if (isRefresh) {
+        setIsRefreshing(false)
+      }
     }
-  }, [pubkey, buildComprehensiveRelayList])
+  }, [pubkey, buildComprehensiveRelayList, retryCountPins, maxRetries])
 
 
-  // Fetch data when component mounts or pubkey changes
-  useEffect(() => {
-    fetchBookmarks()
-    fetchHashtags()
-    fetchPins()
+  // Expose refresh function to parent component
+  const refresh = useCallback(() => {
+    setRetryCountBookmarks(0)
+    setRetryCountHashtags(0)
+    setRetryCountPins(0)
+    setIsRefreshing(true)
+    fetchBookmarks(false, true) // isRetry = false, isRefresh = true
+    fetchHashtags(false, true) // isRetry = false, isRefresh = true
+    fetchPins(false, true) // isRetry = false, isRefresh = true
   }, [fetchBookmarks, fetchHashtags, fetchPins])
+
+  useImperativeHandle(ref, () => ({
+    refresh
+  }), [refresh])
+
+  // Fetch data when component mounts or pubkey changes with a small delay
+  useEffect(() => {
+    if (pubkey) {
+      // Add a small delay to let the component fully mount and relays to be ready
+      const timer = setTimeout(() => {
+        fetchBookmarks()
+        fetchHashtags()
+        fetchPins()
+      }, 500) // 500ms delay
+      
+      return () => clearTimeout(timer)
+    }
+  }, [pubkey]) // Only depend on pubkey to avoid loops
 
   // Check if the requested tab has content
   const hasContent = useMemo(() => {
@@ -263,19 +410,77 @@ export default function ProfileBookmarksAndHashtags({
   const isLoading = useMemo(() => {
     switch (initialTab) {
       case 'pins':
-        return loadingPins
+        return loadingPins || isRetryingPins
       case 'bookmarks':
-        return loadingBookmarks
+        return loadingBookmarks || isRetryingBookmarks
       case 'hashtags':
-        return loadingHashtags
+        return loadingHashtags || isRetryingHashtags
       default:
         return false
     }
-  }, [initialTab, loadingPins, loadingBookmarks, loadingHashtags])
+  }, [initialTab, loadingPins, loadingBookmarks, loadingHashtags, isRetryingPins, isRetryingBookmarks, isRetryingHashtags])
+
+  // Get retry info for current tab
+  const getRetryInfo = () => {
+    switch (initialTab) {
+      case 'pins':
+        return { isRetrying: isRetryingPins, retryCount: retryCountPins }
+      case 'bookmarks':
+        return { isRetrying: isRetryingBookmarks, retryCount: retryCountBookmarks }
+      case 'hashtags':
+        return { isRetrying: isRetryingHashtags, retryCount: retryCountHashtags }
+      default:
+        return { isRetrying: false, retryCount: 0 }
+    }
+  }
+
+  const { isRetrying, retryCount } = getRetryInfo()
+
+  // Filter events based on search query for each tab
+  const filteredBookmarkEvents = useMemo(() => {
+    if (!searchQuery.trim()) return bookmarkEvents
+    
+    const query = searchQuery.toLowerCase()
+    return bookmarkEvents.filter(event => 
+      event.content.toLowerCase().includes(query) ||
+      event.tags.some(tag => 
+        tag.length > 1 && tag[1]?.toLowerCase().includes(query)
+      )
+    )
+  }, [bookmarkEvents, searchQuery])
+
+  const filteredHashtagEvents = useMemo(() => {
+    if (!searchQuery.trim()) return hashtagEvents
+    
+    const query = searchQuery.toLowerCase()
+    return hashtagEvents.filter(event => 
+      event.content.toLowerCase().includes(query) ||
+      event.tags.some(tag => 
+        tag.length > 1 && tag[1]?.toLowerCase().includes(query)
+      )
+    )
+  }, [hashtagEvents, searchQuery])
+
+  const filteredPinEvents = useMemo(() => {
+    if (!searchQuery.trim()) return pinEvents
+    
+    const query = searchQuery.toLowerCase()
+    return pinEvents.filter(event => 
+      event.content.toLowerCase().includes(query) ||
+      event.tags.some(tag => 
+        tag.length > 1 && tag[1]?.toLowerCase().includes(query)
+      )
+    )
+  }, [pinEvents, searchQuery])
 
   if (isLoading) {
     return (
       <div className="space-y-2">
+        {isRetrying && retryCount > 0 && (
+          <div className="text-center py-2 text-sm text-muted-foreground">
+            Retrying... ({retryCount}/{maxRetries})
+          </div>
+        )}
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-32 w-full" />
         ))}
@@ -291,6 +496,13 @@ export default function ProfileBookmarksAndHashtags({
   // Render content based on initial tab
   const renderContent = () => {
     if (initialTab === 'pins') {
+      if (isRefreshing) {
+        return (
+          <div className="px-4 py-2 text-sm text-green-500 text-center">
+            🔄 Refreshing pins...
+          </div>
+        )
+      }
       if (loadingPins) {
         return (
           <div className="space-y-2">
@@ -308,11 +520,24 @@ export default function ProfileBookmarksAndHashtags({
           </div>
         )
       }
+
+      if (filteredPinEvents.length === 0 && searchQuery.trim()) {
+        return (
+          <div className="text-center py-8 text-muted-foreground">
+            No pins match your search
+          </div>
+        )
+      }
       
       return (
         <div className="min-h-screen">
+          {searchQuery.trim() && (
+            <div className="px-4 py-2 text-sm text-muted-foreground">
+              {filteredPinEvents.length} of {pinEvents.length} pins
+            </div>
+          )}
           <div className="space-y-2">
-            {pinEvents.map((event) => (
+            {filteredPinEvents.map((event) => (
               <NoteCard
                 key={event.id}
                 className="w-full"
@@ -326,6 +551,13 @@ export default function ProfileBookmarksAndHashtags({
     }
     
     if (initialTab === 'bookmarks') {
+      if (isRefreshing) {
+        return (
+          <div className="px-4 py-2 text-sm text-green-500 text-center">
+            🔄 Refreshing bookmarks...
+          </div>
+        )
+      }
       if (loadingBookmarks) {
         return (
           <div className="space-y-2">
@@ -343,11 +575,24 @@ export default function ProfileBookmarksAndHashtags({
           </div>
         )
       }
+
+      if (filteredBookmarkEvents.length === 0 && searchQuery.trim()) {
+        return (
+          <div className="text-center py-8 text-muted-foreground">
+            No bookmarks match your search
+          </div>
+        )
+      }
       
       return (
         <div className="min-h-screen">
+          {searchQuery.trim() && (
+            <div className="px-4 py-2 text-sm text-muted-foreground">
+              {filteredBookmarkEvents.length} of {bookmarkEvents.length} bookmarks
+            </div>
+          )}
           <div className="space-y-2">
-            {bookmarkEvents.map((event) => (
+            {filteredBookmarkEvents.map((event) => (
               <NoteCard
                 key={event.id}
                 className="w-full"
@@ -361,6 +606,13 @@ export default function ProfileBookmarksAndHashtags({
     }
     
     if (initialTab === 'hashtags') {
+      if (isRefreshing) {
+        return (
+          <div className="px-4 py-2 text-sm text-green-500 text-center">
+            🔄 Refreshing interests...
+          </div>
+        )
+      }
       if (loadingHashtags) {
         return (
           <div className="space-y-2">
@@ -378,11 +630,24 @@ export default function ProfileBookmarksAndHashtags({
           </div>
         )
       }
+
+      if (filteredHashtagEvents.length === 0 && searchQuery.trim()) {
+        return (
+          <div className="text-center py-8 text-muted-foreground">
+            No interests match your search
+          </div>
+        )
+      }
       
       return (
         <div className="min-h-screen">
+          {searchQuery.trim() && (
+            <div className="px-4 py-2 text-sm text-muted-foreground">
+              {filteredHashtagEvents.length} of {hashtagEvents.length} interests
+            </div>
+          )}
           <div className="space-y-2">
-            {hashtagEvents.map((event) => (
+            {filteredHashtagEvents.map((event) => (
               <NoteCard
                 key={event.id}
                 className="w-full"
@@ -399,4 +664,8 @@ export default function ProfileBookmarksAndHashtags({
   }
 
   return renderContent()
-}
+})
+
+ProfileBookmarksAndHashtags.displayName = 'ProfileBookmarksAndHashtags'
+
+export default ProfileBookmarksAndHashtags

@@ -8,6 +8,8 @@ import ProfileOptions from '@/components/ProfileOptions'
 import ProfileZapButton from '@/components/ProfileZapButton'
 import PubkeyCopy from '@/components/PubkeyCopy'
 import Tabs from '@/components/Tabs'
+import RetroRefreshButton from '@/components/ui/RetroRefreshButton'
+import ProfileSearchBar from '@/components/ui/ProfileSearchBar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -18,7 +20,7 @@ import { useSecondaryPage } from '@/PageManager'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
 import { Link, Zap } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import logger from '@/lib/logger'
 import NotFound from '../NotFound'
@@ -37,6 +39,12 @@ export default function Profile({ id }: { id?: string }) {
   const { profile, isFetching } = useFetchProfile(id)
   const { pubkey: accountPubkey } = useNostr()
   const [activeTab, setActiveTab] = useState<ProfileTabValue>('posts')
+  const [searchQuery, setSearchQuery] = useState('')
+  
+  // Refs for child components
+  const profileFeedRef = useRef<{ refresh: () => void }>(null)
+  const profileBookmarksRef = useRef<{ refresh: () => void }>(null)
+  
   const isFollowingYou = useMemo(() => {
     // This will be handled by the FollowedBy component
     return false
@@ -47,7 +55,16 @@ export default function Profile({ id }: { id?: string }) {
   )
   const isSelf = accountPubkey === profile?.pubkey
 
-  // Define tabs
+  // Refresh functions for each tab
+  const handleRefresh = () => {
+    if (activeTab === 'posts') {
+      profileFeedRef.current?.refresh()
+    } else {
+      profileBookmarksRef.current?.refresh()
+    }
+  }
+
+  // Define tabs with refresh buttons
   const tabs = useMemo(() => [
     {
       value: 'posts',
@@ -192,14 +209,35 @@ export default function Profile({ id }: { id?: string }) {
           tabs={tabs}
           onTabChange={(tab) => setActiveTab(tab as ProfileTabValue)}
           threshold={800}
+          options={
+            <div className="flex items-center gap-2 pr-2">
+              <ProfileSearchBar
+                onSearch={setSearchQuery}
+                placeholder={`Search ${activeTab}...`}
+                className="w-64"
+              />
+              <RetroRefreshButton
+                onClick={handleRefresh}
+                size="sm"
+                className="flex-shrink-0"
+              />
+            </div>
+          }
         />
         {activeTab === 'posts' && (
-          <ProfileFeed pubkey={pubkey} topSpace={0} />
+          <ProfileFeed 
+            ref={profileFeedRef} 
+            pubkey={pubkey} 
+            topSpace={0} 
+            searchQuery={searchQuery}
+          />
         )}
         {(activeTab === 'pins' || activeTab === 'bookmarks' || activeTab === 'interests') && (
           <ProfileBookmarksAndHashtags 
+            ref={profileBookmarksRef}
             pubkey={pubkey} 
             initialTab={activeTab === 'pins' ? 'pins' : activeTab === 'bookmarks' ? 'bookmarks' : 'hashtags'}
+            searchQuery={searchQuery}
           />
         )}
       </div>
