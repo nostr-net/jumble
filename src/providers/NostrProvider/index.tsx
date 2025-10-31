@@ -29,7 +29,8 @@ import {
   TDraftEvent,
   TProfile,
   TPublishOptions,
-  TRelayList
+  TRelayList,
+  TMailboxRelay
 } from '@/types'
 import { hexToBytes } from '@noble/hashes/utils'
 import dayjs from 'dayjs'
@@ -265,8 +266,41 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         setBlockedRelaysEvent(storedBlockedRelaysEvent)
       }
       
-      if (storedRelayListEvent) {
-        setRelayList(getRelayListFromEvent(storedRelayListEvent, blockedRelays))
+      // Set initial relay list from stored events (will be updated with merged list later)
+      // Merge cache relays even at initial load so cache relays are available immediately
+      if (storedRelayListEvent || storedCacheRelayListEvent) {
+        const baseRelayList = storedRelayListEvent 
+          ? getRelayListFromEvent(storedRelayListEvent, blockedRelays)
+          : { write: [], read: [], originalRelays: [] }
+        
+        // Merge cache relays if available
+        if (storedCacheRelayListEvent) {
+          const cacheRelayList = getRelayListFromEvent(storedCacheRelayListEvent)
+          
+          // Merge read relays - cache relays first, then others (for offline priority)
+          const mergedRead = [...cacheRelayList.read, ...baseRelayList.read]
+          const mergedWrite = [...cacheRelayList.write, ...baseRelayList.write]
+          const mergedOriginalRelays = new Map<string, TMailboxRelay>()
+          
+          // Add cache relay original relays first (prioritized)
+          cacheRelayList.originalRelays.forEach(relay => {
+            mergedOriginalRelays.set(relay.url, relay)
+          })
+          // Then add regular relay original relays
+          baseRelayList.originalRelays.forEach(relay => {
+            if (!mergedOriginalRelays.has(relay.url)) {
+              mergedOriginalRelays.set(relay.url, relay)
+            }
+          })
+          
+          setRelayList({
+            write: Array.from(new Set(mergedWrite)),
+            read: Array.from(new Set(mergedRead)),
+            originalRelays: Array.from(mergedOriginalRelays.values())
+          })
+        } else {
+          setRelayList(baseRelayList)
+        }
       }
       if (storedProfileEvent) {
         setProfileEvent(storedProfileEvent)

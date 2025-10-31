@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { normalizeUrl, isLocalNetworkUrl } from '@/lib/url'
 import { useNostr } from '@/providers/NostrProvider'
 import { TMailboxRelay, TMailboxRelayScope } from '@/types'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DndContext,
@@ -45,6 +45,7 @@ export default function CacheRelaysSetting() {
   const [relays, setRelays] = useState<TMailboxRelay[]>([])
   const [hasChange, setHasChange] = useState(false)
   const [pushing, setPushing] = useState(false)
+  const justSavedRef = useRef(false)
   const [cacheInfo, setCacheInfo] = useState<Record<string, number>>({})
   const [browsingCache, setBrowsingCache] = useState(false)
   const [selectedStore, setSelectedStore] = useState<string | null>(null)
@@ -92,8 +93,32 @@ export default function CacheRelaysSetting() {
     }
 
     const cacheRelayList = getRelayListFromEvent(cacheRelayListEvent)
-    setRelays(cacheRelayList.originalRelays)
-    setHasChange(false)
+    const newRelays = cacheRelayList.originalRelays
+    
+    // Use functional update to compare with current state
+    setRelays((currentRelays) => {
+      // Check if relays are actually different (deep comparison)
+      const areRelaysEqual = 
+        newRelays.length === currentRelays.length &&
+        newRelays.every((relay, index) => 
+          relay.url === currentRelays[index]?.url && 
+          relay.scope === currentRelays[index]?.scope
+        )
+      
+      // Only update and reset hasChange if relays actually changed AND we just saved
+      // This prevents resetting hasChange when user is actively making changes
+      if (!areRelaysEqual) {
+        if (justSavedRef.current) {
+          // We just saved, so this update is expected - reset hasChange
+          justSavedRef.current = false
+          setHasChange(false)
+        }
+        return newRelays
+      }
+      
+      // If relays are equal, don't update state (prevents unnecessary re-render)
+      return currentRelays
+    })
   }, [cacheRelayListEvent])
 
   if (!pubkey) {
@@ -369,8 +394,9 @@ export default function CacheRelaysSetting() {
     try {
       const event = createCacheRelaysDraftEvent(relays)
       const result = await publish(event)
+      // Set flag before updating so useEffect knows to reset hasChange
+      justSavedRef.current = true
       await updateCacheRelayListEvent(result)
-      setHasChange(false)
       
       // Show publishing feedback
       if ((result as any).relayStatuses) {
@@ -387,6 +413,8 @@ export default function CacheRelaysSetting() {
         showSimplePublishSuccess(t('Cache relays saved'))
       }
     } catch (error) {
+      // Reset flag on error
+      justSavedRef.current = false
       console.error('Failed to save cache relays:', error)
       // Show error feedback
       if (error instanceof Error && (error as any).relayStatuses) {
