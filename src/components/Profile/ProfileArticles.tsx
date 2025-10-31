@@ -1,4 +1,4 @@
-import { FAST_READ_RELAY_URLS } from '@/constants'
+import { ExtendedKind, FAST_READ_RELAY_URLS } from '@/constants'
 import logger from '@/lib/logger'
 import { normalizeUrl } from '@/lib/url'
 import client from '@/services/client.service'
@@ -12,9 +12,11 @@ interface ProfileArticlesProps {
   pubkey: string
   topSpace?: number
   searchQuery?: string
+  kindFilter?: string
+  onEventsChange?: (events: Event[]) => void
 }
 
-const ProfileArticles = forwardRef<{ refresh: () => void }, ProfileArticlesProps>(({ pubkey, topSpace, searchQuery = '' }, ref) => {
+const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event[] }, ProfileArticlesProps>(({ pubkey, topSpace, searchQuery = '', kindFilter = 'all', onEventsChange }, ref) => {
   console.log('[ProfileArticles] Component rendered with pubkey:', pubkey)
   const [events, setEvents] = useState<Event[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -148,23 +150,42 @@ const ProfileArticles = forwardRef<{ refresh: () => void }, ProfileArticlesProps
   }, [fetchArticles])
 
   useImperativeHandle(ref, () => ({
-    refresh
-  }), [refresh])
+    refresh,
+    getEvents: () => events
+  }), [refresh, events])
 
-  // Filter events based on search query
-  const filteredEvents = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return events
+  // Notify parent of events changes
+  useEffect(() => {
+    if (onEventsChange) {
+      onEventsChange(events)
     }
-    
-    const query = searchQuery.toLowerCase()
-    return events.filter(event => 
-      event.content.toLowerCase().includes(query) ||
-      event.tags.some(tag => 
-        tag.length > 1 && tag[1]?.toLowerCase().includes(query)
+  }, [events, onEventsChange])
+
+  // Filter events based on search query and kind filter
+  const filteredEvents = useMemo(() => {
+    let filtered = events
+
+    // Filter by kind first
+    if (kindFilter && kindFilter !== 'all') {
+      const kindFilterNum = parseInt(kindFilter)
+      if (!isNaN(kindFilterNum)) {
+        filtered = filtered.filter(event => event.kind === kindFilterNum)
+      }
+    }
+
+    // Then filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(event => 
+        event.content.toLowerCase().includes(query) ||
+        event.tags.some(tag => 
+          tag.length > 1 && tag[1]?.toLowerCase().includes(query)
+        )
       )
-    )
-  }, [events, searchQuery])
+    }
+
+    return filtered
+  }, [events, searchQuery, kindFilter])
 
   // Separate effect for initial fetch only with a small delay
   useEffect(() => {
@@ -209,10 +230,26 @@ const ProfileArticles = forwardRef<{ refresh: () => void }, ProfileArticlesProps
     )
   }
 
-  if (filteredEvents.length === 0 && searchQuery.trim()) {
+  // Get kind label for display
+  const getKindLabel = (kindValue: string) => {
+    if (!kindValue || kindValue === 'all') return 'articles, publications, or highlights'
+    const kindNum = parseInt(kindValue)
+    if (kindNum === kinds.LongFormArticle) return 'long form articles'
+    if (kindNum === ExtendedKind.WIKI_ARTICLE_MARKDOWN) return 'wiki articles (markdown)'
+    if (kindNum === ExtendedKind.WIKI_ARTICLE) return 'wiki articles (asciidoc)'
+    if (kindNum === ExtendedKind.PUBLICATION) return 'publications'
+    if (kindNum === kinds.Highlights) return 'highlights'
+    return 'items'
+  }
+
+  if (filteredEvents.length === 0 && (searchQuery.trim() || (kindFilter && kindFilter !== 'all'))) {
     return (
       <div className="flex justify-center items-center py-8">
-        <div className="text-sm text-muted-foreground">No articles, publications, or highlights match your search</div>
+        <div className="text-sm text-muted-foreground">
+          {searchQuery.trim() 
+            ? `No ${getKindLabel(kindFilter)} match your search`
+            : `No ${getKindLabel(kindFilter)} found`}
+        </div>
       </div>
     )
   }
@@ -224,9 +261,9 @@ const ProfileArticles = forwardRef<{ refresh: () => void }, ProfileArticlesProps
           🔄 Refreshing articles...
         </div>
       )}
-      {searchQuery.trim() && (
+      {(searchQuery.trim() || (kindFilter && kindFilter !== 'all')) && (
         <div className="px-4 py-2 text-sm text-muted-foreground">
-          {filteredEvents.length} of {events.length} articles
+          {filteredEvents.length} of {events.length} {getKindLabel(kindFilter)}
         </div>
       )}
       <div className="space-y-2">

@@ -13,7 +13,16 @@ import ProfileSearchBar from '@/components/ui/ProfileSearchBar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { ExtendedKind } from '@/constants'
 import { useFetchProfile } from '@/hooks'
+import { Event, kinds } from 'nostr-tools'
 import { toProfileEditor } from '@/lib/link'
 import { generateImageByPubkey } from '@/lib/pubkey'
 import { useSecondaryPage } from '@/PageManager'
@@ -41,11 +50,13 @@ export default function Profile({ id }: { id?: string }) {
   const { pubkey: accountPubkey } = useNostr()
   const [activeTab, setActiveTab] = useState<ProfileTabValue>('posts')
   const [searchQuery, setSearchQuery] = useState('')
+  const [articleKindFilter, setArticleKindFilter] = useState<string>('all')
   
   // Refs for child components
   const profileFeedRef = useRef<{ refresh: () => void }>(null)
   const profileBookmarksRef = useRef<{ refresh: () => void }>(null)
-  const profileArticlesRef = useRef<{ refresh: () => void }>(null)
+  const profileArticlesRef = useRef<{ refresh: () => void; getEvents: () => Event[] }>(null)
+  const [articleEvents, setArticleEvents] = useState<Event[]>([])
   
   const isFollowingYou = useMemo(() => {
     // This will be handled by the FollowedBy component
@@ -225,6 +236,31 @@ export default function Profile({ id }: { id?: string }) {
               placeholder={`Search ${activeTab}...`}
               className="w-64"
             />
+            {activeTab === 'articles' && (() => {
+              // Calculate counts for each kind
+              const allCount = articleEvents.length
+              const longFormCount = articleEvents.filter(e => e.kind === kinds.LongFormArticle).length
+              const wikiMarkdownCount = articleEvents.filter(e => e.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN).length
+              const wikiAsciiDocCount = articleEvents.filter(e => e.kind === ExtendedKind.WIKI_ARTICLE).length
+              const publicationCount = articleEvents.filter(e => e.kind === ExtendedKind.PUBLICATION).length
+              const highlightsCount = articleEvents.filter(e => e.kind === kinds.Highlights).length
+              
+              return (
+                <Select value={articleKindFilter} onValueChange={setArticleKindFilter}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Filter by type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types ({allCount})</SelectItem>
+                    <SelectItem value={String(kinds.LongFormArticle)}>Long Form Articles ({longFormCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.WIKI_ARTICLE_MARKDOWN)}>Wiki (Markdown) ({wikiMarkdownCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.WIKI_ARTICLE)}>Wiki (AsciiDoc) ({wikiAsciiDocCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.PUBLICATION)}>Publications ({publicationCount})</SelectItem>
+                    <SelectItem value={String(kinds.Highlights)}>Highlights ({highlightsCount})</SelectItem>
+                  </SelectContent>
+                </Select>
+              )
+            })()}
             <RetroRefreshButton
               onClick={handleRefresh}
               size="sm"
@@ -246,6 +282,8 @@ export default function Profile({ id }: { id?: string }) {
             pubkey={pubkey} 
             topSpace={0} 
             searchQuery={searchQuery}
+            kindFilter={articleKindFilter}
+            onEventsChange={setArticleEvents}
           />
         )}
         {(activeTab === 'pins' || activeTab === 'bookmarks' || activeTab === 'interests') && (
