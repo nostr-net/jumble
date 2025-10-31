@@ -3,12 +3,13 @@ import { useSearchProfiles } from '@/hooks'
 import { toNote, toNoteList } from '@/lib/link'
 import { randomString } from '@/lib/random'
 import { normalizeUrl } from '@/lib/url'
+import { normalizeToDTag } from '@/lib/search-parser'
 import { cn } from '@/lib/utils'
 import { useSmartNoteNavigation, useSmartHashtagNavigation } from '@/PageManager'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import modalManager from '@/services/modal-manager.service'
 import { TSearchParams } from '@/types'
-import { Hash, Notebook, Search, Server } from 'lucide-react'
+import { Hash, Notebook, Search, Server, FileText } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
 import {
   forwardRef,
@@ -92,6 +93,9 @@ const SearchBar = forwardRef<
       navigateToNote(toNote(params.search))
     } else if (params.type === 'hashtag') {
       navigateToHashtag(toNoteList({ hashtag: params.search }))
+    } else if (params.type === 'dtag') {
+      // Navigate to d-tag search using same pattern as hashtag
+      navigateToHashtag(toNoteList({ domain: params.search }))
     } else {
       onSearch(params)
     }
@@ -128,10 +132,12 @@ const SearchBar = forwardRef<
     }
 
     const hashtag = search.match(/[\p{L}\p{N}\p{M}]+/u)?.[0].toLowerCase() ?? ''
+    const normalizedDTag = normalizeToDTag(search)
 
     setSelectableOptions([
       { type: 'notes', search },
       { type: 'hashtag', search: hashtag, input: `#${hashtag}` },
+      ...(normalizedDTag && normalizedDTag.length > 0 ? [{ type: 'dtag', search: normalizedDTag, input: search }] : []),
       ...(normalizedUrl ? [{ type: 'relay', search: normalizedUrl, input: normalizedUrl }] : []),
       ...profiles.map((profile) => ({
         type: 'profile',
@@ -186,6 +192,16 @@ const SearchBar = forwardRef<
                 key={index}
                 selected={selectedIndex === index}
                 hashtag={option.search}
+                onClick={() => updateSearch(option)}
+              />
+            )
+          }
+          if (option.type === 'dtag') {
+            return (
+              <DTagItem
+                key={index}
+                selected={selectedIndex === index}
+                dtag={option.search}
                 onClick={() => updateSearch(option)}
               />
             )
@@ -383,6 +399,23 @@ function ProfileItem({
     >
       <UserItem pubkey={userId} hideFollowButton className="pointer-events-none" />
     </div>
+  )
+}
+
+function DTagItem({
+  dtag,
+  onClick,
+  selected
+}: {
+  dtag: string
+  onClick?: () => void
+  selected?: boolean
+}) {
+  return (
+    <Item onClick={onClick} selected={selected}>
+      <FileText className="text-muted-foreground" />
+      <div className="font-semibold truncate">{dtag}</div>
+    </Item>
   )
 }
 

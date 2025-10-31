@@ -3,6 +3,7 @@ import SearchResult from '@/components/SearchResult'
 import PrimaryPageLayout, { TPrimaryPageLayoutRef } from '@/layouts/PrimaryPageLayout'
 import { usePrimaryPage } from '@/PageManager'
 import { TSearchParams } from '@/types'
+import SearchInfo from '@/components/SearchInfo'
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 
 const SearchPage = forwardRef((_, ref) => {
@@ -44,7 +45,14 @@ const SearchPage = forwardRef((_, ref) => {
     >
       <div className="px-4 pt-4">
         <div className="text-2xl font-bold mb-4">Search Nostr</div>
-        <SearchBar ref={searchBarRef} onSearch={onSearch} input={input} setInput={setInput} />
+        <div className="flex items-center gap-2 mb-4 relative z-40">
+          <div className="flex-1 relative">
+            <SearchBar ref={searchBarRef} onSearch={onSearch} input={input} setInput={setInput} />
+          </div>
+          <div className="flex-shrink-0 relative z-50">
+            <SearchInfo />
+          </div>
+        </div>
         <div className="h-4"></div>
         <SearchResult searchParams={searchParams} />
       </div>

@@ -15,8 +15,8 @@ import { toNote, toNoteList } from '@/lib/link'
 import { tagNameEquals } from '@/lib/tag'
 import { cn } from '@/lib/utils'
 import { Ellipsis } from 'lucide-react'
-import { Event } from 'nostr-tools'
-import { forwardRef, useMemo, useState } from 'react'
+import type { Event } from 'nostr-tools'
+import { forwardRef, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import NotFound from './NotFound'
 
@@ -34,6 +34,54 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
   )
   const { isFetching: isFetchingRootEvent, event: rootEvent } = useFetchEvent(rootEventId)
   const { isFetching: isFetchingParentEvent, event: parentEvent } = useFetchEvent(parentEventId)
+
+  const getNoteTypeTitle = (kind: number): string => {
+    switch (kind) {
+      case 1: // kinds.ShortTextNote
+        return 'Note: Text Post'
+      case 30023: // kinds.LongFormArticle
+        return 'Note: Longform Article'
+      case 20: // ExtendedKind.PICTURE
+        return 'Note: Picture'
+      case 21: // ExtendedKind.VIDEO
+        return 'Note: Video'
+      case 22: // ExtendedKind.SHORT_VIDEO
+        return 'Note: Short Video'
+      case 11: // ExtendedKind.DISCUSSION
+        return 'Discussions'
+      case 9802: // kinds.Highlights
+        return 'Note: Highlight'
+      case 1068: // ExtendedKind.POLL
+        return 'Note: Poll'
+      case 31987: // ExtendedKind.RELAY_REVIEW
+        return 'Note: Relay Review'
+      case 9735: // ExtendedKind.ZAP_RECEIPT
+        return 'Note: Zap Receipt'
+      case 6: // kinds.Repost
+        return 'Note: Repost'
+      case 7: // kinds.Reaction
+        return 'Note: Reaction'
+      case 1111: // ExtendedKind.COMMENT
+        return 'Note: Comment'
+      case 1222: // ExtendedKind.VOICE
+        return 'Note: Voice Post'
+      case 1244: // ExtendedKind.VOICE_COMMENT
+        return 'Note: Voice Comment'
+      default:
+        return 'Note'
+    }
+  }
+
+  // Store title in sessionStorage for primary note view when hideTitlebar is true
+  // This must be called before any early returns to follow Rules of Hooks
+  useEffect(() => {
+    if (hideTitlebar && finalEvent) {
+      const title = getNoteTypeTitle(finalEvent.kind)
+      sessionStorage.setItem('notePageTitle', title)
+      // Trigger a re-render of the primary view title by dispatching a custom event
+      window.dispatchEvent(new Event('notePageTitleUpdated'))
+    }
+  }, [hideTitlebar, finalEvent])
 
   if (!event && isFetching) {
     return (
@@ -68,43 +116,6 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
         <NotFound bech32Id={id} onEventFound={setExternalEvent} />
       </SecondaryPageLayout>
     )
-  }
-
-  const getNoteTypeTitle = (kind: number): string => {
-    switch (kind) {
-      case 1: // kinds.ShortTextNote
-        return 'Note: Text Post'
-      case 30023: // kinds.LongFormArticle
-        return 'Note: Longform Article'
-      case 20: // ExtendedKind.PICTURE
-        return 'Note: Picture'
-      case 21: // ExtendedKind.VIDEO
-        return 'Note: Video'
-      case 22: // ExtendedKind.SHORT_VIDEO
-        return 'Note: Short Video'
-      case 11: // ExtendedKind.DISCUSSION
-        return 'Note: Discussion Thread'
-      case 9802: // kinds.Highlights
-        return 'Note: Highlight'
-      case 1068: // ExtendedKind.POLL
-        return 'Note: Poll'
-      case 31987: // ExtendedKind.RELAY_REVIEW
-        return 'Note: Relay Review'
-      case 9735: // ExtendedKind.ZAP_RECEIPT
-        return 'Note: Zap Receipt'
-      case 6: // kinds.Repost
-        return 'Note: Repost'
-      case 7: // kinds.Reaction
-        return 'Note: Reaction'
-      case 1111: // ExtendedKind.COMMENT
-        return 'Note: Comment'
-      case 1222: // ExtendedKind.VOICE
-        return 'Note: Voice Post'
-      case 1244: // ExtendedKind.VOICE_COMMENT
-        return 'Note: Voice Comment'
-      default:
-        return 'Note'
-    }
   }
 
   return (

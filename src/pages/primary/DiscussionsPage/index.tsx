@@ -324,7 +324,7 @@ function DiscussionsPageTitlebar() {
   const { t } = useTranslation()
   
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 px-3 h-full">
       <h1 className="text-lg font-semibold">{t('Discussions')}</h1>
     </div>
   )

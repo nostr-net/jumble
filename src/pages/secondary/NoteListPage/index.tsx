@@ -12,6 +12,7 @@ import { useInterestList } from '@/providers/InterestListProvider'
 import client from '@/services/client.service'
 import { TFeedSubRequest } from '@/types'
 import { UserRound, Plus } from 'lucide-react'
+import { nip19 } from 'nostr-tools'
 import React, { forwardRef, useEffect, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -29,8 +30,9 @@ const NoteListPage = forwardRef<HTMLDivElement, NoteListPageProps>(({ index, hid
   const [controls, setControls] = useState<React.ReactNode>(null)
   const [data, setData] = useState<
     | {
-        type: 'hashtag' | 'search' | 'externalContent'
+        type: 'hashtag' | 'search' | 'externalContent' | 'dtag'
         kinds?: number[]
+        dtag?: string
       }
     | {
         type: 'domain'
@@ -123,31 +125,223 @@ const NoteListPage = forwardRef<HTMLDivElement, NoteListPageProps>(({ index, hid
       }
       const domain = searchParams.get('d')
       if (domain) {
-        setTitle(
-          <div className="flex items-center gap-1">
-            {domain}
-            <Favicon domain={domain} className="w-5 h-5" />
-          </div>
-        )
-        const pubkeys = await fetchPubkeysFromDomain(domain)
-        setData({
-          type: 'domain',
-          domain
-        })
-        if (pubkeys.length) {
-          setSubRequests(await client.generateSubRequestsForPubkeys(pubkeys, pubkey))
-          setControls(
-            <Button
-              variant="ghost"
-              className="h-10 [&_svg]:size-3"
-              onClick={() => push(toProfileList({ domain }))}
-            >
-              {pubkeys.length.toLocaleString()} <UserRound />
-            </Button>
+        // Check if it looks like a domain (contains a dot) or is a d-tag search
+        const looksLikeDomain = domain.includes('.')
+        
+        if (looksLikeDomain) {
+          // Domain lookup (NIP-05)
+          setTitle(
+            <div className="flex items-center gap-1">
+              {domain}
+              <Favicon domain={domain} className="w-5 h-5" />
+            </div>
           )
+          const pubkeys = await fetchPubkeysFromDomain(domain)
+          setData({
+            type: 'domain',
+            domain
+          })
+          if (pubkeys.length) {
+            setSubRequests(await client.generateSubRequestsForPubkeys(pubkeys, pubkey))
+            setControls(
+              <Button
+                variant="ghost"
+                className="h-10 [&_svg]:size-3"
+                onClick={() => push(toProfileList({ domain }))}
+              >
+                {pubkeys.length.toLocaleString()} <UserRound />
+              </Button>
+            )
+          } else {
+            setSubRequests([])
+          }
         } else {
-          setSubRequests([])
+          // D-tag search - filter events by d-tag value
+          setTitle(`D-Tag: ${domain}`)
+          setData({
+            type: 'dtag',
+            dtag: domain,
+            kinds: kinds.length > 0 ? kinds : undefined
+          })
+          // Filter by d-tag - we'll need to fetch events that have this d-tag
+          // For replaceable events, the d-tag is in the 'd' tag position
+          const filter: any = {
+            '#d': [domain]
+          }
+          if (kinds.length > 0) {
+            filter.kinds = kinds
+          }
+          setSubRequests([
+            {
+              filter,
+              urls: BIG_RELAY_URLS
+            }
+          ])
         }
+        return
+      }
+      
+      // Advanced search parameters (support multiple values)
+      const title = searchParams.getAll('title')
+      const subject = searchParams.getAll('subject')
+      const description = searchParams.getAll('description')
+      const author = searchParams.getAll('author')
+      const searchPubkey = searchParams.getAll('pubkey')
+      const searchEvents = searchParams.getAll('events')
+      const type = searchParams.getAll('type')
+      const from = searchParams.get('from')
+      const to = searchParams.get('to')
+      const before = searchParams.get('before')
+      const after = searchParams.get('after')
+      
+      // Check if we have any advanced search parameters
+      if (title.length > 0 || subject.length > 0 || description.length > 0 || author.length > 0 || searchPubkey.length > 0 || searchEvents.length > 0 || type.length > 0 || from || to || before || after) {
+        const filter: any = {}
+        
+        // Tag-based filters (support multiple values - use OR logic)
+        if (title.length > 0) filter['#title'] = title
+        if (subject.length > 0) filter['#subject'] = subject
+        if (description.length > 0) filter['#description'] = description
+        if (author.length > 0) filter['#author'] = author
+        if (type.length > 0) filter['#type'] = type
+        
+        // Pubkey filter (support multiple pubkeys: hex, npub, nprofile, NIP-05)
+        if (searchPubkey.length > 0) {
+          const decodedPubkeys: string[] = []
+          for (const pubkeyInput of searchPubkey) {
+            try {
+              // Check if it's a NIP-05 identifier
+              if (pubkeyInput.includes('@')) {
+                // Will need to resolve NIP-05, but for now we'll handle it separately
+                // For now, try to fetch and decode
+                const pubkeys = await fetchPubkeysFromDomain(pubkeyInput.split('@')[1])
+                decodedPubkeys.push(...pubkeys)
+              } else if (pubkeyInput.startsWith('npub') || pubkeyInput.startsWith('nprofile')) {
+                const decoded = nip19.decode(pubkeyInput)
+                if (decoded.type === 'npub') {
+                  decodedPubkeys.push(decoded.data)
+                } else if (decoded.type === 'nprofile') {
+                  decodedPubkeys.push(decoded.data.pubkey)
+                }
+              } else {
+                // Assume hex pubkey
+                decodedPubkeys.push(pubkeyInput)
+              }
+            } catch (e) {
+              // If decoding fails, try as hex or skip
+              if (/^[a-f0-9]{64}$/i.test(pubkeyInput)) {
+                decodedPubkeys.push(pubkeyInput)
+              }
+            }
+          }
+          if (decodedPubkeys.length > 0) {
+            filter.authors = decodedPubkeys
+          }
+        }
+        
+        // Events filter (support multiple events: hex, note, nevent, naddr)
+        if (searchEvents.length > 0) {
+          const eventIds: string[] = []
+          for (const eventInput of searchEvents) {
+            try {
+              if (/^[a-f0-9]{64}$/i.test(eventInput)) {
+                // Hex event ID
+                eventIds.push(eventInput)
+              } else if (eventInput.startsWith('note1') || eventInput.startsWith('nevent1') || eventInput.startsWith('naddr1')) {
+                const decoded = nip19.decode(eventInput)
+                if (decoded.type === 'note') {
+                  eventIds.push(decoded.data)
+                } else if (decoded.type === 'nevent') {
+                  eventIds.push(decoded.data.id)
+                } else if (decoded.type === 'naddr') {
+                  // For naddr, we need to filter by kind, pubkey, and d-tag
+                  if (!filter.kinds) filter.kinds = []
+                  if (!filter.kinds.includes(decoded.data.kind)) {
+                    filter.kinds.push(decoded.data.kind)
+                  }
+                  if (!filter.authors) filter.authors = []
+                  if (!filter.authors.includes(decoded.data.pubkey)) {
+                    filter.authors.push(decoded.data.pubkey)
+                  }
+                  if (decoded.data.identifier) {
+                    if (!filter['#d']) filter['#d'] = []
+                    if (!filter['#d'].includes(decoded.data.identifier)) {
+                      filter['#d'].push(decoded.data.identifier)
+                    }
+                  }
+                  continue // Skip adding to eventIds for naddr
+                }
+              }
+            } catch (e) {
+              // Skip invalid event IDs
+            }
+          }
+          if (eventIds.length > 0) {
+            filter.ids = eventIds
+          }
+        }
+        
+        // Date filters - convert to unix timestamps
+        let since: number | undefined
+        let until: number | undefined
+        
+        if (from) {
+          const date = new Date(from + 'T00:00:00Z')
+          since = Math.floor(date.getTime() / 1000)
+        }
+        if (to) {
+          const date = new Date(to + 'T23:59:59Z')
+          until = Math.floor(date.getTime() / 1000)
+        }
+        if (before) {
+          const date = new Date(before + 'T00:00:00Z')
+          until = Math.min(until || Infinity, Math.floor(date.getTime() / 1000) - 1)
+        }
+        if (after) {
+          const date = new Date(after + 'T23:59:59Z')
+          since = Math.max(since || 0, Math.floor(date.getTime() / 1000) + 1)
+        }
+        
+        if (since) filter.since = since
+        if (until) filter.until = until
+        
+        // Kinds filter
+        if (kinds.length > 0) {
+          filter.kinds = kinds
+        }
+        
+        // Build title from search params
+        const titleParts: string[] = []
+        if (title.length > 0) titleParts.push(`title:${title.join(',')}`)
+        if (subject.length > 0) titleParts.push(`subject:${subject.join(',')}`)
+        if (author.length > 0) titleParts.push(`author:${author.join(',')}`)
+        if (searchPubkey.length > 0) {
+          const pubkeyDisplay = searchPubkey.length === 1 
+            ? `${searchPubkey[0].substring(0, 16)}...` 
+            : `${searchPubkey.length} pubkeys`
+          titleParts.push(`pubkey:${pubkeyDisplay}`)
+        }
+        if (type.length > 0) titleParts.push(`type:${type.join(',')}`)
+        if (from || to || before || after) {
+          const dateParts: string[] = []
+          if (from) dateParts.push(`from:${from}`)
+          if (to) dateParts.push(`to:${to}`)
+          if (before) dateParts.push(`before:${before}`)
+          if (after) dateParts.push(`after:${after}`)
+          titleParts.push(dateParts.join(', '))
+        }
+        
+        setTitle(`Search: ${titleParts.join(' ')}`)
+        setData({
+          type: 'search',
+          kinds: kinds.length > 0 ? kinds : undefined
+        })
+        setSubRequests([
+          {
+            filter,
+            urls: BIG_RELAY_URLS
+          }
+        ])
         return
       }
     }
@@ -225,15 +419,19 @@ const NoteListPage = forwardRef<HTMLDivElement, NoteListPageProps>(({ index, hid
       controls={hideTitlebar ? undefined : controls}
       displayScrollToTopButton
     >
-      {hideTitlebar && data?.type === 'hashtag' && (
-        <div className="px-4 py-2 border-b">
-          <div className="flex items-center justify-between">
-            <div className="text-lg font-semibold">{title}</div>
-            {controls}
+      {hideTitlebar && (data?.type === 'hashtag' || data?.type === 'dtag') ? (
+        <>
+          <div className="px-4 py-2 border-b">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-semibold">{title}</div>
+              {controls}
+            </div>
           </div>
-        </div>
+          <div className="pt-4">{content}</div>
+        </>
+      ) : (
+        content
       )}
-      {content}
     </SecondaryPageLayout>
   )
 })

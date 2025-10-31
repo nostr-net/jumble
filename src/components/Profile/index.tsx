@@ -26,9 +26,11 @@ import { Event, kinds } from 'nostr-tools'
 import { toProfileEditor } from '@/lib/link'
 import { generateImageByPubkey } from '@/lib/pubkey'
 import { useSecondaryPage } from '@/PageManager'
+import { toNoteList } from '@/lib/link'
+import { parseAdvancedSearch } from '@/lib/search-parser'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
-import { Link, Zap } from 'lucide-react'
+import { FileText, Link, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import logger from '@/lib/logger'
@@ -51,6 +53,88 @@ export default function Profile({ id }: { id?: string }) {
   const [activeTab, setActiveTab] = useState<ProfileTabValue>('posts')
   const [searchQuery, setSearchQuery] = useState('')
   const [articleKindFilter, setArticleKindFilter] = useState<string>('all')
+
+  // Handle search in articles tab - parse advanced search parameters
+  const handleArticleSearch = (query: string) => {
+    if (activeTab === 'articles' && query.trim()) {
+      const searchParams = parseAdvancedSearch(query)
+      
+      // Build kinds array from filter
+      const kinds = articleKindFilter && articleKindFilter !== 'all' 
+        ? [parseInt(articleKindFilter)] 
+        : undefined
+      
+      // Combine filter kinds with search param kinds
+      const allKinds = kinds || searchParams.kinds || undefined
+      
+      // Build URL with search parameters
+      // For now, if we have a d-tag, use that. Otherwise use advanced search
+      if (searchParams.dtag) {
+        // Use d-tag search if we have plain text
+        const url = toNoteList({ domain: searchParams.dtag, kinds: allKinds })
+        push(url)
+        return
+      } else if (Object.keys(searchParams).length > 0) {
+        // Advanced search - we'll need to pass these as URL params
+        // For now, construct URL with all parameters
+        const urlParams = new URLSearchParams()
+        if (searchParams.title) {
+          if (Array.isArray(searchParams.title)) {
+            searchParams.title.forEach(t => urlParams.append('title', t))
+          } else {
+            urlParams.set('title', searchParams.title)
+          }
+        }
+        if (searchParams.subject) {
+          if (Array.isArray(searchParams.subject)) {
+            searchParams.subject.forEach(s => urlParams.append('subject', s))
+          } else {
+            urlParams.set('subject', searchParams.subject)
+          }
+        }
+        if (searchParams.description) {
+          if (Array.isArray(searchParams.description)) {
+            searchParams.description.forEach(d => urlParams.append('description', d))
+          } else {
+            urlParams.set('description', searchParams.description)
+          }
+        }
+        if (searchParams.author) {
+          if (Array.isArray(searchParams.author)) {
+            searchParams.author.forEach(a => urlParams.append('author', a))
+          } else {
+            urlParams.set('author', searchParams.author)
+          }
+        }
+        if (searchParams.pubkey) {
+          if (Array.isArray(searchParams.pubkey)) {
+            searchParams.pubkey.forEach(p => urlParams.append('pubkey', p))
+          } else {
+            urlParams.set('pubkey', searchParams.pubkey)
+          }
+        }
+        if (searchParams.type) {
+          if (Array.isArray(searchParams.type)) {
+            searchParams.type.forEach(t => urlParams.append('type', t))
+          } else {
+            urlParams.set('type', searchParams.type)
+          }
+        }
+        if (searchParams.from) urlParams.set('from', searchParams.from)
+        if (searchParams.to) urlParams.set('to', searchParams.to)
+        if (searchParams.before) urlParams.set('before', searchParams.before)
+        if (searchParams.after) urlParams.set('after', searchParams.after)
+        if (allKinds) {
+          allKinds.forEach(k => urlParams.append('k', k.toString()))
+        }
+        
+        const url = `/notes?${urlParams.toString()}`
+        push(url)
+        return
+      }
+    }
+    setSearchQuery(query)
+  }
   
   // Refs for child components
   const profileFeedRef = useRef<{ refresh: () => void }>(null)
@@ -232,7 +316,7 @@ export default function Profile({ id }: { id?: string }) {
           />
           <div className="flex items-center gap-2 pr-2 px-1">
             <ProfileSearchBar
-              onSearch={setSearchQuery}
+              onSearch={activeTab === 'articles' ? handleArticleSearch : setSearchQuery}
               placeholder={`Search ${activeTab}...`}
               className="w-64"
             />
@@ -248,6 +332,7 @@ export default function Profile({ id }: { id?: string }) {
               return (
                 <Select value={articleKindFilter} onValueChange={setArticleKindFilter}>
                   <SelectTrigger className="w-48">
+                    <FileText className="h-4 w-4 mr-2 shrink-0" />
                     <SelectValue placeholder="Filter by type" />
                   </SelectTrigger>
                   <SelectContent>

@@ -228,7 +228,16 @@ export class NavigationService {
     }
     if (viewType === 'hashtag') return 'Hashtag'
     if (viewType === 'relay') return 'Relay'
-    if (viewType === 'note') return 'Note'
+    if (viewType === 'note') {
+      // Try to get title from sessionStorage if NotePage has set it
+      // NotePage will store the title when it determines the event kind
+      const storedTitle = sessionStorage.getItem('notePageTitle')
+      if (storedTitle) {
+        sessionStorage.removeItem('notePageTitle') // Clean up after use
+        return storedTitle
+      }
+      return 'Note'
+    }
     if (viewType === 'following') return 'Following'
     if (viewType === 'mute') return 'Muted Users'
     if (viewType === 'others-relay-settings') return 'Relay Settings'

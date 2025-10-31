@@ -310,6 +310,19 @@ function MainContentArea({
   primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings' | null
   goBack: () => void
 }) {
+  const [, forceUpdate] = useState(0)
+  
+  // Listen for note page title updates
+  useEffect(() => {
+    const handleTitleUpdate = () => {
+      forceUpdate(n => n + 1)
+    }
+    window.addEventListener('notePageTitleUpdated', handleTitleUpdate)
+    return () => {
+      window.removeEventListener('notePageTitleUpdated', handleTitleUpdate)
+    }
+  }, [])
+  
   logger.debug('MainContentArea rendering:', { 
     currentPrimaryPage, 
     primaryPages: primaryPages.map(p => p.name), 
@@ -707,7 +720,8 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
                         {primaryViewType === 'settings' ? 'Settings' : 
                          primaryViewType === 'settings-sub' ? 'Settings' : 
                          primaryViewType === 'profile' ? 'Back' : 
-                         primaryViewType === 'hashtag' ? 'Hashtag' : 'Note'}
+                         primaryViewType === 'hashtag' ? 'Hashtag' : 
+                         primaryViewType === 'note' ? getPageTitle(primaryViewType, window.location.pathname) : 'Note'}
                       </div>
                     </Button>
                   </div>
