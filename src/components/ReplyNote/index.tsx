@@ -25,11 +25,13 @@ export default function ReplyNote({
   event,
   parentEventId,
   onClickParent = () => {},
+  onClickReply,
   highlight = false
 }: {
   event: Event
   parentEventId?: string
   onClickParent?: () => void
+  onClickReply?: (event: Event) => void
   highlight?: boolean
 }) {
   const { t } = useTranslation()
@@ -58,10 +60,14 @@ export default function ReplyNote({
       onClick={(e) => {
         // Don't navigate if clicking on interactive elements
         const target = e.target as HTMLElement
-        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a')) {
+        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a') || target.closest('[data-parent-note-preview]')) {
           return
         }
-        navigateToNote(toNote(event))
+        if (onClickReply) {
+          onClickReply(event)
+        } else {
+          navigateToNote(toNote(event))
+        }
       }}
     >
       <Collapsible>

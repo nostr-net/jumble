@@ -26,7 +26,14 @@ export default function RelayReviewCard({
   return (
     <div
       className={cn('clickable border rounded-lg bg-muted/20 p-3 h-full', className)}
-      onClick={() => navigateToNote(toNote(event))}
+      onClick={(e) => {
+        // Don't navigate if clicking on interactive elements
+        const target = e.target as HTMLElement
+        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a') || target.closest('[data-embedded-note]') || target.closest('[data-parent-note-preview]')) {
+          return
+        }
+        navigateToNote(toNote(event))
+      }}
     >
       <div className="flex justify-between items-start gap-2">
         <div className="flex items-center space-x-2 flex-1">

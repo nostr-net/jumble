@@ -26,8 +26,20 @@ export default function MainNoteCard({
     <div
       className={className}
       onClick={(e) => {
+        // Don't navigate if clicking on interactive elements
+        const target = e.target as HTMLElement
+        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a') || target.closest('[data-parent-note-preview]')) {
+          return
+        }
+        // For embedded notes, allow clicks (don't exclude [data-embedded-note])
+        // as embedded notes should be clickable to navigate to their page
+        if (!embedded && target.closest('[data-embedded-note]')) {
+          return
+        }
         e.stopPropagation()
-        navigateToNote(toNote(originalNoteId ?? event))
+        // Ensure navigation happens immediately
+        const noteUrl = toNote(originalNoteId ?? event)
+        navigateToNote(noteUrl)
       }}
     >
       <div className={`clickable ${embedded ? 'p-2 sm:p-3 border rounded-lg' : 'py-3'}`}>

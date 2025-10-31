@@ -383,27 +383,34 @@ export default function AsciidocArticle({
               </div>
             )}
 
-            {/* Hashtags */}
-            {parsedContent?.hashtags?.length > 0 && (
-              <div className="p-4 bg-muted rounded-lg">
-                <h4 className="text-sm font-semibold mb-3">Tags:</h4>
-                <div className="flex gap-2 flex-wrap">
-                  {parsedContent?.hashtags?.map((tag) => (
-                    <div
-                      key={tag}
-                      title={tag}
-                      className="flex items-center rounded-full px-3 py-1 bg-background text-muted-foreground max-w-44 cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        push(toNoteList({ hashtag: tag, kinds: [kinds.LongFormArticle] }))
-                      }}
-                    >
-                      #<span className="truncate">{tag}</span>
-                    </div>
-                  ))}
+            {/* Hashtags - only show t-tags that don't appear as #hashtag in content */}
+            {(() => {
+              // Get content hashtags from parsedContent (hashtags extracted from content as #hashtag)
+              // Normalize to lowercase for comparison
+              const contentHashtags = new Set((parsedContent?.hashtags || []).map(t => t.toLowerCase()))
+              // Filter metadata.tags (t-tags from event) to exclude those already in content
+              const tagsToShow = (metadata.tags || []).filter(tag => !contentHashtags.has(tag.toLowerCase()))
+              return tagsToShow.length > 0 && (
+                <div className="p-4 bg-muted rounded-lg">
+                  <h4 className="text-sm font-semibold mb-3">Tags:</h4>
+                  <div className="flex gap-2 flex-wrap">
+                    {tagsToShow.map((tag) => (
+                      <div
+                        key={tag}
+                        title={tag}
+                        className="flex items-center rounded-full px-3 py-1 bg-background text-muted-foreground max-w-44 cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          push(toNoteList({ hashtag: tag, kinds: [kinds.LongFormArticle] }))
+                        }}
+                      >
+                        #<span className="truncate">{tag}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
           </CollapsibleContent>
         </Collapsible>
       )}

@@ -51,7 +51,7 @@ export function EmbeddedNote({ noteId, className }: { noteId: string; className?
   }
 
   return (
-    <div data-embedded-note>
+    <div data-embedded-note onClick={(e) => e.stopPropagation()}>
       <MainNoteCard
         className={cn('w-full', className)}
         event={finalEvent}

@@ -37,6 +37,18 @@ export default function MarkdownArticle({
   const allImages = useMemo(() => extractAllImagesFromEvent(event), [event])
   const contentRef = useRef<HTMLDivElement>(null)
   
+  // Extract hashtags that are actually present in the content (as literal #hashtag)
+  // This ensures we only render green links for hashtags that are in the content, not from t-tags
+  const contentHashtags = useMemo(() => {
+    const hashtags = new Set<string>()
+    const hashtagRegex = /#(\w+)/g
+    let match
+    while ((match = hashtagRegex.exec(event.content)) !== null) {
+      hashtags.add(match[1].toLowerCase())
+    }
+    return hashtags
+  }, [event.content])
+  
   // Extract, normalize, and deduplicate all media URLs (images, audio, video)
   // from content, imeta tags, and image tags
   const mediaUrls = useMemo(() => {
@@ -158,8 +170,20 @@ export default function MarkdownArticle({
           
           // Handle hashtag links (format: /notes?t=tag)
           if (href.startsWith('/notes?t=') || href.startsWith('notes?t=')) {
+            // Extract the hashtag from the href
+            const hashtagMatch = href.match(/[?=]([^&]+)/)
+            const hashtag = hashtagMatch ? hashtagMatch[1].toLowerCase() : ''
+            
+            // Only render as green link if this hashtag is actually in the content
+            // If not in content, suppress the link and render as plain text (hashtags are handled by split-based approach)
+            if (!contentHashtags.has(hashtag)) {
+              // Hashtag not in content, render as plain text (not a link at all)
+              return <span className="break-words">{children}</span>
+            }
+            
             // Normalize href to include leading slash if missing
             const normalizedHref = href.startsWith('/') ? href : `/${href}`
+            // Inline hashtags from content should always be green
             return (
               <SecondaryPageLink
                 to={normalizedHref}
@@ -262,21 +286,12 @@ export default function MarkdownArticle({
             return <>{children}</>
           }
           
-          // Handle hashtags and wikilinks
-          const hashtagRegex = /#(\w+)/g
+          // Don't process hashtags in text component - they're already handled by split-based approach
+          // Only handle wikilinks here
           const wikilinkRegex = /\[\[([^\]]+)\]\]/g
-          const allMatches: Array<{index: number, end: number, type: 'hashtag' | 'wikilink', data: any}> = []
+          const allMatches: Array<{index: number, end: number, type: 'wikilink', data: any}> = []
           
           let match
-          while ((match = hashtagRegex.exec(children)) !== null) {
-            allMatches.push({
-              index: match.index,
-              end: match.index + match[0].length,
-              type: 'hashtag',
-              data: match[1]
-            })
-          }
-          
           while ((match = wikilinkRegex.exec(children)) !== null) {
             const content = match[1]
             let target = content.includes('|') ? content.split('|')[0].trim() : content.trim()
@@ -308,15 +323,7 @@ export default function MarkdownArticle({
               parts.push(children.slice(lastIndex, match.index))
             }
             
-            if (match.type === 'hashtag') {
-              parts.push(
-                <SecondaryPageLink key={`h-${match.index}`} to={`/notes?t=${match.data.toLowerCase()}`} className="text-green-600 dark:text-green-400 hover:underline">
-                  #{match.data}
-                </SecondaryPageLink>
-              )
-            } else {
-              parts.push(<Wikilink key={`w-${match.index}`} dTag={match.data.dtag} displayText={match.data.displayText} />)
-            }
+            parts.push(<Wikilink key={`w-${match.index}`} dTag={match.data.dtag} displayText={match.data.displayText} />)
             
             lastIndex = match.end
           }
@@ -344,7 +351,7 @@ export default function MarkdownArticle({
           )
         }
       }) as Components,
-    [showImageGallery, event.pubkey, mediaUrls, event.kind]
+    [showImageGallery, event.pubkey, mediaUrls, event.kind, contentHashtags]
   )
 
   return (
@@ -439,6 +446,13 @@ export default function MarkdownArticle({
           // Check if this part is a hashtag
           if (part.match(/^#\w+$/)) {
             const hashtag = part.slice(1)
+            const normalizedHashtag = hashtag.toLowerCase()
+            
+            // Only render as green link if this hashtag is actually in the content
+            if (!contentHashtags.has(normalizedHashtag)) {
+              // Hashtag not in content, render as plain text
+              return <span key={`hashtag-plain-${index}`}>{part}</span>
+            }
             
             // Add spaces before and after unless at start/end of line
             const isStartOfLine = index === 0 || array[index - 1].match(/^[\s]*$/) !== null
@@ -447,16 +461,17 @@ export default function MarkdownArticle({
             const beforeSpace = isStartOfLine ? '' : ' '
             const afterSpace = isEndOfLine ? '' : ' '
             
+            // Inline hashtags from content should always be green
             return (
               <span key={`hashtag-wrapper-${index}`}>
                 {beforeSpace && beforeSpace}
                 <a
-                  href={`/notes?t=${hashtag.toLowerCase()}`}
+                  href={`/notes?t=${normalizedHashtag}`}
                   className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer"
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    const url = `/notes?t=${hashtag.toLowerCase()}`
+                    const url = `/notes?t=${normalizedHashtag}`
                     console.log('[MarkdownArticle] Clicking hashtag, navigating to:', url)
                     push(url)
                   }}
@@ -519,21 +534,23 @@ export default function MarkdownArticle({
           </CollapsibleContent>
         </Collapsible>
       )}
-      {metadata.tags.length > 0 && (
-        <div className="flex gap-2 flex-wrap pb-2">
-          {metadata.tags.map((tag) => (
-            <div
-              key={tag}
-              title={tag}
-              className="flex items-center rounded-full px-3 bg-muted text-muted-foreground max-w-44 cursor-pointer hover:bg-accent hover:text-accent-foreground"
-              onClick={(e) => {
-                e.stopPropagation()
-                push(toNoteList({ hashtag: tag, kinds: [kinds.LongFormArticle] }))
-              }}
-            >
-              #<span className="truncate">{tag}</span>
-            </div>
-          ))}
+      {metadata.tags.filter(tag => !contentHashtags.has(tag.toLowerCase())).length > 0 && (
+        <div className="flex gap-2 flex-wrap pb-2 mt-4">
+          {metadata.tags
+            .filter(tag => !contentHashtags.has(tag.toLowerCase()))
+            .map((tag) => (
+              <div
+                key={tag}
+                title={tag}
+                className="flex items-center rounded-full px-3 bg-muted text-muted-foreground max-w-44 cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  push(toNoteList({ hashtag: tag, kinds: [kinds.LongFormArticle] }))
+                }}
+              >
+                #<span className="truncate">{tag}</span>
+              </div>
+            ))}
         </div>
       )}
       </div>

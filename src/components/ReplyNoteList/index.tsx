@@ -380,7 +380,10 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     if (scrollTo) {
       const ref = replyRefs.current[eventId]
       if (ref) {
-        ref.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        // Use setTimeout to ensure DOM is updated before scrolling
+        setTimeout(() => {
+          ref.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 0)
       }
     }
     setHighlightReplyId(eventId)
@@ -416,6 +419,15 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
           const parentETag = getParentETag(reply)
           const parentEventHexId = parentETag?.[1]
           const parentEventId = parentETag ? generateBech32IdFromETag(parentETag) : undefined
+          
+          // Check if this reply belongs to the same thread as the root event
+          const replyRootId = getRootEventHexId(reply)
+          const belongsToSameThread = rootInfo && (
+            (rootInfo.type === 'E' && replyRootId === rootInfo.id) ||
+            (rootInfo.type === 'A' && getRootATag(reply)?.[1] === rootInfo.id) ||
+            (rootInfo.type === 'I' && reply.tags.find(tagNameEquals('I'))?.[1] === rootInfo.id)
+          )
+          
           return (
             <div
               ref={(el) => (replyRefs.current[reply.id] = el)}
@@ -433,6 +445,22 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
                   }
                   highlightReply(parentEventHexId)
                 }}
+                onClickReply={belongsToSameThread ? (replyEvent) => {
+                  // Update URL without full navigation
+                  const replyNoteUrl = toNote(replyEvent.id)
+                  window.history.pushState(null, '', replyNoteUrl)
+                  
+                  // Ensure the reply is visible by expanding the list if needed
+                  const replyIndex = replies.findIndex(r => r.id === replyEvent.id)
+                  if (replyIndex >= 0 && replyIndex >= showCount) {
+                    setShowCount(replyIndex + 1)
+                  }
+                  
+                  // Highlight and scroll to the reply (use setTimeout to ensure DOM is updated)
+                  setTimeout(() => {
+                    highlightReply(replyEvent.id, true)
+                  }, 50)
+                } : undefined}
                 highlight={highlightReplyId === reply.id}
               />
             </div>

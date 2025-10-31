@@ -278,6 +278,15 @@ class RelaySelectionService {
       selectedRelays = Array.from(new Set(selectedRelays))
     }
 
+    // ALWAYS include cache relays (local network relays) in selected relays
+    // Cache relays are important for offline functionality
+    const cacheRelays = userWriteRelays.filter(url => isLocalNetworkUrl(url))
+    if (cacheRelays.length > 0) {
+      selectedRelays = [...selectedRelays, ...cacheRelays]
+      // Deduplicate after adding cache relays
+      selectedRelays = Array.from(new Set(selectedRelays))
+    }
+
     // Filter out blocked relays
     return this.filterBlockedRelays(selectedRelays, context.blockedRelays)
   }

@@ -451,11 +451,13 @@ export function renderNostrContent(parsedContent: ParsedNostrContent, className?
         
         if (element.type === 'hashtag' && element.hashtag) {
           const normalizedHashtag = element.hashtag.toLowerCase()
+          // Only render as green link if this hashtag was parsed from the content
+          // (parseNostrContent already only extracts hashtags from content, not t-tags)
           return (
             <a
               key={index}
               href={`/notes?t=${normalizedHashtag}`}
-              className="text-primary hover:text-primary/80 hover:underline break-words"
+              className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer"
             >
               #{element.hashtag}
             </a>

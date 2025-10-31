@@ -42,7 +42,7 @@ export default function PostEditor({
         openFrom={openFrom}
       />
     )
-  }, [])
+  }, [defaultContent, parentEvent, openFrom, setOpen])
 
   if (isSmallScreen) {
     return (

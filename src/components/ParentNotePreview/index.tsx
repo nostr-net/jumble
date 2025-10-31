@@ -20,6 +20,7 @@ export default function ParentNotePreview({
   if (isFetching) {
     return (
       <div
+        data-parent-note-preview
         className={cn(
           'flex gap-1 items-center text-sm rounded-full px-2 bg-muted w-44 max-w-full text-muted-foreground',
           className
@@ -36,6 +37,7 @@ export default function ParentNotePreview({
 
   return (
     <div
+      data-parent-note-preview
       className={cn(
         'flex gap-1 items-center text-sm rounded-full px-2 bg-muted w-fit max-w-full text-muted-foreground',
         event && 'hover:text-foreground cursor-pointer',
