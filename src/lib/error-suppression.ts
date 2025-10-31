@@ -53,6 +53,13 @@ export function suppressExpectedErrors() {
       return
     }
     
+    // Suppress React "Maximum update depth exceeded" warnings
+    // These are often caused by third-party libraries (e.g., Radix UI Popper)
+    // where we cannot modify the source code directly
+    if (message.includes('Maximum update depth exceeded')) {
+      return
+    }
+    
     // Suppress Workbox precaching errors for development modules
     if (message.includes('Precaching did not find a match') && (
       message.includes('@vite/client') ||

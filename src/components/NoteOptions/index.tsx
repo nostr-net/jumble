@@ -1,7 +1,7 @@
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { Ellipsis } from 'lucide-react'
 import { Event } from 'nostr-tools'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { DesktopMenu } from './DesktopMenu'
 import { MobileMenu } from './MobileMenu'
 import RawEventDialog from './RawEventDialog'
@@ -41,13 +41,16 @@ export default function NoteOptions({ event, className }: { event: Event; classN
     isSmallScreen
   })
 
-  const trigger = (
-    <button
-      className="flex items-center text-muted-foreground hover:text-foreground pl-2 h-full"
-      onClick={() => setIsDrawerOpen(true)}
-    >
-      <Ellipsis />
-    </button>
+  const trigger = useMemo(
+    () => (
+      <button
+        className="flex items-center text-muted-foreground hover:text-foreground pl-2 h-full"
+        onClick={() => setIsDrawerOpen(true)}
+      >
+        <Ellipsis />
+      </button>
+    ),
+    []
   )
 
   return (

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { useDeepBrowsing } from '@/providers/DeepBrowsingProvider'
-import { ReactNode, useEffect, useRef, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 type TabDefinition = {
@@ -26,19 +26,38 @@ export default function Tabs({
   const tabRefs = useRef<(HTMLDivElement | null)[]>([])
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [indicatorStyle, setIndicatorStyle] = useState({ width: 0, left: 0 })
+  const isUpdatingRef = useRef(false)
+  const lastStyleRef = useRef({ width: 0, left: 0 })
 
-  const updateIndicatorPosition = () => {
+  const updateIndicatorPosition = useCallback(() => {
+    // Prevent multiple simultaneous updates
+    if (isUpdatingRef.current) return
+    
     const activeIndex = tabs.findIndex((tab) => tab.value === value)
     if (activeIndex >= 0 && tabRefs.current[activeIndex]) {
       const activeTab = tabRefs.current[activeIndex]
       const { offsetWidth, offsetLeft } = activeTab
       const padding = 24 // 12px padding on each side
-      setIndicatorStyle({
-        width: offsetWidth - padding,
-        left: offsetLeft + padding / 2
-      })
+      const newWidth = offsetWidth - padding
+      const newLeft = offsetLeft + padding / 2
+      
+      // Only update if values actually changed
+      if (
+        lastStyleRef.current.width !== newWidth ||
+        lastStyleRef.current.left !== newLeft
+      ) {
+        isUpdatingRef.current = true
+        lastStyleRef.current = { width: newWidth, left: newLeft }
+        
+        setIndicatorStyle({ width: newWidth, left: newLeft })
+        
+        // Reset flag after state update completes
+        requestAnimationFrame(() => {
+          isUpdatingRef.current = false
+        })
+      }
     }
-  }
+  }, [tabs, value])
 
   useEffect(() => {
     const animationId = requestAnimationFrame(() => {
@@ -48,13 +67,15 @@ export default function Tabs({
     return () => {
       cancelAnimationFrame(animationId)
     }
-  }, [tabs, value])
+  }, [updateIndicatorPosition])
 
   useEffect(() => {
     if (!containerRef.current) return
 
     const resizeObserver = new ResizeObserver(() => {
-      updateIndicatorPosition()
+      requestAnimationFrame(() => {
+        updateIndicatorPosition()
+      })
     })
 
     const intersectionObserver = new IntersectionObserver(
@@ -80,7 +101,7 @@ export default function Tabs({
       resizeObserver.disconnect()
       intersectionObserver.disconnect()
     }
-  }, [tabs, value])
+  }, [updateIndicatorPosition])
 
   return (
     <div

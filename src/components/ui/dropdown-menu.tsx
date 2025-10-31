@@ -47,6 +47,7 @@ const DropdownMenuSubContent = React.forwardRef<
   const [canScrollDown, setCanScrollDown] = React.useState(false)
   const contentRef = React.useRef<HTMLDivElement>(null)
   const scrollAreaRef = React.useRef<HTMLDivElement>(null)
+  const lastScrollStateRef = React.useRef({ canScrollUp: false, canScrollDown: false })
 
   React.useImperativeHandle(ref, () => contentRef.current!)
 
@@ -54,8 +55,18 @@ const DropdownMenuSubContent = React.forwardRef<
     const scrollArea = scrollAreaRef.current
     if (!scrollArea) return
 
-    setCanScrollUp(scrollArea.scrollTop > 0)
-    setCanScrollDown(scrollArea.scrollTop < scrollArea.scrollHeight - scrollArea.clientHeight)
+    const newCanScrollUp = scrollArea.scrollTop > 0
+    const newCanScrollDown = scrollArea.scrollTop < scrollArea.scrollHeight - scrollArea.clientHeight
+
+    // Only update state if values actually changed to prevent infinite loops
+    if (newCanScrollUp !== lastScrollStateRef.current.canScrollUp) {
+      lastScrollStateRef.current.canScrollUp = newCanScrollUp
+      setCanScrollUp(newCanScrollUp)
+    }
+    if (newCanScrollDown !== lastScrollStateRef.current.canScrollDown) {
+      lastScrollStateRef.current.canScrollDown = newCanScrollDown
+      setCanScrollDown(newCanScrollDown)
+    }
   }, [])
 
   const scrollUp = () => {
@@ -133,6 +144,7 @@ const DropdownMenuContent = React.forwardRef<
   const [canScrollDown, setCanScrollDown] = React.useState(false)
   const contentRef = React.useRef<HTMLDivElement>(null)
   const scrollAreaRef = React.useRef<HTMLDivElement>(null)
+  const lastScrollStateRef = React.useRef({ canScrollUp: false, canScrollDown: false })
 
   React.useImperativeHandle(ref, () => contentRef.current!)
 
@@ -140,8 +152,18 @@ const DropdownMenuContent = React.forwardRef<
     const scrollArea = scrollAreaRef.current
     if (!scrollArea) return
 
-    setCanScrollUp(scrollArea.scrollTop > 0)
-    setCanScrollDown(scrollArea.scrollTop < scrollArea.scrollHeight - scrollArea.clientHeight)
+    const newCanScrollUp = scrollArea.scrollTop > 0
+    const newCanScrollDown = scrollArea.scrollTop < scrollArea.scrollHeight - scrollArea.clientHeight
+
+    // Only update state if values actually changed to prevent infinite loops
+    if (newCanScrollUp !== lastScrollStateRef.current.canScrollUp) {
+      lastScrollStateRef.current.canScrollUp = newCanScrollUp
+      setCanScrollUp(newCanScrollUp)
+    }
+    if (newCanScrollDown !== lastScrollStateRef.current.canScrollDown) {
+      lastScrollStateRef.current.canScrollDown = newCanScrollDown
+      setCanScrollDown(newCanScrollDown)
+    }
   }, [])
 
   const scrollUp = () => {

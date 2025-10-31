@@ -118,24 +118,12 @@ export default function MarkdownArticle({
           
           // Handle hashtag links (format: /notes?t=tag)
           if (href.startsWith('/notes?t=') || href.startsWith('notes?t=')) {
-            // Extract the hashtag from the href
-            const hashtagMatch = href.match(/[?=]([^&]+)/)
-            const hashtag = hashtagMatch ? hashtagMatch[1].toLowerCase() : ''
-            
-            // Only render as green link if this hashtag is actually in the content
-            // If not in content, suppress the link and render as plain text (hashtags are handled by split-based approach)
-            if (!contentHashtags.has(hashtag)) {
-              // Hashtag not in content, render as plain text (not a link at all)
-              return <span className="break-words">{children}</span>
-            }
-            
             // Normalize href to include leading slash if missing
             const normalizedHref = href.startsWith('/') ? href : `/${href}`
-            // Render hashtags as inline span elements - force inline display with no margins
+            // Render hashtags as inline green links - remarkHashtags only processes hashtags in content
             return (
               <span
-                className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer [&]:inline [&]:m-0 [&]:p-0 [&]:leading-normal"
-                style={{ display: 'inline', margin: 0, padding: 0 }}
+                className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation()
                   e.preventDefault()
@@ -385,7 +373,7 @@ export default function MarkdownArticle({
         .hljs-strong {
           font-weight: bold;
         }
-        /* Force hashtag links to stay inline - override prose styles */
+        /* Force hashtag links to stay inline and green - override prose styles */
         .prose a[href^="/notes?t="],
         .prose a[href^="notes?t="],
         .prose span[role="button"][tabindex="0"] {
@@ -393,6 +381,19 @@ export default function MarkdownArticle({
           margin: 0 !important;
           padding: 0 !important;
           line-height: inherit !important;
+          color: #16a34a !important; /* Tailwind green-600 */
+          text-decoration: none !important;
+        }
+        .prose span[role="button"][tabindex="0"]:hover {
+          color: #15803d !important; /* Tailwind green-700 */
+          text-decoration: underline !important;
+        }
+        .dark .prose span[role="button"][tabindex="0"] {
+          color: #4ade80 !important; /* Tailwind green-400 */
+        }
+        .dark .prose span[role="button"][tabindex="0"]:hover {
+          color: #86efac !important; /* Tailwind green-300 */
+          text-decoration: underline !important;
         }
       `}</style>
       <div
