@@ -118,11 +118,26 @@ class ContentParserService {
       return this.parsePlainText(content)
     }
 
+    // Check if content starts with level 3+ headers (=== or deeper)
+    // Asciidoctor article doctype requires level 1 (=) or level 2 (==) before level 3 (===)
+    // If content starts with level 3+, use book doctype which allows sections at any level
+    const firstHeaderMatch = content.match(/^(={1,6})\s+/m)
+    let doctype: 'article' | 'book' = 'article'
+    
+    if (firstHeaderMatch) {
+      const firstHeaderLevel = firstHeaderMatch[1].length
+      // If first header is level 3 or deeper, use book doctype
+      // Book doctype allows sections at any level without requiring hierarchy
+      if (firstHeaderLevel >= 3) {
+        doctype = 'book'
+      }
+    }
+
     try {
       const result = asciidoctor.convert(content, {
         safe: 'safe',
         backend: 'html5',
-        doctype: 'article',
+        doctype: doctype,
         attributes: {
           'showtitle': true,
           'sectanchors': true,
@@ -169,8 +184,11 @@ class ContentParserService {
       // Process wikilinks in the HTML output
       const processedHtml = this.processWikilinksInHtml(htmlString)
       
+      // Process images: add max-width styling and prepare for carousel
+      const imagesProcessedHtml = this.processImagesInHtml(processedHtml)
+      
       // Clean up any leftover markdown syntax and hide raw ToC text
-      const cleanedHtml = this.cleanupMarkdown(processedHtml)
+      const cleanedHtml = this.cleanupMarkdown(imagesProcessedHtml)
       
       // Add proper CSS classes for styling
       const styledHtml = this.addStylingClasses(cleanedHtml)
@@ -191,7 +209,17 @@ class ContentParserService {
     
     switch (markupType) {
       case 'asciidoc':
-        asciidoc = content
+        // For AsciiDoc content, ensure proper formatting
+        // Convert escaped newlines to actual newlines
+        asciidoc = content.replace(/\\n/g, '\n')
+        
+        // Ensure headers are on their own lines with proper spacing
+        // AsciiDoc requires blank lines before headers when they follow other content
+        // Fix pattern: non-empty line + newline + header without blank line between
+        asciidoc = asciidoc.replace(/(\S[^\n]*)\n(={1,6}\s+[^\n]+)/g, (_match, before, header) => {
+          // Add blank line before header if it follows non-empty content
+          return `${before}\n\n${header}`
+        })
         break
 
       case 'advanced-markdown':
@@ -538,6 +566,57 @@ class ContentParserService {
         // Fallback to regular link
         return `<a href="nostr:${bech32Id}" class="nostr-link text-blue-600 hover:text-blue-800 hover:underline" data-nostr-type="${nostrType}" data-bech32="${bech32Id}">${displayText}</a>`
       }
+    })
+    
+    return processed
+  }
+
+  /**
+   * Process images in HTML output: add max-width styling and data attributes for carousel
+   */
+  private processImagesInHtml(html: string): string {
+    let processed = html
+    
+    // Extract all image URLs for carousel
+    const imageUrls: string[] = []
+    const imageUrlRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+    let match
+    while ((match = imageUrlRegex.exec(html)) !== null) {
+      const url = match[1]
+      if (url && !imageUrls.includes(url)) {
+        imageUrls.push(url)
+      }
+    }
+    
+    // Process each img tag: add max-width styling and data attributes
+    processed = processed.replace(/<img([^>]+)>/gi, (imgTag, attributes) => {
+      // Extract src attribute
+      const srcMatch = attributes.match(/src=["']([^"']+)["']/i)
+      if (!srcMatch) return imgTag
+      
+      const src = srcMatch[1]
+      const currentIndex = imageUrls.indexOf(src)
+      
+      // Add/update class for max-width
+      let updatedAttributes = attributes
+      
+      if (updatedAttributes.match(/class=["']/i)) {
+        updatedAttributes = updatedAttributes.replace(/class=["']([^"']*)["']/i, (_match: string, classes: string) => {
+          // Remove existing max-w classes and add our max-w-[400px]
+          const cleanedClasses = classes.replace(/max-w-\[?[^\s\]]+\]?/g, '').trim()
+          const newClasses = cleanedClasses 
+            ? `${cleanedClasses} max-w-[400px] object-contain cursor-zoom-in`
+            : 'max-w-[400px] object-contain cursor-zoom-in'
+          return `class="${newClasses}"`
+        })
+      } else {
+        updatedAttributes += ` class="max-w-[400px] h-auto object-contain cursor-zoom-in"`
+      }
+      
+      // Add data attributes for carousel
+      updatedAttributes += ` data-asciidoc-image="true" data-image-index="${currentIndex}" data-image-src="${src.replace(/"/g, '&quot;')}"`
+      
+      return `<img${updatedAttributes}>`
     })
     
     return processed

@@ -10,6 +10,11 @@ import HighlightSourcePreview from '../../UniversalContent/HighlightSourcePrevie
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ExtendedKind } from '@/constants'
+import { createPortal } from 'react-dom'
+import Lightbox from 'yet-another-react-lightbox'
+import Zoom from 'yet-another-react-lightbox/plugins/zoom'
+import { TImetaInfo } from '@/types'
+import { useMediaExtraction } from '@/hooks'
 
 export default function AsciidocArticle({
   event,
@@ -232,6 +237,67 @@ export default function AsciidocArticle({
     return () => clearTimeout(timeoutId)
   }, [parsedContent?.html, isArticleType])
 
+  // Extract images from content using the unified media extraction service
+  // This includes images from tags, content, and parsed HTML
+  const extractedMedia = useMediaExtraction(event, event.content)
+  
+  // Extract images from parsed HTML (after AsciiDoc processing) for carousel
+  // This ensures we get images that were rendered in the HTML output
+  const imagesInContent = useMemo<TImetaInfo[]>(() => {
+    if (!parsedContent?.html || !event) return []
+    
+    const images: TImetaInfo[] = []
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+    const seenUrls = new Set<string>()
+    
+    // Create a map of extracted media by URL for metadata lookup
+    const mediaMap = new Map<string, TImetaInfo>()
+    extractedMedia.all.forEach((media) => {
+      if (media.m?.startsWith('image/')) {
+        mediaMap.set(media.url, media)
+      }
+    })
+    
+    let match
+    while ((match = imgRegex.exec(parsedContent.html)) !== null) {
+      const url = match[1]
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url)
+        // Use metadata from extracted media if available, otherwise create basic entry
+        const mediaInfo = mediaMap.get(url) || { url, pubkey: event.pubkey }
+        images.push(mediaInfo)
+      }
+    }
+    
+    return images
+  }, [parsedContent?.html, event, extractedMedia])
+
+  // Handle image clicks to open carousel
+  const [lightboxIndex, setLightboxIndex] = useState(-1)
+  
+  useEffect(() => {
+    if (!contentRef.current || imagesInContent.length === 0) return
+
+    const handleImageClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (target.tagName === 'IMG' && target.hasAttribute('data-asciidoc-image')) {
+        event.preventDefault()
+        event.stopPropagation()
+        
+        const imageIndex = target.getAttribute('data-image-index')
+        if (imageIndex !== null) {
+          setLightboxIndex(parseInt(imageIndex, 10))
+        }
+      }
+    }
+
+    const contentElement = contentRef.current
+    contentElement.addEventListener('click', handleImageClick)
+    
+    return () => {
+      contentElement.removeEventListener('click', handleImageClick)
+    }
+  }, [imagesInContent.length])
 
   if (isLoading) {
     return (
@@ -303,6 +369,33 @@ export default function AsciidocArticle({
         dangerouslySetInnerHTML={{ __html: parsedContent?.html || '' }} 
       />
 
+      {/* Image carousel lightbox */}
+      {imagesInContent.length > 0 && lightboxIndex >= 0 && createPortal(
+        <div onClick={(e) => e.stopPropagation()}>
+          <Lightbox
+            index={lightboxIndex}
+            slides={imagesInContent.map(({ url }) => ({ 
+              src: url, 
+              alt: url 
+            }))}
+            plugins={[Zoom]}
+            open={lightboxIndex >= 0}
+            close={() => setLightboxIndex(-1)}
+            controller={{
+              closeOnBackdropClick: true,
+              closeOnPullUp: true,
+              closeOnPullDown: true
+            }}
+            styles={{
+              toolbar: { paddingTop: '2.25rem' }
+            }}
+            carousel={{
+              finite: false
+            }}
+          />
+        </div>,
+        document.body
+      )}
 
       {/* Collapsible Article Info - only for article-type events */}
       {!hideImagesAndInfo && isArticleType && (parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
