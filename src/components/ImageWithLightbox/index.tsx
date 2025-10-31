@@ -57,7 +57,7 @@ export default function ImageWithLightbox({
   }
 
   return (
-    <div>
+    <div className="max-w-[400px]">
       <Image
         key={0}
         className={className}

@@ -80,7 +80,7 @@ export default function ImageCarousel({ images, className = '' }: ImageCarouselP
               {currentImage.m?.startsWith('video/') ? (
                 <video
                   src={currentImage.url}
-                  className="w-full max-w-[800px] h-auto object-contain mx-auto"
+                  className="w-full max-w-[400px] h-auto object-contain mx-auto"
                   controls
                   preload="metadata"
                   onClick={openFullscreen}
@@ -89,7 +89,7 @@ export default function ImageCarousel({ images, className = '' }: ImageCarouselP
                 <div onClick={openFullscreen} className="cursor-pointer">
                   <ImageWithLightbox
                     image={currentImage}
-                    className="w-full max-w-[800px] h-auto object-contain mx-auto"
+                    className="w-full max-w-[400px] h-auto object-contain mx-auto"
                   />
                 </div>
               )}

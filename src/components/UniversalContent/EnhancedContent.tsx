@@ -3,7 +3,7 @@
  * while maintaining compatibility with existing embedded content
  */
 
-import { useTranslatedEvent } from '@/hooks'
+import { useTranslatedEvent, useMediaExtraction } from '@/hooks'
 import {
   EmbeddedEmojiParser,
   EmbeddedEventParser,
@@ -15,11 +15,9 @@ import {
   parseContent
 } from '@/lib/content-parser'
 import logger from '@/lib/logger'
-import { getImetaInfosFromEvent } from '@/lib/event'
-import { getEmojiInfosFromEmojiTags, getImetaInfoFromImetaTag, tagNameEquals } from '@/lib/tag'
+import { getEmojiInfosFromEmojiTags } from '@/lib/tag'
 import { cn } from '@/lib/utils'
 import { cleanUrl, isImage, isMedia, isAudio, isVideo } from '@/lib/url'
-import mediaUpload from '@/services/media-upload.service'
 import { TImetaInfo } from '@/types'
 import { Event } from 'nostr-tools'
 import { useMemo } from 'react'
@@ -52,6 +50,10 @@ export default function EnhancedContent({
   useEnhancedParsing?: boolean
 }) {
   const translatedEvent = useTranslatedEvent(event?.id)
+  const _content = translatedEvent?.content ?? event?.content ?? content
+  
+  // Use unified media extraction service
+  const extractedMedia = useMediaExtraction(event, _content)
   
   // If enhanced parsing is enabled and we have an event, use the new parser
   if (useEnhancedParsing && event) {
@@ -69,8 +71,7 @@ export default function EnhancedContent({
   }
 
   // Fallback to original parsing logic
-  const { nodes, allImages, lastNormalUrl, emojiInfos } = useMemo(() => {
-    const _content = translatedEvent?.content ?? event?.content ?? content
+  const { nodes, lastNormalUrl, emojiInfos } = useMemo(() => {
     if (!_content) return {}
 
     const nodes = parseContent(_content, [
@@ -83,126 +84,14 @@ export default function EnhancedContent({
       EmbeddedEmojiParser
     ])
 
-    // Collect all images from multiple sources and deduplicate using cleaned URLs
-    const seenUrls = new Set<string>()
-    const allImages: TImetaInfo[] = []
-
-    // Helper to add image/media if not already seen (using cleaned URL for comparison)
-    const addImage = (url: string, pubkey?: string, mimeType?: string) => {
-      if (!url) return
-      const cleaned = cleanUrl(url)
-      if (!cleaned || seenUrls.has(cleaned)) return
-      
-      // Only add if it's actually an image or media file
-      if (!isImage(cleaned) && !isMedia(cleaned)) return
-      
-      seenUrls.add(cleaned)
-      
-      // Determine mime type if not provided
-      let mime = mimeType
-      if (!mime) {
-        if (isImage(cleaned)) {
-          mime = 'image/*'
-        } else if (isAudio(cleaned)) {
-          mime = 'audio/*'
-        } else if (isVideo(cleaned)) {
-          mime = 'video/*'
-        } else {
-          mime = 'media/*'
-        }
-      }
-      
-      allImages.push({
-        url: cleaned,
-        pubkey: pubkey || event?.pubkey,
-        m: mime
-      })
-    }
-
-    // 1. Extract from imeta tags
-    if (event) {
-      const imetaInfos = getImetaInfosFromEvent(event)
-      imetaInfos.forEach((info) => {
-        if (info.m?.startsWith('image/') || info.m?.startsWith('video/') || info.m?.startsWith('audio/') || isImage(info.url) || isMedia(info.url)) {
-          addImage(info.url, info.pubkey, info.m)
-        }
-      })
-    }
-
-    // 2. Extract from r tags (reference/URL tags)
-    if (event) {
-      event.tags.filter(tagNameEquals('r')).forEach(([, url]) => {
-        if (url && (isImage(url) || isMedia(url))) {
-          addImage(url)
-        }
-      })
-    }
-
-    // 2b. Extract from image tag
-    if (event) {
-      const imageTag = event.tags.find(tag => tag[0] === 'image' && tag[1])
-      if (imageTag?.[1]) {
-        addImage(imageTag[1])
-      }
-    }
-
-    // 3. Extract from content nodes (already parsed URLs)
-    nodes.forEach((node) => {
-      if (node.type === 'image') {
-        addImage(node.data)
-      } else if (node.type === 'images') {
-        const urls = Array.isArray(node.data) ? node.data : [node.data]
-        urls.forEach(url => addImage(url))
-      } else if (node.type === 'url') {
-        // Check if URL is an image/media file
-        if (isImage(node.data) || isMedia(node.data)) {
-          addImage(node.data)
-        }
-      }
-    })
-
-    // 4. Extract directly from raw content (catch any URLs that weren't parsed)
-    // This ensures we don't miss any image URLs in the content
-    if (_content) {
-      const urlRegex = /https?:\/\/[^\s<>"']+/g
-      const urlMatches = _content.matchAll(urlRegex)
-      for (const match of urlMatches) {
-        const url = match[0]
-        if (isImage(url) || isMedia(url)) {
-          addImage(url)
-        }
-      }
-    }
-
-    // 5. Try to match content URLs with imeta tags for better metadata
-    if (event) {
-      const imetaInfos = getImetaInfosFromEvent(event)
-      allImages.forEach((img, index) => {
-        // Try to find matching imeta info
-        const matchedImeta = imetaInfos.find(imeta => cleanUrl(imeta.url) === img.url)
-        if (matchedImeta && matchedImeta.m) {
-          allImages[index] = { ...img, m: matchedImeta.m }
-        } else {
-          // Try to get imeta from media upload service
-          const tag = mediaUpload.getImetaTagByUrl(img.url)
-          if (tag) {
-            const parsedImeta = getImetaInfoFromImetaTag(tag, event.pubkey)
-            if (parsedImeta) {
-              allImages[index] = parsedImeta
-            }
-          }
-        }
-      })
-    }
-
     const emojiInfos = getEmojiInfosFromEmojiTags(event?.tags)
 
     const lastNormalUrlNode = nodes.findLast((node) => node.type === 'url')
     const lastNormalUrl =
       typeof lastNormalUrlNode?.data === 'string' ? cleanUrl(lastNormalUrlNode.data) : undefined
 
-    return { nodes, allImages, emojiInfos, lastNormalUrl }
-  }, [event, translatedEvent, content])
+    return { nodes, emojiInfos, lastNormalUrl }
+  }, [_content, event])
 
   if (!nodes || nodes.length === 0) {
     return null
@@ -211,7 +100,7 @@ export default function EnhancedContent({
   // Create maps for quick lookup of images/media by cleaned URL
   const imageMap = new Map<string, TImetaInfo>()
   const mediaMap = new Map<string, TImetaInfo>()
-  allImages.forEach((img) => {
+  extractedMedia.all.forEach((img: TImetaInfo) => {
     if (img.m?.startsWith('image/')) {
       imageMap.set(img.url, img)
     } else if (img.m?.startsWith('video/') || img.m?.startsWith('audio/') || img.m === 'media/*') {
@@ -225,10 +114,12 @@ export default function EnhancedContent({
 
   logger.debug('[EnhancedContent] Parsed content:', { 
     nodeCount: nodes.length, 
-    allImages: allImages.length, 
+    allMedia: extractedMedia.all.length,
+    images: extractedMedia.images.length,
+    videos: extractedMedia.videos.length,
+    audio: extractedMedia.audio.length,
     imageMapSize: imageMap.size,
     mediaMapSize: mediaMap.size,
-    allImageUrls: allImages.map(img => img.url),
     nodes: nodes.map(n => ({ type: n.type, data: Array.isArray(n.data) ? n.data.length : n.data })) 
   })
   
@@ -276,13 +167,9 @@ export default function EnhancedContent({
   // Filter carousel: only show IMAGES that DON'T appear in content
   // (videos and audio should never be in carousel - they're rendered individually)
   // (images in content will be rendered in a single carousel, not individually)
-  const carouselImages = allImages.filter(img => {
-    // Never include videos or audio in carousel
-    if (isVideo(img.url) || isAudio(img.url) || img.m?.startsWith('video/') || img.m?.startsWith('audio/')) {
-      return false
-    }
+  const carouselImages = extractedMedia.images.filter((img: TImetaInfo) => {
     // Only include images that don't appear in content
-    return !mediaInContent.has(img.url) && isImage(img.url)
+    return !mediaInContent.has(img.url)
   })
 
   return (

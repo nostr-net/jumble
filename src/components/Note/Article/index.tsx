@@ -216,7 +216,7 @@ export default function Article({
           <div className="mb-8">
             <ImageWithLightbox
               image={{ url: metadata.image, pubkey: event.pubkey }}
-              className="w-full max-w-[800px] h-auto object-contain rounded-lg shadow-lg mx-auto"
+              className="w-full max-w-[400px] h-auto object-contain rounded-lg shadow-lg mx-auto"
             />
           </div>
         )}

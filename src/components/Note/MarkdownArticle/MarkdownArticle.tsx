@@ -5,8 +5,8 @@ import MediaPlayer from '@/components/MediaPlayer'
 import Wikilink from '@/components/UniversalContent/Wikilink'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNote, toNoteList, toProfile } from '@/lib/link'
-import { extractAllImagesFromEvent } from '@/lib/image-extraction'
-import { getImetaInfosFromEvent } from '@/lib/event'
+import { useMediaExtraction } from '@/hooks'
+import { cleanUrl } from '@/lib/url'
 import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
 import React, { useMemo, useEffect, useRef, useState } from 'react'
@@ -32,10 +32,10 @@ export default function MarkdownArticle({
   const { push } = useSecondaryPage()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   const [isImagesOpen, setIsImagesOpen] = useState(false)
-  
-  // Extract all images from the event
-  const allImages = useMemo(() => extractAllImagesFromEvent(event), [event])
   const contentRef = useRef<HTMLDivElement>(null)
+  
+  // Use unified media extraction service
+  const extractedMedia = useMediaExtraction(event, event.content)
   
   // Extract hashtags that are actually present in the content (as literal #hashtag)
   // This ensures we only render green links for hashtags that are in the content, not from t-tags
@@ -49,91 +49,41 @@ export default function MarkdownArticle({
     return hashtags
   }, [event.content])
   
-  // Extract, normalize, and deduplicate all media URLs (images, audio, video)
-  // from content, imeta tags, and image tags
-  const mediaUrls = useMemo(() => {
-    if (showImageGallery) return [] // Don't render inline for article content
-    
-    const seenUrls = new Set<string>()
-    const mediaUrls: string[] = []
-    
-    // Helper to normalize and add URL
-    const addUrl = (url: string) => {
-      if (!url) return
-      
-      // Normalize URL by removing tracking parameters and cleaning it
-      let normalizedUrl = url
-        .replace(/[?&](utm_[^&]*)/g, '')
-        .replace(/[?&](fbclid|gclid|msclkid)=[^&]*/g, '')
-        .replace(/[?&]w=\d+/g, '')
-        .replace(/[?&]h=\d+/g, '')
-        .replace(/[?&]q=\d+/g, '')
-        .replace(/[?&]f=\w+/g, '')
-        .replace(/[?&]auto=\w+/g, '')
-        .replace(/[?&]format=\w+/g, '')
-        .replace(/[?&]fit=\w+/g, '')
-        .replace(/[?&]crop=\w+/g, '')
-        .replace(/[?&]&+/g, '&')
-        .replace(/[?&]$/, '')
-        .replace(/\?$/, '')
-      
-      try {
-        // Validate URL
-        const parsedUrl = new URL(normalizedUrl)
-        const extension = parsedUrl.pathname.split('.').pop()?.toLowerCase()
-        
-        // Check if it's a media file
-        const isMedia = 
-          // Audio extensions
-          (extension && ['mp3', 'wav', 'flac', 'aac', 'm4a', 'opus', 'wma'].includes(extension)) ||
-          // Video extensions
-          (extension && ['mp4', 'webm', 'ogg', 'avi', 'mov', 'mkv', 'm4v', '3gp'].includes(extension)) ||
-          // Image extensions
-          (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff'].includes(extension))
-        
-        if (isMedia && !seenUrls.has(normalizedUrl)) {
-          mediaUrls.push(normalizedUrl)
-          seenUrls.add(normalizedUrl)
+  // Track which image URLs appear in the markdown content (for deduplication)
+  // Use cleaned URLs for comparison with extractedMedia
+  const imagesInContent = useMemo(() => {
+    const imageUrls = new Set<string>()
+    const urlRegex = /https?:\/\/[^\s<>"']+/g
+    const urlMatches = event.content.matchAll(urlRegex)
+    for (const match of urlMatches) {
+      const url = match[0]
+      // Check if it's an image URL
+      const extension = url.split('.').pop()?.toLowerCase()
+      if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff'].includes(extension)) {
+        const cleaned = cleanUrl(url)
+        if (cleaned) {
+          imageUrls.add(cleaned)
         }
-      } catch {
-        // Invalid URL, skip
       }
     }
-    
-    // 1. Extract from content - all URLs (need to match exactly what markdown will find)
-    const content = event.content || ''
-    // Match URLs that could be in markdown links or plain text
-    const urlMatches = content.match(/https?:\/\/[^\s<>"']+/g) || []
-    urlMatches.forEach(url => {
-      // Normalize the URL before adding
-      const normalized = url.replace(/[?&](utm_[^&]*)/g, '')
-        .replace(/[?&](fbclid|gclid|msclkid)=[^&]*/g, '')
-        .replace(/[?&]w=\d+/g, '')
-        .replace(/[?&]h=\d+/g, '')
-        .replace(/[?&]q=\d+/g, '')
-        .replace(/[?&]f=\w+/g, '')
-        .replace(/[?&]auto=\w+/g, '')
-        .replace(/[?&]format=\w+/g, '')
-        .replace(/[?&]fit=\w+/g, '')
-        .replace(/[?&]crop=\w+/g, '')
-        .replace(/[?&]&+/g, '&')
-        .replace(/[?&]$/, '')
-        .replace(/\?$/, '')
-      addUrl(normalized)
-    })
-    
-    // 2. Extract from imeta tags
-    const imetaInfos = getImetaInfosFromEvent(event)
-    imetaInfos.forEach(info => addUrl(info.url))
-    
-    // 3. Extract from image tag
-    const imageTag = event.tags.find(tag => tag[0] === 'image' && tag[1])
-    if (imageTag?.[1]) {
-      addUrl(imageTag[1])
+    // Also check markdown image syntax: ![alt](url)
+    const markdownImageRegex = /!\[[^\]]*\]\(([^)]+)\)/g
+    let imgMatch
+    while ((imgMatch = markdownImageRegex.exec(event.content)) !== null) {
+      if (imgMatch[1]) {
+        const cleaned = cleanUrl(imgMatch[1])
+        if (cleaned) {
+          imageUrls.add(cleaned)
+        }
+      }
     }
-    
-    return mediaUrls
-  }, [event.content, event.tags, event.pubkey, showImageGallery])
+    return imageUrls
+  }, [event.content])
+  
+  // Images that should appear in the carousel (from tags only, not in content)
+  const carouselImages = useMemo(() => {
+    return extractedMedia.images.filter(img => !imagesInContent.has(img.url))
+  }, [extractedMedia.images, imagesInContent])
 
   // Initialize highlight.js for syntax highlighting
   useEffect(() => {
@@ -236,7 +186,10 @@ export default function MarkdownArticle({
               .replace(/[?&]$/, '')
               .replace(/\?$/, '')
             
-            if (mediaUrls.includes(normalizedHref)) {
+            // Check if this is a media URL that should be rendered inline
+            // Videos and audio are handled separately below
+            const extension = normalizedHref.split('.').pop()?.toLowerCase()
+            if (extension && ['mp3', 'wav', 'flac', 'aac', 'm4a', 'opus', 'wma', 'mp4', 'webm', 'ogg', 'avi', 'mov', 'mkv', 'm4v', '3gp'].includes(extension)) {
               return null
             }
           }
@@ -337,21 +290,17 @@ export default function MarkdownArticle({
         img: ({ src }) => {
           if (!src) return null
           
-          // If showing image gallery, don't render inline images - they'll be shown in the carousel
-          if (showImageGallery) {
-            return null
-          }
-          
-          // For all other content, render images inline
+          // Always render images inline in their content position
+          // The carousel at the bottom only shows images from tags that aren't in content
           return (
             <ImageWithLightbox
               image={{ url: src, pubkey: event.pubkey }}
-              className="max-w-full rounded-lg my-2"
+              className="max-w-[400px] rounded-lg my-2"
             />
           )
         }
       }) as Components,
-    [showImageGallery, event.pubkey, mediaUrls, event.kind, contentHashtags]
+    [showImageGallery, event.pubkey, event.kind, contentHashtags]
   )
 
   return (
@@ -502,35 +451,33 @@ export default function MarkdownArticle({
       </div>
       
       {/* Inline Media - Show for non-article content (kinds 1, 11, 1111) */}
-      {!showImageGallery && mediaUrls.length > 0 && (
+      {!showImageGallery && extractedMedia.videos.length > 0 && (
         <div className="space-y-4 mt-4">
-          {mediaUrls.map((url) => {
-            const extension = url.split('.').pop()?.toLowerCase()
-            
-            // Images are already handled by the img component
-            if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
-              return null
-            }
-            
-            // Render audio and video
-            return (
-              <MediaPlayer key={url} src={url} mustLoad={true} className="w-full" />
-            )
-          })}
+          {extractedMedia.videos.map((video) => (
+            <MediaPlayer key={video.url} src={video.url} mustLoad={true} className="w-full" />
+          ))}
+        </div>
+      )}
+      {!showImageGallery && extractedMedia.audio.length > 0 && (
+        <div className="space-y-4 mt-4">
+          {extractedMedia.audio.map((audio) => (
+            <MediaPlayer key={audio.url} src={audio.url} mustLoad={true} className="w-full" />
+          ))}
         </div>
       )}
       
       {/* Image Carousel - Only show for article content (30023, 30041, 30817, 30818) */}
-      {showImageGallery && allImages.length > 0 && (
+      {/* Only show images that aren't already in the content (from tags only) */}
+      {showImageGallery && carouselImages.length > 0 && (
         <Collapsible open={isImagesOpen} onOpenChange={setIsImagesOpen} className="mt-8">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
-              <span>Images in this article ({allImages.length})</span>
+              <span>Images in this article ({carouselImages.length})</span>
               {isImagesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-4">
-            <ImageCarousel images={allImages} />
+            <ImageCarousel images={carouselImages} />
           </CollapsibleContent>
         </Collapsible>
       )}

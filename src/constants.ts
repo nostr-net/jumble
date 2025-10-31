@@ -104,6 +104,8 @@ export const SEARCHABLE_RELAY_URLS = [
   'wss://relay.damus.io',
   'wss://relay.lumina.rocks',
   'wss://relay.snort.social',
+  'wss://nos.lol',
+  'wss://nostr.mom'
   ]
 
 export const PROFILE_RELAY_URLS = [
