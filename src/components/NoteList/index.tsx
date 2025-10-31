@@ -1,5 +1,6 @@
 import NewNotesButton from '@/components/NewNotesButton'
 import { Button } from '@/components/ui/button'
+import { ExtendedKind } from '@/constants'
 import {
   getReplaceableCoordinateFromEvent,
   isMentioningMutedUsers,
@@ -7,12 +8,14 @@ import {
   isReplyNoteEvent
 } from '@/lib/event'
 import { shouldFilterEvent } from '@/lib/event-filtering'
+import { getZapInfoFromEvent } from '@/lib/event-metadata'
 import { isTouchDevice } from '@/lib/utils'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useDeletedEvent } from '@/providers/DeletedEventProvider'
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
+import { useZap } from '@/providers/ZapProvider'
 import client from '@/services/client.service'
 import { TFeedSubRequest } from '@/types'
 import dayjs from 'dayjs'
@@ -65,6 +68,7 @@ const NoteList = forwardRef(
     const { mutePubkeySet } = useMuteList()
     const { hideContentMentioningMutedUsers } = useContentPolicy()
     const { isEventDeleted } = useDeletedEvent()
+    const { zapReplyThreshold } = useZap()
     const [events, setEvents] = useState<Event[]>([])
     const [newEvents, setNewEvents] = useState<Event[]>([])
     const [hasMore, setHasMore] = useState<boolean>(true)
@@ -106,9 +110,18 @@ const NoteList = forwardRef(
         // Filter out expired events
         if (shouldFilterEvent(evt)) return true
 
+        // Filter out zap receipts below the zap threshold (superzaps)
+        if (evt.kind === ExtendedKind.ZAP_RECEIPT) {
+          const zapInfo = getZapInfoFromEvent(evt)
+          // Hide zap receipts if amount is missing, 0, or below the threshold
+          if (!zapInfo || zapInfo.amount === undefined || zapInfo.amount === 0 || zapInfo.amount < zapReplyThreshold) {
+            return true
+          }
+        }
+
         return false
       },
-      [hideReplies, hideUntrustedNotes, mutePubkeySet, pinnedEventIds, isEventDeleted]
+      [hideReplies, hideUntrustedNotes, mutePubkeySet, pinnedEventIds, isEventDeleted, zapReplyThreshold]
     )
 
     const filteredEvents = useMemo(() => {

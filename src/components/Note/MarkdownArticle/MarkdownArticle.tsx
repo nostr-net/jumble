@@ -25,11 +25,13 @@ import { Components } from './types'
 export default function MarkdownArticle({
   event,
   className,
-  showImageGallery = false
+  showImageGallery = false,
+  hideMetadata = false
 }: {
   event: Event
   className?: string
   showImageGallery?: boolean
+  hideMetadata?: boolean
 }) {
   const { push } = useSecondaryPage()
   const { navigateToHashtag } = useSmartHashtagNavigation()
@@ -491,13 +493,13 @@ export default function MarkdownArticle({
         ref={contentRef}
         className={`prose prose-zinc max-w-none dark:prose-invert break-words overflow-wrap-anywhere ${className || ''}`}
       >
-      {metadata.title && <h1 className="break-words">{metadata.title}</h1>}
-      {metadata.summary && (
+      {!hideMetadata && metadata.title && <h1 className="break-words">{metadata.title}</h1>}
+      {!hideMetadata && metadata.summary && (
         <blockquote>
           <p className="break-words">{metadata.summary}</p>
         </blockquote>
       )}
-      {metadata.image && (() => {
+      {!hideMetadata && metadata.image && (() => {
         // Find the index of the metadata image in allImages
         const cleanedMetadataImage = cleanUrl(metadata.image)
         const metadataImageIndex = cleanedMetadataImage

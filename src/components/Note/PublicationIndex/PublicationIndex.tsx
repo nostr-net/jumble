@@ -46,10 +46,12 @@ interface PublicationMetadata {
 
 export default function PublicationIndex({
   event,
-  className
+  className,
+  isNested = false
 }: {
   event: Event
   className?: string
+  isNested?: boolean
 }) {
   const { push } = useSecondaryPage()
   // Parse publication metadata from event tags
@@ -780,48 +782,50 @@ export default function PublicationIndex({
 
   return (
     <div className={cn('space-y-6', className)}>
-      {/* Publication Metadata */}
-      <div className="prose prose-zinc max-w-none dark:prose-invert">
-        <header className="mb-8 border-b pb-6">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <h1 className="text-4xl font-bold leading-tight break-words flex-1">{metadata.title}</h1>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="shrink-0"
-              onClick={exportPublication}
-              title="Export as AsciiDoc"
-            >
-              <MoreVertical className="h-5 w-5" />
-            </Button>
-          </div>
-          {metadata.summary && (
-            <blockquote className="border-l-4 border-primary pl-6 italic text-muted-foreground mb-4 text-lg leading-relaxed">
-              <p className="break-words">{metadata.summary}</p>
-            </blockquote>
-          )}
-          <div className="text-sm text-muted-foreground space-y-1">
-            {metadata.author && (
-              <div>
-                <span className="font-semibold">Author:</span> {metadata.author}
-              </div>
+      {/* Publication Metadata - only show for top-level publications */}
+      {!isNested && (
+        <div className="prose prose-zinc max-w-none dark:prose-invert">
+          <header className="mb-8 border-b pb-6">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <h1 className="text-4xl font-bold leading-tight break-words flex-1">{metadata.title}</h1>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="shrink-0"
+                onClick={exportPublication}
+                title="Export as AsciiDoc"
+              >
+                <MoreVertical className="h-5 w-5" />
+              </Button>
+            </div>
+            {metadata.summary && (
+              <blockquote className="border-l-4 border-primary pl-6 italic text-muted-foreground mb-4 text-lg leading-relaxed">
+                <p className="break-words">{metadata.summary}</p>
+              </blockquote>
             )}
-            {metadata.version && (
-              <div>
-                <span className="font-semibold">Version:</span> {metadata.version}
-              </div>
-            )}
-            {metadata.type && (
-              <div>
-                <span className="font-semibold">Type:</span> {metadata.type}
-              </div>
-            )}
-          </div>
-        </header>
-      </div>
+            <div className="text-sm text-muted-foreground space-y-1">
+              {metadata.author && (
+                <div>
+                  <span className="font-semibold">Author:</span> {metadata.author}
+                </div>
+              )}
+              {metadata.version && (
+                <div>
+                  <span className="font-semibold">Version:</span> {metadata.version}
+                </div>
+              )}
+              {metadata.type && (
+                <div>
+                  <span className="font-semibold">Type:</span> {metadata.type}
+                </div>
+              )}
+            </div>
+          </header>
+        </div>
+      )}
 
-      {/* Table of Contents */}
-      {!isLoading && tableOfContents.length > 0 && (
+      {/* Table of Contents - only show for top-level publications */}
+      {!isNested && !isLoading && tableOfContents.length > 0 && (
         <div className="border rounded-lg p-6 bg-muted/30">
           <h2 className="text-xl font-semibold mb-4">Table of Contents</h2>
           <nav>
@@ -839,8 +843,8 @@ export default function PublicationIndex({
         </div>
       )}
 
-      {/* Failed References Banner */}
-      {!isLoading && failedReferences.length > 0 && references.length > 0 && (
+      {/* Failed References Banner - only show for top-level publications */}
+      {!isNested && !isLoading && failedReferences.length > 0 && references.length > 0 && (
         <div className="p-4 border rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
           <div className="flex items-center justify-between gap-4">
             <div className="text-sm text-yellow-800 dark:text-yellow-200">
@@ -954,7 +958,7 @@ export default function PublicationIndex({
               // Recursively render nested 30040 publication index
               return (
                 <div key={index} id={sectionId} className="border-l-4 border-primary pl-6 scroll-mt-4">
-                  <PublicationIndex event={ref.event} />
+                  <PublicationIndex event={ref.event} isNested={true} />
                 </div>
               )
             } else if (eventKind === ExtendedKind.PUBLICATION_CONTENT || eventKind === ExtendedKind.WIKI_ARTICLE) {
@@ -968,7 +972,7 @@ export default function PublicationIndex({
               // Render 30817 content as MarkdownArticle
               return (
                 <div key={index} id={sectionId} className="scroll-mt-4">
-                  <MarkdownArticle event={ref.event} showImageGallery={false} />
+                  <MarkdownArticle event={ref.event} showImageGallery={false} hideMetadata={true} />
                 </div>
               )
             } else {

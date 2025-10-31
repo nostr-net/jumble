@@ -345,23 +345,25 @@ export default function AsciidocArticle({
 
   return (
     <article className={`prose prose-zinc max-w-none dark:prose-invert break-words leading-relaxed ${parsedContent?.cssClasses || ''} ${className || ''}`}>
-      {/* Article metadata */}
-      <header className="mb-8">
-        <h1 className="break-words text-4xl font-bold mb-6 leading-tight">{metadata.title}</h1>
-        {metadata.summary && (
-          <blockquote className="border-l-4 border-primary pl-6 italic text-muted-foreground mb-8 text-lg leading-relaxed">
-            <p className="break-words">{metadata.summary}</p>
-          </blockquote>
-        )}
-        {metadata.image && (
-          <div className="mb-8">
-            <ImageWithLightbox
-              image={{ url: metadata.image, pubkey: event.pubkey }}
-              className="w-full max-w-[400px] h-auto object-contain rounded-lg shadow-lg mx-auto"
-            />
-          </div>
-        )}
-      </header>
+      {/* Article metadata - hide when used as nested content */}
+      {!hideImagesAndInfo && (
+        <header className="mb-8">
+          <h1 className="break-words text-4xl font-bold mb-6 leading-tight">{metadata.title}</h1>
+          {metadata.summary && (
+            <blockquote className="border-l-4 border-primary pl-6 italic text-muted-foreground mb-8 text-lg leading-relaxed">
+              <p className="break-words">{metadata.summary}</p>
+            </blockquote>
+          )}
+          {metadata.image && (
+            <div className="mb-8">
+              <ImageWithLightbox
+                image={{ url: metadata.image, pubkey: event.pubkey }}
+                className="w-full max-w-[400px] h-auto object-contain rounded-lg shadow-lg mx-auto"
+              />
+            </div>
+          )}
+        </header>
+      )}
 
       {/* Render AsciiDoc content (everything is now processed as AsciiDoc) */}
       <div 
