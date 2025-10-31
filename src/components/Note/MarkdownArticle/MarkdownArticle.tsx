@@ -1,5 +1,5 @@
 import { SecondaryPageLink, useSecondaryPage, useSmartHashtagNavigation } from '@/PageManager'
-import ImageWithLightbox from '@/components/ImageWithLightbox'
+import Image from '@/components/Image'
 import MediaPlayer from '@/components/MediaPlayer'
 import Wikilink from '@/components/UniversalContent/Wikilink'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
@@ -8,14 +8,18 @@ import { useMediaExtraction } from '@/hooks'
 import { cleanUrl } from '@/lib/url'
 import { ExternalLink } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
-import React, { useMemo, useEffect, useRef } from 'react'
+import React, { useMemo, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
+import { createPortal } from 'react-dom'
+import Lightbox from 'yet-another-react-lightbox'
+import Zoom from 'yet-another-react-lightbox/plugins/zoom'
 import 'katex/dist/katex.min.css'
 import NostrNode from './NostrNode'
 import { remarkNostr } from './remarkNostr'
 import { remarkHashtags } from './remarkHashtags'
+import { remarkUnwrapImages } from './remarkUnwrapImages'
 import { Components } from './types'
 
 export default function MarkdownArticle({
@@ -47,41 +51,36 @@ export default function MarkdownArticle({
     return hashtags
   }, [event.content])
   
-  // Track which image URLs appear in the markdown content (for deduplication)
-  // Use cleaned URLs for comparison with extractedMedia
-  const imagesInContent = useMemo(() => {
-    const imageUrls = new Set<string>()
-    const urlRegex = /https?:\/\/[^\s<>"']+/g
-    const urlMatches = event.content.matchAll(urlRegex)
-    for (const match of urlMatches) {
-      const url = match[0]
-      // Check if it's an image URL
-      const extension = url.split('.').pop()?.toLowerCase()
-      if (extension && ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff'].includes(extension)) {
-        const cleaned = cleanUrl(url)
-        if (cleaned) {
-          imageUrls.add(cleaned)
-        }
-      }
-    }
-    // Also check markdown image syntax: ![alt](url)
-    const markdownImageRegex = /!\[[^\]]*\]\(([^)]+)\)/g
-    let imgMatch
-    while ((imgMatch = markdownImageRegex.exec(event.content)) !== null) {
-      if (imgMatch[1]) {
-        const cleaned = cleanUrl(imgMatch[1])
-        if (cleaned) {
-          imageUrls.add(cleaned)
-        }
-      }
-    }
-    return imageUrls
-  }, [event.content])
+  // All images from useMediaExtraction are already cleaned and deduplicated
+  // This includes images from content, tags, imeta, r tags, etc.
+  const allImages = extractedMedia.images
   
-  // Images that should appear in the carousel (from tags only, not in content)
-  const carouselImages = useMemo(() => {
-    return extractedMedia.images.filter(img => !imagesInContent.has(img.url))
-  }, [extractedMedia.images, imagesInContent])
+  // Handle image clicks to open carousel
+  const [lightboxIndex, setLightboxIndex] = useState(-1)
+  
+  useEffect(() => {
+    if (!contentRef.current || allImages.length === 0) return
+
+    const handleImageClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (target.tagName === 'IMG' && target.hasAttribute('data-markdown-image')) {
+        event.preventDefault()
+        event.stopPropagation()
+        
+        const imageIndex = target.getAttribute('data-image-index')
+        if (imageIndex !== null) {
+          setLightboxIndex(parseInt(imageIndex, 10))
+        }
+      }
+    }
+
+    const contentElement = contentRef.current
+    contentElement.addEventListener('click', handleImageClick)
+    
+    return () => {
+      contentElement.removeEventListener('click', handleImageClick)
+    }
+  }, [allImages.length])
 
   // Initialize highlight.js for syntax highlighting
   useEffect(() => {
@@ -194,6 +193,43 @@ export default function MarkdownArticle({
             }
           }
           
+          // If the link contains an image, handle it specially
+          // When markdown processes [![](url)](link), it creates <a><img/></a>
+          // The img component handler will convert <img> to <Image> component
+          // So we check if children contains an Image component
+          const hasImage = React.Children.toArray(children).some(
+            child => React.isValidElement(child) && child.type === Image
+          )
+          
+          // If link contains an image, let the image handle the click for lightbox
+          // Just wrap it in an anchor that won't interfere with image clicks
+          if (hasImage) {
+            return (
+              <a
+                {...props}
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-block"
+                onClick={(e) => {
+                  // Only open link if not clicking directly on the image itself
+                  // The image component will handle its own click for the lightbox
+                  const target = e.target as HTMLElement
+                  if (target.tagName === 'IMG' || target.closest('img')) {
+                    // Prevent link navigation when clicking the image
+                    // The image's onClick will handle opening the lightbox
+                    e.preventDefault()
+                    e.stopPropagation()
+                    return
+                  }
+                  // Allow default link behavior for non-image clicks
+                }}
+              >
+                {children}
+              </a>
+            )
+          }
+          
           return (
             <a
               {...props}
@@ -207,15 +243,52 @@ export default function MarkdownArticle({
           )
         },
         p: (props) => {
-          // Check if the paragraph contains only an image
+          // Check if the paragraph contains an img element or Image component
+          // Since Image renders a div, we need to convert the paragraph to a div to avoid nesting issues
           const children = props.children
-          if (React.Children.count(children) === 1 && React.isValidElement(children)) {
-            const child = children as React.ReactElement
-            if (child.type === ImageWithLightbox) {
-              // Render image outside paragraph context
-              return <div {...props} className="break-words" />
+          const childrenArray = React.Children.toArray(children)
+          
+          // Fast path: check if paragraph has only one child that might be an image
+          if (childrenArray.length === 1) {
+            const child = childrenArray[0]
+            if (React.isValidElement(child)) {
+              // Check for img type (string) before conversion, Image component after, or data attribute
+              if (child.type === 'img' || child.type === Image || child.props?.['data-markdown-image']) {
+                return <div {...props} className="break-words" />
+              }
+              // Check if child contains an img/image (for links wrapping images)
+              if (child.props?.children) {
+                const grandchildren = React.Children.toArray(child.props.children)
+                if (grandchildren.some((gc: React.ReactNode) => 
+                  React.isValidElement(gc) && 
+                  (gc.type === 'img' || gc.type === Image || gc.props?.['data-markdown-image'])
+                )) {
+                  return <div {...props} className="break-words" />
+                }
+              }
             }
           }
+          
+          // Check all children for images (for paragraphs with multiple children where one is an image)
+          for (const child of childrenArray) {
+            if (React.isValidElement(child)) {
+              // Direct image check
+              if (child.type === 'img' || child.type === Image || child.props?.['data-markdown-image']) {
+                return <div {...props} className="break-words" />
+              }
+              // One-level deep check for nested images (like in links)
+              if (child.props?.children) {
+                const grandchildren = React.Children.toArray(child.props.children)
+                if (grandchildren.some((gc: React.ReactNode) => 
+                  React.isValidElement(gc) && 
+                  (gc.type === 'img' || gc.type === Image || gc.props?.['data-markdown-image'])
+                )) {
+                  return <div {...props} className="break-words" />
+                }
+              }
+            }
+          }
+          
           return <p {...props} className="break-words" />
         },
         div: (props) => <div {...props} className="break-words" />,
@@ -290,17 +363,35 @@ export default function MarkdownArticle({
         img: ({ src }) => {
           if (!src) return null
           
+          // Find the index of this image in allImages (includes content and tags, already deduplicated)
+          const cleanedSrc = cleanUrl(src)
+          const imageIndex = cleanedSrc 
+            ? allImages.findIndex(img => cleanUrl(img.url) === cleanedSrc)
+            : -1
+          
           // Always render images inline in their content position
-          // The carousel at the bottom only shows images from tags that aren't in content
+          // The shared lightbox will show all images (content + tags) when clicked
           return (
-            <ImageWithLightbox
+            <Image
               image={{ url: src, pubkey: event.pubkey }}
-              className="max-w-[400px] rounded-lg my-2"
+              className="max-w-[400px] rounded-lg my-2 cursor-zoom-in"
+              classNames={{
+                wrapper: 'rounded-lg',
+                errorPlaceholder: 'aspect-square h-[30vh]'
+              }}
+              data-markdown-image="true"
+              data-image-index={imageIndex >= 0 ? imageIndex.toString() : undefined}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (imageIndex >= 0) {
+                  setLightboxIndex(imageIndex)
+                }
+              }}
             />
           )
         }
       }) as Components,
-    [showImageGallery, event.pubkey, event.kind, contentHashtags]
+    [showImageGallery, event.pubkey, event.kind, contentHashtags, allImages, navigateToHashtag]
   )
 
   return (
@@ -406,13 +497,33 @@ export default function MarkdownArticle({
           <p className="break-words">{metadata.summary}</p>
         </blockquote>
       )}
-      {metadata.image && (
-        <ImageWithLightbox
-          image={{ url: metadata.image, pubkey: event.pubkey }}
-          className="w-full max-w-[400px] aspect-[3/1] object-cover my-0"
-        />
-      )}
-      <Markdown remarkPlugins={[remarkGfm, remarkMath, remarkNostr, remarkHashtags]} components={components}>
+      {metadata.image && (() => {
+        // Find the index of the metadata image in allImages
+        const cleanedMetadataImage = cleanUrl(metadata.image)
+        const metadataImageIndex = cleanedMetadataImage
+          ? allImages.findIndex(img => cleanUrl(img.url) === cleanedMetadataImage)
+          : -1
+        
+        return (
+          <Image
+            image={{ url: metadata.image, pubkey: event.pubkey }}
+            className="max-w-[400px] w-full h-auto my-0 cursor-zoom-in"
+            classNames={{
+              wrapper: 'rounded-lg',
+              errorPlaceholder: 'aspect-square h-[30vh]'
+            }}
+            data-markdown-image="true"
+            data-image-index={metadataImageIndex >= 0 ? metadataImageIndex.toString() : undefined}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (metadataImageIndex >= 0) {
+                setLightboxIndex(metadataImageIndex)
+              }
+            }}
+          />
+        )
+      })()}
+      <Markdown remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapImages, remarkNostr, remarkHashtags]} components={components}>
         {event.content}
       </Markdown>
       
@@ -452,6 +563,34 @@ export default function MarkdownArticle({
         </div>
       )}
       </div>
+      
+      {/* Image carousel lightbox - shows all images (content + tags), already cleaned and deduplicated */}
+      {allImages.length > 0 && lightboxIndex >= 0 && createPortal(
+        <div onClick={(e) => e.stopPropagation()}>
+          <Lightbox
+            index={lightboxIndex}
+            slides={allImages.map(({ url, alt }) => ({ 
+              src: url, 
+              alt: alt || url 
+            }))}
+            plugins={[Zoom]}
+            open={lightboxIndex >= 0}
+            close={() => setLightboxIndex(-1)}
+            controller={{
+              closeOnBackdropClick: true,
+              closeOnPullUp: true,
+              closeOnPullDown: true
+            }}
+            styles={{
+              toolbar: { paddingTop: '2.25rem' }
+            }}
+            carousel={{
+              finite: false
+            }}
+          />
+        </div>,
+        document.body
+      )}
     </>
   )
 }

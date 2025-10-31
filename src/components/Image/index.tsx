@@ -15,7 +15,7 @@ export default function Image({
   hideIfError = false,
   errorPlaceholder = <ImageOff />,
   ...props
-}: HTMLAttributes<HTMLDivElement> & {
+}: HTMLAttributes<HTMLSpanElement> & {
   classNames?: {
     wrapper?: string
     errorPlaceholder?: string
@@ -102,7 +102,7 @@ export default function Image({
   }
 
   return (
-    <div className={cn('relative overflow-hidden', classNames.wrapper)} {...props}>
+    <span className={cn('relative overflow-hidden block', classNames.wrapper)} {...props}>
       {displaySkeleton && (
         <span className="absolute inset-0 z-10 inline-block">
           {blurHash ? (
@@ -153,7 +153,7 @@ export default function Image({
           {errorPlaceholder}
         </div>
       )}
-    </div>
+    </span>
   )
 }
 

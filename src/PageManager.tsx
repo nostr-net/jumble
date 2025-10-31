@@ -99,6 +99,7 @@ const SecondaryPageContext = createContext<TSecondaryPageContext | undefined>(un
 const PrimaryNoteViewContext = createContext<{
   setPrimaryNoteView: (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings') => void
   primaryViewType: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings' | null
+  getNavigationCounter: () => number
 } | undefined>(undefined)
 
 export function usePrimaryPage() {
@@ -184,12 +185,28 @@ export function useSmartProfileNavigation() {
 
 // Fixed: Hashtag navigation now uses primary note view since secondary panel is disabled
 export function useSmartHashtagNavigation() {
-  const { setPrimaryNoteView } = usePrimaryNoteView()
+  const { setPrimaryNoteView, getNavigationCounter } = usePrimaryNoteView()
   
   const navigateToHashtag = (url: string) => {
     // Use primary note view to show hashtag feed since secondary panel is disabled
-    window.history.pushState(null, '', url)
-    setPrimaryNoteView(<SecondaryNoteListPage hideTitlebar={true} />, 'hashtag')
+    // Update URL first - do this synchronously before setting the view
+    const parsedUrl = url.startsWith('/') ? url : `/${url}`
+    window.history.pushState(null, '', parsedUrl)
+    
+    // Extract hashtag from URL for the key to ensure unique keys for different hashtags
+    const searchParams = new URLSearchParams(parsedUrl.includes('?') ? parsedUrl.split('?')[1] : '')
+    const hashtag = searchParams.get('t') || ''
+    // Get the current navigation counter and use next value for the key
+    // This ensures unique keys that force remounting - setPrimaryNoteView will increment it
+    const counter = getNavigationCounter()
+    const key = `hashtag-${hashtag}-${counter + 1}`
+    
+    // Use a key based on the hashtag and navigation counter to force remounting when hashtag changes
+    // This ensures the component reads the new URL parameters when it mounts
+    // setPrimaryNoteView will increment the counter, so we use counter + 1 for the key
+    setPrimaryNoteView(<SecondaryNoteListPage key={key} hideTitlebar={true} />, 'hashtag')
+    // Dispatch custom event as a fallback for components that might be reused
+    window.dispatchEvent(new CustomEvent('hashtag-navigation', { detail: { url: parsedUrl } }))
   }
   
   return { navigateToHashtag }
@@ -410,6 +427,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
   const [primaryNoteView, setPrimaryNoteViewState] = useState<ReactNode | null>(null)
   const [primaryViewType, setPrimaryViewType] = useState<'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings' | null>(null)
   const [savedPrimaryPage, setSavedPrimaryPage] = useState<TPrimaryPageName | null>(null)
+  const navigationCounterRef = useRef(0)
   
   const setPrimaryNoteView = (view: ReactNode | null, type?: 'note' | 'settings' | 'settings-sub' | 'profile' | 'hashtag' | 'relay' | 'following' | 'mute' | 'others-relay-settings') => {
     if (view && !primaryNoteView) {
@@ -417,6 +435,14 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
       setSavedPrimaryPage(currentPrimaryPage)
     }
     
+    // Increment navigation counter when setting a new view to ensure unique keys
+    // This forces React to remount components even when navigating between items of the same type
+    if (view) {
+      navigationCounterRef.current += 1
+    }
+    
+    // Always update the view state - even if the type is the same, the component might be different
+    // This ensures that navigation works even when navigating between items of the same type (e.g., different hashtags)
     setPrimaryNoteViewState(view)
     setPrimaryViewType(type || null)
     
@@ -702,7 +728,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
         >
         <CurrentRelaysProvider>
           <NotificationProvider>
-            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView, primaryViewType }}>
+            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView, primaryViewType, getNavigationCounter: () => navigationCounterRef.current }}>
             {primaryNoteView ? (
               // Show primary note view with back button on mobile
               <div className="flex flex-col h-full w-full">
@@ -794,7 +820,7 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
       >
         <CurrentRelaysProvider>
           <NotificationProvider>
-            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView, primaryViewType }}>
+            <PrimaryNoteViewContext.Provider value={{ setPrimaryNoteView, primaryViewType, getNavigationCounter: () => navigationCounterRef.current }}>
             <div className="flex flex-col items-center bg-surface-background">
               <div
                 className="flex h-[var(--vh)] w-full bg-surface-background"

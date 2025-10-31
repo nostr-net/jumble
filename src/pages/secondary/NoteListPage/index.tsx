@@ -13,7 +13,7 @@ import client from '@/services/client.service'
 import { TFeedSubRequest } from '@/types'
 import { UserRound, Plus } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
-import React, { forwardRef, useEffect, useState, useMemo } from 'react'
+import React, { forwardRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 interface NoteListPageProps {
@@ -58,45 +58,48 @@ const NoteListPage = forwardRef<HTMLDivElement, NoteListPageProps>(({ index, hid
     return isSubscribed(hashtag)
   }, [hashtag, isSubscribed])
 
-  // Add hashtag to interest list
-  const handleSubscribeHashtag = async () => {
+  // Add hashtag to interest list - wrapped in useCallback to prevent circular dependencies
+  const handleSubscribeHashtag = useCallback(async () => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const hashtag = searchParams.get('t')
     if (!hashtag) return
     await subscribe(hashtag)
-  }
+  }, [subscribe])
 
-  useEffect(() => {
-    const init = async () => {
-      const searchParams = new URLSearchParams(window.location.search)
-      const kinds = searchParams
-        .getAll('k')
-        .map((k) => parseInt(k))
-        .filter((k) => !isNaN(k))
-      const hashtag = searchParams.get('t')
-      if (hashtag) {
-        setData({ type: 'hashtag' })
-        setTitle(`# ${hashtag}`)
-        setSubRequests([
-          {
-            filter: { '#t': [hashtag], ...(kinds.length > 0 ? { kinds } : {}) },
-            urls: BIG_RELAY_URLS
-          }
-        ])
-        // Set controls for hashtag subscribe button
-        if (pubkey) {
-          setControls(
-            <Button
-              variant="ghost"
-              className="h-10 [&_svg]:size-3"
-              onClick={handleSubscribeHashtag}
-              disabled={isHashtagSubscribed}
-            >
-              {isHashtagSubscribed ? t('Subscribed') : t('Subscribe')} <Plus />
-            </Button>
-          )
+  // Extract initialization logic into a reusable function
+  const initializeFromUrl = useCallback(async () => {
+    const searchParams = new URLSearchParams(window.location.search)
+    const kinds = searchParams
+      .getAll('k')
+      .map((k) => parseInt(k))
+      .filter((k) => !isNaN(k))
+    const hashtag = searchParams.get('t')
+    if (hashtag) {
+      setData({ type: 'hashtag' })
+      setTitle(`# ${hashtag}`)
+      setSubRequests([
+        {
+          filter: { '#t': [hashtag], ...(kinds.length > 0 ? { kinds } : {}) },
+          urls: BIG_RELAY_URLS
         }
-        return
+      ])
+      // Set controls for hashtag subscribe button - check subscription status
+      const isSubscribedToHashtag = isSubscribed(hashtag)
+      if (pubkey) {
+        setControls(
+          <Button
+            variant="ghost"
+            className="h-10 [&_svg]:size-3"
+            onClick={handleSubscribeHashtag}
+            disabled={isSubscribedToHashtag}
+          >
+            {isSubscribedToHashtag ? t('Subscribed') : t('Subscribe')} <Plus />
+          </Button>
+        )
       }
-      const search = searchParams.get('s')
+      return
+    }
+    const search = searchParams.get('s')
       if (search) {
         setData({ type: 'search' })
         setTitle(`${t('Search')}: ${search}`)
@@ -344,43 +347,29 @@ const NoteListPage = forwardRef<HTMLDivElement, NoteListPageProps>(({ index, hid
         ])
         return
       }
-    }
-    init()
-  }, [])
+  }, [pubkey, relayList, handleSubscribeHashtag, push, t, isSubscribed, subscribe, client])
+
+  // Initialize on mount
+  useEffect(() => {
+    initializeFromUrl()
+  }, [initializeFromUrl])
 
   // Listen for URL changes to re-initialize the page
   useEffect(() => {
-    const handlePopState = () => {
-      const searchParams = new URLSearchParams(window.location.search)
-      const hashtag = searchParams.get('t')
-      if (hashtag) {
-        setData({ type: 'hashtag' })
-        setTitle(`# ${hashtag}`)
-        setSubRequests([
-          {
-            filter: { '#t': [hashtag] },
-            urls: BIG_RELAY_URLS
-          }
-        ])
-        // Set controls for hashtag subscribe button
-        if (pubkey) {
-          setControls(
-            <Button
-              variant="ghost"
-              className="h-10 [&_svg]:size-3"
-              onClick={handleSubscribeHashtag}
-              disabled={isHashtagSubscribed}
-            >
-              {isHashtagSubscribed ? t('Subscribed') : t('Subscribe')} <Plus />
-            </Button>
-          )
-        }
-      }
+    const handleLocationChange = () => {
+      initializeFromUrl()
     }
     
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [pubkey, isHashtagSubscribed, t])
+    // Listen for browser back/forward navigation
+    window.addEventListener('popstate', handleLocationChange)
+    // Listen for custom hashtag navigation events
+    window.addEventListener('hashtag-navigation', handleLocationChange)
+    
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange)
+      window.removeEventListener('hashtag-navigation', handleLocationChange)
+    }
+  }, [initializeFromUrl])
 
   // Update controls when subscription status changes
   useEffect(() => {

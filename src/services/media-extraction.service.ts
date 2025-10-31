@@ -85,7 +85,20 @@ export function extractAllMediaFromEvent(
 
   // 4. Extract from content (if provided)
   if (content) {
-    // Extract directly from raw content (catch any URLs that weren't parsed)
+    // First, extract from markdown image syntax: ![alt](url) or [![](url)](link)
+    // This handles images inside links
+    const markdownImageRegex = /!\[[^\]]*\]\(([^)]+)\)/g
+    let imgMatch
+    while ((imgMatch = markdownImageRegex.exec(content)) !== null) {
+      if (imgMatch[1]) {
+        const url = imgMatch[1]
+        if (isImage(url) || isMedia(url)) {
+          addMedia(url)
+        }
+      }
+    }
+    
+    // Then extract directly from raw content (catch any URLs that weren't parsed)
     const urlRegex = /https?:\/\/[^\s<>"']+/g
     const urlMatches = content.matchAll(urlRegex)
     for (const match of urlMatches) {

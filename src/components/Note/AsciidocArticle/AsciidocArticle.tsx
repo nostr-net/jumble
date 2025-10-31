@@ -1,4 +1,4 @@
-import { useSecondaryPage } from '@/PageManager'
+import { useSecondaryPage, useSmartHashtagNavigation } from '@/PageManager'
 import ImageWithLightbox from '@/components/ImageWithLightbox'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNoteList } from '@/lib/link'
@@ -26,6 +26,7 @@ export default function AsciidocArticle({
   hideImagesAndInfo?: boolean
 }) {
   const { push } = useSecondaryPage()
+  const { navigateToHashtag } = useSmartHashtagNavigation()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   const [isInfoOpen, setIsInfoOpen] = useState(false)
   
@@ -133,6 +134,25 @@ export default function AsciidocArticle({
           const usernameElement = document.createElement('span')
           usernameElement.innerHTML = `<span class="user-handle" data-pubkey="${pubkey}">@${handle.textContent}</span>`
           handle.parentNode?.replaceChild(usernameElement.firstChild!, handle)
+        }
+      })
+
+      // Process hashtag links in content
+      const hashtagLinks = contentRef.current?.querySelectorAll('a.hashtag-link, a[href^="/notes?t="], a[href^="notes?t="]')
+      hashtagLinks?.forEach((link) => {
+        const href = link.getAttribute('href')
+        if (href && (href.startsWith('/notes?t=') || href.startsWith('notes?t='))) {
+          // Normalize href to include leading slash if missing
+          const normalizedHref = href.startsWith('/') ? href : `/${href}`
+          // Remove existing click handlers to avoid duplicates
+          const newLink = link.cloneNode(true) as HTMLElement
+          link.parentNode?.replaceChild(newLink, link)
+          
+          newLink.addEventListener('click', (e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            navigateToHashtag(normalizedHref)
+          })
         }
       })
 
