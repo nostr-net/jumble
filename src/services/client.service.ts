@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind, PROFILE_FETCH_RELAY_URLS, PROFILE_RELAY_URLS } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind, FAST_READ_RELAY_URLS, PROFILE_FETCH_RELAY_URLS, PROFILE_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
 import {
   compareEvents,
   getReplaceableCoordinate,
@@ -942,14 +942,90 @@ class ClientService extends EventTarget {
     } else if (!relayUrls.length && !alreadyFetchedFromBigRelays) {
       relayUrls = BIG_RELAY_URLS
     }
+    if (!relayUrls.length) {
+      // Final fallback to searchable relays
+      relayUrls = SEARCHABLE_RELAY_URLS
+    }
     if (!relayUrls.length) return
 
     const events = await this.query(relayUrls, filter)
     return events.sort((a, b) => b.created_at - a.created_at)[0]
   }
 
+  /**
+   * Get user's favorite relays from kind 10012 event
+   */
+  private async getUserFavoriteRelays(): Promise<string[]> {
+    if (!this.pubkey) return []
+    
+    try {
+      const favoriteRelaysEvent = await this.fetchReplaceableEvent(this.pubkey, ExtendedKind.FAVORITE_RELAYS)
+      if (!favoriteRelaysEvent) return []
+      
+      const relays: string[] = []
+      favoriteRelaysEvent.tags.forEach(([tagName, tagValue]) => {
+        if (tagName === 'relay' && tagValue && isWebsocketUrl(tagValue)) {
+          const normalizedUrl = normalizeUrl(tagValue)
+          if (normalizedUrl && !relays.includes(normalizedUrl)) {
+            relays.push(normalizedUrl)
+          }
+        }
+      })
+      
+      return relays
+    } catch (error) {
+      console.warn('[ClientService] Error fetching user favorite relays:', error)
+      return []
+    }
+  }
+
+  /**
+   * Build initial relay list for fetching events
+   * Priority: FAST_READ_RELAY_URLS, user's favorite relays (10012), user's relay list read relays (10002) including cache relays (10432)
+   * All relays are normalized and deduplicated
+   */
+  private async buildInitialRelayList(): Promise<string[]> {
+    const relaySet = new Set<string>()
+    
+    // Add FAST_READ_RELAY_URLS
+    FAST_READ_RELAY_URLS.forEach(url => {
+      const normalized = normalizeUrl(url)
+      if (normalized) relaySet.add(normalized)
+    })
+    
+    // Add user's favorite relays (kind 10012)
+    if (this.pubkey) {
+      const favoriteRelays = await this.getUserFavoriteRelays()
+      favoriteRelays.forEach(url => {
+        const normalized = normalizeUrl(url)
+        if (normalized) relaySet.add(normalized)
+      })
+      
+      // Add user's relay list read relays (kind 10002) and cache relays (kind 10432)
+      // fetchRelayList already merges cache relays with regular relay list
+      try {
+        const relayList = await this.fetchRelayList(this.pubkey)
+        if (relayList?.read) {
+          relayList.read.forEach(url => {
+            const normalized = normalizeUrl(url)
+            if (normalized) relaySet.add(normalized)
+          })
+        }
+      } catch (error) {
+        console.warn('[ClientService] Error fetching user relay list:', error)
+      }
+    }
+    
+    // Return deduplicated array (normalization already handled, Set ensures deduplication)
+    return Array.from(relaySet)
+  }
+
   private async fetchEventsFromBigRelays(ids: readonly string[]) {
-    const events = await this.query(BIG_RELAY_URLS, {
+    // Use optimized initial relay list instead of BIG_RELAY_URLS
+    const initialRelays = await this.buildInitialRelayList()
+    const relayUrls = initialRelays.length > 0 ? initialRelays : BIG_RELAY_URLS
+    
+    const events = await this.query(relayUrls, {
       ids: Array.from(new Set(ids)),
       limit: ids.length
     })

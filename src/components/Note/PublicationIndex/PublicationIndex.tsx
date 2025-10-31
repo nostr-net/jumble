@@ -1,16 +1,18 @@
 import { ExtendedKind } from '@/constants'
-import { Event } from 'nostr-tools'
-import { useEffect, useMemo, useState } from 'react'
+import { Event, nip19 } from 'nostr-tools'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { cn } from '@/lib/utils'
+import { normalizeUrl } from '@/lib/url'
 import AsciidocArticle from '../AsciidocArticle/AsciidocArticle'
 import MarkdownArticle from '../MarkdownArticle/MarkdownArticle'
 import { generateBech32IdFromATag } from '@/lib/tag'
 import client from '@/services/client.service'
 import logger from '@/lib/logger'
 import { Button } from '@/components/ui/button'
-import { MoreVertical } from 'lucide-react'
+import { MoreVertical, RefreshCw } from 'lucide-react'
 import indexedDb from '@/services/indexed-db.service'
 import { isReplaceableEvent } from '@/lib/event'
+import { useSecondaryPage } from '@/PageManager'
 
 interface PublicationReference {
   coordinate?: string
@@ -21,6 +23,7 @@ interface PublicationReference {
   identifier?: string
   relay?: string
   type: 'a' | 'e' // 'a' for addressable (coordinate), 'e' for event ID
+  nestedRefs?: PublicationReference[] // Discovered nested references
 }
 
 interface ToCItem {
@@ -48,6 +51,7 @@ export default function PublicationIndex({
   event: Event
   className?: string
 }) {
+  const { push } = useSecondaryPage()
   // Parse publication metadata from event tags
   const metadata = useMemo<PublicationMetadata>(() => {
     const meta: PublicationMetadata = { tags: [] }
@@ -80,6 +84,10 @@ export default function PublicationIndex({
   const [references, setReferences] = useState<PublicationReference[]>([])
   const [visitedIndices, setVisitedIndices] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(true)
+  const [retryCount, setRetryCount] = useState(0)
+  const [isRetrying, setIsRetrying] = useState(false)
+  const [failedReferences, setFailedReferences] = useState<PublicationReference[]>([])
+  const maxRetries = 5
 
   // Build table of contents from references
   const tableOfContents = useMemo<ToCItem[]>(() => {
@@ -239,13 +247,291 @@ export default function PublicationIndex({
     })
   }, [currentCoordinate, event])
 
+  // Fetch a single reference with retry logic
+  const fetchSingleReference = useCallback(async (
+    ref: PublicationReference,
+    currentVisited: Set<string>,
+    isRetry = false
+  ): Promise<PublicationReference | null> => {
+    // Skip if this is a 30040 event we've already visited (prevent circular references)
+    if (ref.type === 'a' && ref.kind === ExtendedKind.PUBLICATION && ref.coordinate) {
+      if (currentVisited.has(ref.coordinate)) {
+        logger.debug('[PublicationIndex] Skipping visited 30040 index:', ref.coordinate)
+        return { ...ref, event: undefined }
+      }
+    }
+
+    try {
+      let fetchedEvent: Event | undefined = undefined
+      
+      if (ref.type === 'a' && ref.coordinate) {
+        // Handle addressable event (a tag)
+        const aTag = ['a', ref.coordinate, ref.relay || '', ref.eventId || '']
+        const bech32Id = generateBech32IdFromATag(aTag)
+        
+        if (bech32Id) {
+          // Try to get by coordinate (replaceable event)
+          fetchedEvent = await indexedDb.getPublicationEvent(ref.coordinate)
+          
+          // If not found, try to fetch from relay
+          if (!fetchedEvent) {
+            // For naddr, always use subscription-style query with comprehensive relay list (more reliable)
+            if (bech32Id.startsWith('naddr1')) {
+              try {
+                const { nip19 } = await import('nostr-tools')
+                const decoded = nip19.decode(bech32Id)
+                if (decoded.type === 'naddr') {
+                  const filter: any = {
+                    authors: [decoded.data.pubkey],
+                    kinds: [decoded.data.kind],
+                    limit: 1
+                  }
+                  if (decoded.data.identifier) {
+                    filter['#d'] = [decoded.data.identifier]
+                  }
+                  
+                  // Use comprehensive relay list (same as initial fetch in client.service)
+                  // Build relay list: FAST_READ_RELAY_URLS, user's favorite relays, user's relay list, decoded relays, BIG_RELAY_URLS
+                  const { FAST_READ_RELAY_URLS, BIG_RELAY_URLS } = await import('@/constants')
+                  const relayUrls = new Set<string>()
+                  
+                  // Add FAST_READ_RELAY_URLS
+                  FAST_READ_RELAY_URLS.forEach(url => {
+                    const normalized = normalizeUrl(url)
+                    if (normalized) relayUrls.add(normalized)
+                  })
+                  
+                  // Add user's favorite relays (kind 10012) and relay list (kind 10002) if logged in
+                  try {
+                    const userPubkey = (client as any).pubkey
+                    if (userPubkey) {
+                      // Fetch user's relay list (includes cache relays)
+                      const userRelayList = await client.fetchRelayList(userPubkey)
+                      if (userRelayList?.read) {
+                        userRelayList.read.forEach((url: string) => {
+                          const normalized = normalizeUrl(url)
+                          if (normalized) relayUrls.add(normalized)
+                        })
+                      }
+                      
+                      // Fetch user's favorite relays (kind 10012)
+                      try {
+                        const { ExtendedKind } = await import('@/constants')
+                        const favoriteRelaysEvent = await (client as any).fetchReplaceableEvent?.(userPubkey, ExtendedKind.FAVORITE_RELAYS)
+                        if (favoriteRelaysEvent) {
+                          favoriteRelaysEvent.tags.forEach(([tagName, tagValue]: [string, string]) => {
+                            if (tagName === 'relay' && tagValue) {
+                              const normalized = normalizeUrl(tagValue)
+                              if (normalized) relayUrls.add(normalized)
+                            }
+                          })
+                        }
+                      } catch (error) {
+                        // Ignore if favorite relays can't be fetched
+                      }
+                    }
+                  } catch (error) {
+                    // Ignore if user relay list can't be fetched
+                  }
+                  
+                  // Add relays from decoded naddr if available
+                  if (decoded.data.relays && decoded.data.relays.length > 0) {
+                    decoded.data.relays.forEach((url: string) => {
+                      const normalized = normalizeUrl(url)
+                      if (normalized) relayUrls.add(normalized)
+                    })
+                  }
+                  
+                  // Add BIG_RELAY_URLS as fallback
+                  BIG_RELAY_URLS.forEach(url => {
+                    const normalized = normalizeUrl(url)
+                    if (normalized) relayUrls.add(normalized)
+                  })
+                  
+                  // Add SEARCHABLE_RELAY_URLS (important for finding events that search page finds)
+                  const { SEARCHABLE_RELAY_URLS } = await import('@/constants')
+                  SEARCHABLE_RELAY_URLS.forEach(url => {
+                    const normalized = normalizeUrl(url)
+                    if (normalized) relayUrls.add(normalized)
+                  })
+                  
+                  const finalRelayUrls = Array.from(relayUrls)
+                  logger.debug('[PublicationIndex] Using', finalRelayUrls.length, 'relays for naddr query')
+                  
+                  // Fetch using subscription-style query (more reliable for naddr)
+                  // Use subscribeTimeline approach for better reliability (waits for eosed signals)
+                  // This is the same approach NoteListPage uses, which successfully finds events
+                  try {
+                    let foundEvent: Event | undefined = undefined
+                    let hasEosed = false
+                    let subscriptionClosed = false
+                    
+                    const { closer } = await client.subscribeTimeline(
+                      [{ urls: finalRelayUrls, filter }],
+                      {
+                        onEvents: (events, eosed) => {
+                          if (events.length > 0 && !foundEvent) {
+                            foundEvent = events[0]
+                            logger.debug('[PublicationIndex] Found event via naddr subscription:', ref.coordinate)
+                          }
+                          if (eosed) {
+                            hasEosed = true
+                          }
+                          // Close subscription once we have an event and eosed
+                          if ((foundEvent || hasEosed) && !subscriptionClosed) {
+                            subscriptionClosed = true
+                            closer()
+                          }
+                        },
+                        onNew: () => {} // Not needed for one-time fetch
+                      },
+                      { needSort: false }
+                    )
+                    
+                    // Wait for up to 10 seconds for events to arrive or eosed
+                    const startTime = Date.now()
+                    while (!foundEvent && !hasEosed && Date.now() - startTime < 10000) {
+                      await new Promise(resolve => setTimeout(resolve, 100))
+                    }
+                    
+                    // Close subscription if still open
+                    if (!subscriptionClosed) {
+                      closer()
+                    }
+                    
+                    if (foundEvent) {
+                      fetchedEvent = foundEvent
+                    }
+                  } catch (subError) {
+                    logger.warn('[PublicationIndex] Subscription error, falling back to fetchEvents:', subError)
+                    // Fallback to regular fetchEvents if subscription fails
+                    const events = await client.fetchEvents(finalRelayUrls, [filter])
+                    if (events.length > 0) {
+                      fetchedEvent = events[0]
+                      logger.debug('[PublicationIndex] Found event via naddr fetchEvents fallback:', ref.coordinate)
+                    }
+                  }
+                }
+              } catch (error) {
+                logger.warn('[PublicationIndex] Error trying naddr filter query:', error)
+              }
+            } else {
+              // For non-naddr (nevent/note), try fetchEvent first, then force retry
+              if (isRetry) {
+                fetchedEvent = await client.fetchEventForceRetry(bech32Id)
+              } else {
+                fetchedEvent = await client.fetchEvent(bech32Id)
+              }
+            }
+            
+            // Save to cache as replaceable event if we fetched it
+            if (fetchedEvent) {
+              await indexedDb.putReplaceableEvent(fetchedEvent)
+              logger.debug('[PublicationIndex] Cached event with coordinate:', ref.coordinate)
+            }
+          } else {
+            logger.debug('[PublicationIndex] Loaded from cache by coordinate:', ref.coordinate)
+          }
+        } else {
+          logger.warn('[PublicationIndex] Could not generate bech32 ID for:', ref.coordinate)
+        }
+      } else if (ref.type === 'e' && ref.eventId) {
+        // Handle event ID reference (e tag)
+        // Try to fetch by event ID first
+        if (isRetry) {
+          // On retry, use force retry to try more relays
+          fetchedEvent = await client.fetchEventForceRetry(ref.eventId)
+        } else {
+          fetchedEvent = await client.fetchEvent(ref.eventId)
+        }
+        
+        if (fetchedEvent) {
+          // Check if this is a replaceable event kind
+          if (isReplaceableEvent(fetchedEvent.kind)) {
+            // Save to cache as replaceable event (will be linked to master via putPublicationWithNestedEvents)
+            await indexedDb.putReplaceableEvent(fetchedEvent)
+            logger.debug('[PublicationIndex] Cached replaceable event with ID:', ref.eventId)
+          } else {
+            // For non-replaceable events, we'll link them to master later via putPublicationWithNestedEvents
+            logger.debug('[PublicationIndex] Cached non-replaceable event with ID (will link to master):', ref.eventId)
+          }
+        } else {
+          logger.warn('[PublicationIndex] Could not fetch event for ID:', ref.eventId)
+        }
+      }
+      
+      if (fetchedEvent) {
+        // Check if this event has nested references we haven't seen yet
+        const nestedRefs: PublicationReference[] = []
+        for (const tag of fetchedEvent.tags) {
+          if (tag[0] === 'a' && tag[1]) {
+            const [kindStr, pubkey, identifier] = tag[1].split(':')
+            const kind = parseInt(kindStr)
+            if (!isNaN(kind)) {
+              const coordinate = tag[1]
+              const nestedRef: PublicationReference = {
+                type: 'a',
+                coordinate,
+                kind,
+                pubkey,
+                identifier: identifier || '',
+                relay: tag[2],
+                eventId: tag[3]
+              }
+              
+              // Check if we already have this reference
+              const existingRef = referencesData.find(r => 
+                r.coordinate === coordinate || 
+                (r.type === 'a' && r.coordinate === coordinate)
+              )
+              
+              if (!existingRef && !currentVisited.has(coordinate)) {
+                nestedRefs.push(nestedRef)
+              }
+            }
+          } else if (tag[0] === 'e' && tag[1]) {
+            const eventId = tag[1]
+            const nestedRef: PublicationReference = {
+              type: 'e',
+              eventId,
+              relay: tag[2]
+            }
+            
+            // Check if we already have this reference
+            const existingRef = referencesData.find(r => 
+              r.eventId === eventId || 
+              (r.type === 'e' && r.eventId === eventId)
+            )
+            
+            if (!existingRef) {
+              nestedRefs.push(nestedRef)
+            }
+          }
+        }
+        
+        return { ...ref, event: fetchedEvent, nestedRefs }
+      } else {
+        return { ...ref, event: undefined }
+      }
+    } catch (error) {
+      logger.error('[PublicationIndex] Error fetching reference:', error)
+      return { ...ref, event: undefined }
+    }
+  }, [referencesData])
+
   // Fetch referenced events
   useEffect(() => {
     let isMounted = true
     
-    const fetchReferences = async () => {
-      setIsLoading(true)
+    const fetchReferences = async (isManualRetry = false) => {
+      if (isManualRetry) {
+        setIsRetrying(true)
+      } else {
+        setIsLoading(true)
+      }
       const fetchedRefs: PublicationReference[] = []
+      const failedRefs: PublicationReference[] = []
+      const discoveredRefs: PublicationReference[] = []
       
       // Capture current visitedIndices at the start of the fetch
       const currentVisited = visitedIndices
@@ -255,87 +541,78 @@ export default function PublicationIndex({
         if (isMounted) {
           logger.warn('[PublicationIndex] Fetch timeout reached, setting loaded state')
           setIsLoading(false)
+          setIsRetrying(false)
         }
       }, 30000) // 30 second timeout
       
       try {
-        for (const ref of referencesData) {
+        // Combine original references with failed references if this is a retry
+        const refsToFetch = isManualRetry && failedReferences.length > 0 
+          ? [...referencesData, ...failedReferences]
+          : referencesData
+        
+        for (const ref of refsToFetch) {
           if (!isMounted) break
           
-          // Skip if this is a 30040 event we've already visited (prevent circular references)
-          if (ref.type === 'a' && ref.kind === ExtendedKind.PUBLICATION && ref.coordinate) {
-            if (currentVisited.has(ref.coordinate)) {
-              logger.debug('[PublicationIndex] Skipping visited 30040 index:', ref.coordinate)
-              fetchedRefs.push({ ...ref, event: undefined })
-              continue
+          const result = await fetchSingleReference(ref, currentVisited, isManualRetry)
+          
+          if (!isMounted) break
+          
+          if (result) {
+            if (result.event) {
+              fetchedRefs.push(result)
+              
+              // Collect discovered nested references
+              if ((result as any).nestedRefs && (result as any).nestedRefs.length > 0) {
+                for (const nestedRef of (result as any).nestedRefs) {
+                  // Check if we already have this reference
+                  const existingRef = fetchedRefs.find(r => 
+                    (r.coordinate && nestedRef.coordinate && r.coordinate === nestedRef.coordinate) ||
+                    (r.eventId && nestedRef.eventId && r.eventId === nestedRef.eventId)
+                  )
+                  
+                  if (!existingRef && !discoveredRefs.find(r => 
+                    (r.coordinate && nestedRef.coordinate && r.coordinate === nestedRef.coordinate) ||
+                    (r.eventId && nestedRef.eventId && r.eventId === nestedRef.eventId)
+                  )) {
+                    discoveredRefs.push(nestedRef)
+                  }
+                }
+              }
+            } else {
+              // Failed to fetch
+              failedRefs.push(result)
+              fetchedRefs.push(result)
             }
           }
-
-          try {
-            let fetchedEvent: Event | undefined = undefined
+        }
+        
+        // Fetch discovered nested references
+        if (discoveredRefs.length > 0 && isMounted) {
+          logger.info('[PublicationIndex] Found', discoveredRefs.length, 'new nested references')
+          for (const nestedRef of discoveredRefs) {
+            if (!isMounted) break
             
-            if (ref.type === 'a' && ref.coordinate) {
-              // Handle addressable event (a tag)
-              const aTag = ['a', ref.coordinate, ref.relay || '', ref.eventId || '']
-              const bech32Id = generateBech32IdFromATag(aTag)
-              
-              if (bech32Id) {
-                // Try to get by coordinate (replaceable event)
-                fetchedEvent = await indexedDb.getPublicationEvent(ref.coordinate)
-                
-                // If not found, try to fetch from relay
-                if (!fetchedEvent) {
-                  fetchedEvent = await client.fetchEvent(bech32Id)
-                  // Save to cache as replaceable event
-                  if (fetchedEvent) {
-                    await indexedDb.putReplaceableEvent(fetchedEvent)
-                    logger.debug('[PublicationIndex] Cached event with coordinate:', ref.coordinate)
-                  }
-                } else {
-                  logger.debug('[PublicationIndex] Loaded from cache by coordinate:', ref.coordinate)
-                }
-              } else {
-                logger.warn('[PublicationIndex] Could not generate bech32 ID for:', ref.coordinate)
-              }
-            } else if (ref.type === 'e' && ref.eventId) {
-              // Handle event ID reference (e tag)
-              // Try to fetch by event ID first
-              fetchedEvent = await client.fetchEvent(ref.eventId)
-              
-              if (fetchedEvent) {
-                // Check if this is a replaceable event kind
-                if (isReplaceableEvent(fetchedEvent.kind)) {
-                  // Save to cache as replaceable event (will be linked to master via putPublicationWithNestedEvents)
-                  await indexedDb.putReplaceableEvent(fetchedEvent)
-                  logger.debug('[PublicationIndex] Cached replaceable event with ID:', ref.eventId)
-                } else {
-                  // For non-replaceable events, we'll link them to master later via putPublicationWithNestedEvents
-                  // Just cache them for now without master link - they'll be properly linked when we call putPublicationWithNestedEvents
-                  logger.debug('[PublicationIndex] Cached non-replaceable event with ID (will link to master):', ref.eventId)
-                }
-              } else {
-                logger.warn('[PublicationIndex] Could not fetch event for ID:', ref.eventId)
-              }
-            }
+            const result = await fetchSingleReference(nestedRef, currentVisited, isManualRetry)
             
-            if (fetchedEvent && isMounted) {
-              fetchedRefs.push({ ...ref, event: fetchedEvent })
-            } else if (isMounted) {
-              const identifier = ref.type === 'a' ? ref.coordinate : ref.eventId
-              logger.warn('[PublicationIndex] Could not fetch event for:', identifier || 'unknown')
-              fetchedRefs.push({ ...ref, event: undefined })
-            }
-          } catch (error) {
-            logger.error('[PublicationIndex] Error fetching reference:', error)
-            if (isMounted) {
-              fetchedRefs.push({ ...ref, event: undefined })
+            if (!isMounted) break
+            
+            if (result) {
+              if (result.event) {
+                fetchedRefs.push(result)
+              } else {
+                failedRefs.push(result)
+                fetchedRefs.push(result)
+              }
             }
           }
         }
         
         if (isMounted) {
           setReferences(fetchedRefs)
+          setFailedReferences(failedRefs.filter(ref => !ref.event))
           setIsLoading(false)
+          setIsRetrying(false)
           
           // Store master publication with all nested events
           const nestedEvents = fetchedRefs.filter(ref => ref.event).map(ref => ref.event!).filter((e): e is Event => e !== undefined)
@@ -345,13 +622,31 @@ export default function PublicationIndex({
             })
           }
         }
+      } catch (error) {
+        logger.error('[PublicationIndex] Error in fetchReferences:', error)
+        if (isMounted) {
+          setIsLoading(false)
+          setIsRetrying(false)
+        }
       } finally {
         clearTimeout(timeout)
       }
     }
 
     if (referencesData.length > 0) {
-      fetchReferences()
+      fetchReferences(false).then(() => {
+        // Auto-retry failed references after initial load
+        setFailedReferences(prevFailed => {
+          if (prevFailed.length > 0 && retryCount < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 10000) // Exponential backoff, max 10s
+            setTimeout(() => {
+              setRetryCount(prev => prev + 1)
+              fetchReferences(true)
+            }, delay)
+          }
+          return prevFailed
+        })
+      })
     } else {
       setIsLoading(false)
     }
@@ -359,7 +654,129 @@ export default function PublicationIndex({
     return () => {
       isMounted = false
     }
-  }, [referencesData, visitedIndices]) // Now include visitedIndices but capture it inside
+  }, [referencesData, visitedIndices, fetchSingleReference]) // Include fetchSingleReference in dependencies
+
+  // Manual retry function
+  const handleManualRetry = useCallback(async () => {
+    setRetryCount(0)
+    setIsRetrying(true)
+    
+    const fetchReferences = async () => {
+      const updatedRefs: Map<string, PublicationReference> = new Map()
+      const newRefs: PublicationReference[] = []
+      const failedRefs: PublicationReference[] = []
+      const discoveredRefs: PublicationReference[] = []
+      const currentVisited = visitedIndices
+      
+      // Create a map of existing references for quick lookup
+      references.forEach(ref => {
+        const id = ref.coordinate || ref.eventId || ''
+        if (id) {
+          updatedRefs.set(id, ref)
+        }
+      })
+      
+      // Only retry failed references, not all references
+      const refsToRetry = failedReferences.length > 0 ? failedReferences : references.filter(ref => !ref.event)
+      
+      if (refsToRetry.length === 0) {
+        setIsRetrying(false)
+        return
+      }
+      
+      logger.info('[PublicationIndex] Retrying', refsToRetry.length, 'failed references')
+      
+      for (const ref of refsToRetry) {
+        const result = await fetchSingleReference(ref, currentVisited, true)
+        
+        if (result) {
+          const id = result.coordinate || result.eventId || ''
+          
+          if (result.event) {
+            // Successfully fetched - update existing reference or add new one
+            if (id) {
+              updatedRefs.set(id, result)
+            } else {
+              newRefs.push(result)
+            }
+            
+            // Collect discovered nested references
+            if ((result as any).nestedRefs && (result as any).nestedRefs.length > 0) {
+              for (const nestedRef of (result as any).nestedRefs) {
+                const nestedId = nestedRef.coordinate || nestedRef.eventId || ''
+                if (!nestedId) continue
+                
+                // Check if we already have this reference
+                const existingInMap = updatedRefs.has(nestedId)
+                const existingInNew = newRefs.find(r => {
+                  const rid = r.coordinate || r.eventId || ''
+                  return rid === nestedId
+                })
+                const existingInDiscovered = discoveredRefs.find(r => {
+                  const rid = r.coordinate || r.eventId || ''
+                  return rid === nestedId
+                })
+                
+                if (!existingInMap && !existingInNew && !existingInDiscovered) {
+                  discoveredRefs.push(nestedRef)
+                }
+              }
+            }
+          } else {
+            // Still failed
+            if (id) {
+              updatedRefs.set(id, result)
+            } else {
+              failedRefs.push(result)
+            }
+          }
+        }
+      }
+      
+      // Fetch discovered nested references
+      if (discoveredRefs.length > 0) {
+        logger.info('[PublicationIndex] Found', discoveredRefs.length, 'new nested references on retry')
+        for (const nestedRef of discoveredRefs) {
+          const result = await fetchSingleReference(nestedRef, currentVisited, true)
+          
+          if (result) {
+            const id = result.coordinate || result.eventId || ''
+            if (result.event) {
+              if (id) {
+                updatedRefs.set(id, result)
+              } else {
+                newRefs.push(result)
+              }
+            } else {
+              if (id) {
+                updatedRefs.set(id, result)
+              } else {
+                failedRefs.push(result)
+              }
+            }
+          }
+        }
+      }
+      
+      // Update state with merged results
+      const finalRefs = Array.from(updatedRefs.values()).concat(newRefs)
+      const stillFailed = finalRefs.filter(ref => !ref.event)
+      
+      setReferences(finalRefs)
+      setFailedReferences(stillFailed)
+      setIsRetrying(false)
+      
+      // Store master publication with all nested events
+      const nestedEvents = finalRefs.filter(ref => ref.event).map(ref => ref.event!).filter((e): e is Event => e !== undefined)
+      if (nestedEvents.length > 0) {
+        indexedDb.putPublicationWithNestedEvents(event, nestedEvents).catch(err => {
+          logger.error('[PublicationIndex] Error caching publication with nested events:', err)
+        })
+      }
+    }
+    
+    await fetchReferences()
+  }, [failedReferences, visitedIndices, fetchSingleReference, references, event])
 
   return (
     <div className={cn('space-y-6', className)}>
@@ -422,6 +839,26 @@ export default function PublicationIndex({
         </div>
       )}
 
+      {/* Failed References Banner */}
+      {!isLoading && failedReferences.length > 0 && references.length > 0 && (
+        <div className="p-4 border rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-sm text-yellow-800 dark:text-yellow-200">
+              {failedReferences.length} reference{failedReferences.length !== 1 ? 's' : ''} failed to load. Click retry to attempt loading again.
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleManualRetry}
+              disabled={isRetrying}
+            >
+              <RefreshCw className={cn("h-4 w-4 mr-2", isRetrying && "animate-spin")} />
+              Retry All
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Content - render referenced events */}
       {isLoading ? (
         <div className="text-muted-foreground">
@@ -431,18 +868,78 @@ export default function PublicationIndex({
       ) : references.length === 0 ? (
         <div className="p-6 border rounded-lg bg-muted/30 text-center">
           <div className="text-lg font-semibold mb-2">No content loaded</div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground mb-4">
             Unable to load publication content. The referenced events may not be available on the current relays.
           </div>
+          <Button
+            variant="outline"
+            onClick={handleManualRetry}
+            disabled={isRetrying}
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", isRetrying && "animate-spin")} />
+            Retry Loading
+          </Button>
         </div>
       ) : (
         <div className="space-y-8">
           {references.map((ref, index) => {
             if (!ref.event) {
+              // Generate naddr from coordinate or eventId for link
+              let notesLink: string | null = null
+              if (ref.coordinate) {
+                const aTag = ['a', ref.coordinate, ref.relay || '', ref.eventId || '']
+                const bech32Id = generateBech32IdFromATag(aTag)
+                if (bech32Id) {
+                  // Construct URL as /notes?events=naddr1...
+                  notesLink = `/notes?events=${encodeURIComponent(bech32Id)}`
+                }
+              } else if (ref.eventId) {
+                // For event IDs, try to construct a note/nevent, otherwise use as-is
+                if (ref.eventId.startsWith('note1') || ref.eventId.startsWith('nevent1') || ref.eventId.startsWith('naddr1')) {
+                  notesLink = `/notes?events=${encodeURIComponent(ref.eventId)}`
+                } else if (/^[0-9a-f]{64}$/i.test(ref.eventId)) {
+                  // Hex event ID - try to create nevent
+                  try {
+                    const nevent = nip19.neventEncode({ id: ref.eventId })
+                    notesLink = `/notes?events=${encodeURIComponent(nevent)}`
+                  } catch {
+                    // Fallback to hex ID
+                    notesLink = `/notes?events=${encodeURIComponent(ref.eventId)}`
+                  }
+                }
+              }
+              
               return (
                 <div key={index} className="p-4 border rounded-lg bg-muted/50">
-                  <div className="text-sm text-muted-foreground">
-                    Reference {index + 1}: Unable to load event {ref.coordinate || ref.eventId || 'unknown'}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm text-muted-foreground">
+                      Reference {index + 1}: Unable to load event{' '}
+                      {notesLink ? (
+                        <a
+                          href={notesLink}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            push(notesLink!)
+                          }}
+                          className="text-primary hover:underline cursor-pointer"
+                        >
+                          {ref.coordinate || ref.eventId || 'unknown'}
+                        </a>
+                      ) : (
+                        <span>{ref.coordinate || ref.eventId || 'unknown'}</span>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleManualRetry}
+                      disabled={isRetrying}
+                      className="shrink-0"
+                    >
+                      <RefreshCw className={cn("h-4 w-4", isRetrying && "animate-spin")} />
+                      Retry
+                    </Button>
                   </div>
                 </div>
               )
