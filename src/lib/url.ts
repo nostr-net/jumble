@@ -173,6 +173,43 @@ export function isMedia(url: string) {
   }
 }
 
+export function isAudio(url: string) {
+  try {
+    const audioExtensions = [
+      '.mp3',
+      '.wav',
+      '.flac',
+      '.aac',
+      '.m4a',
+      '.opus',
+      '.wma',
+      '.ogg' // ogg can be audio
+    ]
+    return audioExtensions.some((ext) => new URL(url).pathname.toLowerCase().endsWith(ext))
+  } catch {
+    return false
+  }
+}
+
+export function isVideo(url: string) {
+  try {
+    const videoExtensions = [
+      '.mp4',
+      '.webm',
+      '.mov',
+      '.avi',
+      '.wmv',
+      '.flv',
+      '.mkv',
+      '.m4v',
+      '.3gp'
+    ]
+    return videoExtensions.some((ext) => new URL(url).pathname.toLowerCase().endsWith(ext))
+  } catch {
+    return false
+  }
+}
+
 /**
  * Remove tracking parameters from URLs
  * Removes common tracking parameters like utm_*, fbclid, gclid, etc.

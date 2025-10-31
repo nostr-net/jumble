@@ -164,6 +164,9 @@ export default function Note({
     content = <EnhancedContent className="mt-2" event={event} useEnhancedParsing={true} />
   } else if (event.kind === ExtendedKind.ZAP_REQUEST || event.kind === ExtendedKind.ZAP_RECEIPT) {
     content = <Zap className="mt-2" event={event} />
+  } else if (event.kind === kinds.ShortTextNote || event.kind === ExtendedKind.COMMENT || event.kind === ExtendedKind.VOICE_COMMENT) {
+    // Plain text notes use EnhancedContent for proper image/media rendering
+    content = <EnhancedContent className="mt-2" event={event} mustLoadMedia={false} />
   } else {
     // Use MarkdownArticle for all other kinds
     // Only 30023, 30041, 30817, and 30818 will show image gallery and article info
