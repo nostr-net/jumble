@@ -6,7 +6,6 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useEventFieldParser } from '@/hooks/useContentParser'
-import WebPreview from '../../WebPreview'
 import HighlightSourcePreview from '../../UniversalContent/HighlightSourcePreview'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -249,7 +248,7 @@ export default function Article({
       />
 
       {/* Collapsible Article Info - only for article-type events */}
-      {isArticleType && (parsedContent?.media?.length > 0 || parsedContent?.links?.length > 0 || parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
+      {isArticleType && (parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
         <Collapsible open={isInfoOpen} onOpenChange={setIsInfoOpen} className="mt-4">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
@@ -258,41 +257,6 @@ export default function Article({
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-4 mt-2">
-            {/* Media thumbnails */}
-            {parsedContent?.media?.length > 0 && (
-              <div className="p-4 bg-muted rounded-lg">
-                <h4 className="text-sm font-semibold mb-3">Images in this article:</h4>
-                <div className="grid grid-cols-8 sm:grid-cols-12 md:grid-cols-16 gap-1">
-                  {parsedContent?.media?.map((media, index) => (
-                    <div key={index} className="aspect-square">
-                      <ImageWithLightbox
-                        image={media}
-                        className="w-full h-full object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
-                        classNames={{
-                          wrapper: 'w-full h-full'
-                        }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Links summary with OpenGraph previews */}
-            {parsedContent?.links?.length > 0 && (
-              <div className="p-4 bg-muted rounded-lg">
-                <h4 className="text-sm font-semibold mb-3">Links in this article:</h4>
-                <div className="space-y-3">
-                  {parsedContent?.links?.map((link, index) => (
-                    <WebPreview
-                      key={index}
-                      url={link.url}
-                      className="w-full"
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Nostr links summary */}
             {parsedContent?.nostrLinks?.length > 0 && (

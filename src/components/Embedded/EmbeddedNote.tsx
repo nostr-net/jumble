@@ -1,4 +1,5 @@
 import { Skeleton } from '@/components/ui/skeleton'
+import { BIG_RELAY_URLS, SEARCHABLE_RELAY_URLS } from '@/constants'
 import { useFetchEvent } from '@/hooks'
 import { normalizeUrl } from '@/lib/url'
 import { cn } from '@/lib/utils'
@@ -94,17 +95,20 @@ function EmbeddedNoteNotFound({
   const [isSearchingExternal, setIsSearchingExternal] = useState(false)
   const [triedExternal, setTriedExternal] = useState(false)
   const [externalRelays, setExternalRelays] = useState<string[]>([])
+  const [hexEventId, setHexEventId] = useState<string | null>(null)
 
   // Calculate which external relays would be tried
   useEffect(() => {
     const getExternalRelays = async () => {
       let relays: string[] = []
+      let extractedHexEventId: string | null = null
       
       if (!/^[0-9a-f]{64}$/.test(noteId)) {
         try {
           const { type, data } = nip19.decode(noteId)
           
           if (type === 'nevent') {
+            extractedHexEventId = data.id
             if (data.relays) relays.push(...data.relays)
             if (data.author) {
               const authorRelayList = await client.fetchRelayList(data.author)
@@ -114,6 +118,8 @@ function EmbeddedNoteNotFound({
             if (data.relays) relays.push(...data.relays)
             const authorRelayList = await client.fetchRelayList(data.pubkey)
             relays.push(...authorRelayList.write.slice(0, 6))
+          } else if (type === 'note') {
+            extractedHexEventId = data
           }
           // Normalize and deduplicate relays
           relays = relays.map(url => normalizeUrl(url) || url)
@@ -121,13 +127,30 @@ function EmbeddedNoteNotFound({
         } catch (err) {
           console.error('Failed to parse external relays:', err)
         }
+      } else {
+        extractedHexEventId = noteId
       }
       
-      const seenOn = client.getSeenEventRelayUrls(noteId)
+      setHexEventId(extractedHexEventId)
+      
+      const seenOn = extractedHexEventId ? client.getSeenEventRelayUrls(extractedHexEventId) : []
       relays.push(...seenOn)
       
-      // Normalize and deduplicate final relay list
-      const normalizedRelays = relays.map(url => normalizeUrl(url) || url)
+      // Normalize all relays first
+      let normalizedRelays = relays.map(url => normalizeUrl(url) || url).filter(Boolean)
+      normalizedRelays = Array.from(new Set(normalizedRelays))
+      
+      // If no external relays from hints, try SEARCHABLE_RELAY_URLS as fallback
+      // Filter out relays that overlap with BIG_RELAY_URLS (already tried first)
+      if (normalizedRelays.length === 0) {
+        const searchableRelays = SEARCHABLE_RELAY_URLS
+          .map(url => normalizeUrl(url) || url)
+          .filter((url): url is string => Boolean(url))
+          .filter(relay => !BIG_RELAY_URLS.includes(relay))
+        normalizedRelays.push(...searchableRelays)
+      }
+      
+      // Deduplicate final relay list
       setExternalRelays(Array.from(new Set(normalizedRelays)))
     }
 
@@ -135,11 +158,11 @@ function EmbeddedNoteNotFound({
   }, [noteId])
 
   const handleTryExternalRelays = async () => {
-    if (isSearchingExternal) return
+    if (!hexEventId || isSearchingExternal) return
     
     setIsSearchingExternal(true)
     try {
-      const event = await client.fetchEventWithExternalRelays(noteId, [])
+      const event = await client.fetchEventWithExternalRelays(hexEventId, externalRelays)
       if (event && onEventFound) {
         onEventFound(event)
       }
@@ -195,11 +218,11 @@ function EmbeddedNoteNotFound({
         )}
         
         {!triedExternal && !hasExternalRelays && (
-          <p className="text-xs text-center">{t('No external relay hints available')}</p>
+          <div className="text-xs text-center">{t('No external relay hints available')}</div>
         )}
         
         {triedExternal && (
-          <p className="text-xs text-center">{t('Note could not be found anywhere')}</p>
+          <div className="text-xs text-center">{t('Note could not be found anywhere')}</div>
         )}
         
         <ClientSelect className="w-full" originalNoteId={noteId} />

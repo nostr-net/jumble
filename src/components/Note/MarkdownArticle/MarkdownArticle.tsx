@@ -1,15 +1,14 @@
 import { SecondaryPageLink, useSecondaryPage } from '@/PageManager'
 import ImageWithLightbox from '@/components/ImageWithLightbox'
-import ImageCarousel from '@/components/ImageCarousel/ImageCarousel'
 import MediaPlayer from '@/components/MediaPlayer'
 import Wikilink from '@/components/UniversalContent/Wikilink'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNote, toNoteList, toProfile } from '@/lib/link'
 import { useMediaExtraction } from '@/hooks'
 import { cleanUrl } from '@/lib/url'
-import { ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
-import React, { useMemo, useEffect, useRef, useState } from 'react'
+import React, { useMemo, useEffect, useRef } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -17,8 +16,6 @@ import 'katex/dist/katex.min.css'
 import NostrNode from './NostrNode'
 import { remarkNostr } from './remarkNostr'
 import { Components } from './types'
-import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 export default function MarkdownArticle({
   event,
@@ -31,7 +28,6 @@ export default function MarkdownArticle({
 }) {
   const { push } = useSecondaryPage()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
-  const [isImagesOpen, setIsImagesOpen] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
   
   // Use unified media extraction service
@@ -466,21 +462,6 @@ export default function MarkdownArticle({
         </div>
       )}
       
-      {/* Image Carousel - Only show for article content (30023, 30041, 30817, 30818) */}
-      {/* Only show images that aren't already in the content (from tags only) */}
-      {showImageGallery && carouselImages.length > 0 && (
-        <Collapsible open={isImagesOpen} onOpenChange={setIsImagesOpen} className="mt-8">
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" className="w-full justify-between">
-              <span>Images in this article ({carouselImages.length})</span>
-              {isImagesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-4">
-            <ImageCarousel images={carouselImages} />
-          </CollapsibleContent>
-        </Collapsible>
-      )}
       {metadata.tags.filter(tag => !contentHashtags.has(tag.toLowerCase())).length > 0 && (
         <div className="flex gap-2 flex-wrap pb-2 mt-4">
           {metadata.tags

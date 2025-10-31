@@ -1,14 +1,11 @@
 import { useSecondaryPage } from '@/PageManager'
 import ImageWithLightbox from '@/components/ImageWithLightbox'
-import ImageCarousel from '@/components/ImageCarousel/ImageCarousel'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNoteList } from '@/lib/link'
-import { extractAllImagesFromEvent } from '@/lib/image-extraction'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useEventFieldParser } from '@/hooks/useContentParser'
-import WebPreview from '../../WebPreview'
 import HighlightSourcePreview from '../../UniversalContent/HighlightSourcePreview'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -26,10 +23,6 @@ export default function AsciidocArticle({
   const { push } = useSecondaryPage()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   const [isInfoOpen, setIsInfoOpen] = useState(false)
-  const [isImagesOpen, setIsImagesOpen] = useState(false)
-  
-  // Extract all images from the event
-  const allImages = useMemo(() => extractAllImagesFromEvent(event), [event])
   
   // Determine if this is an article-type event that should show ToC and Article Info
   const isArticleType = useMemo(() => {
@@ -310,23 +303,9 @@ export default function AsciidocArticle({
         dangerouslySetInnerHTML={{ __html: parsedContent?.html || '' }} 
       />
 
-      {/* Image Carousel - Collapsible */}
-      {!hideImagesAndInfo && allImages.length > 0 && (
-        <Collapsible open={isImagesOpen} onOpenChange={setIsImagesOpen} className="mt-8">
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" className="w-full justify-between">
-              <span>Images in this article ({allImages.length})</span>
-              {isImagesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-4">
-            <ImageCarousel images={allImages} />
-          </CollapsibleContent>
-        </Collapsible>
-      )}
 
       {/* Collapsible Article Info - only for article-type events */}
-      {!hideImagesAndInfo && isArticleType && (parsedContent?.links?.length > 0 || parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
+      {!hideImagesAndInfo && isArticleType && (parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
         <Collapsible open={isInfoOpen} onOpenChange={setIsInfoOpen} className="mt-4">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
@@ -335,22 +314,6 @@ export default function AsciidocArticle({
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-4 mt-2">
-
-            {/* Links summary with OpenGraph previews */}
-            {parsedContent?.links?.length > 0 && (
-              <div className="p-4 bg-muted rounded-lg">
-                <h4 className="text-sm font-semibold mb-3">Links in this article:</h4>
-                <div className="space-y-3">
-                  {parsedContent?.links?.map((link, index) => (
-                    <WebPreview
-                      key={index}
-                      url={link.url}
-                      className="w-full"
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Nostr links summary */}
             {parsedContent?.nostrLinks?.length > 0 && (
