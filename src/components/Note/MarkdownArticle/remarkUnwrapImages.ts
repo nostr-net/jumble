@@ -1,4 +1,4 @@
-import type { Paragraph, Root, Image, Link, Content } from 'mdast'
+import type { Paragraph, Root, Image, Link } from 'mdast'
 import type { Plugin } from 'unified'
 import { visit } from 'unist-util-visit'
 
