@@ -2,7 +2,6 @@ import { cn } from '@/lib/utils'
 import { useDeepBrowsing } from '@/providers/DeepBrowsingProvider'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ScrollArea, ScrollBar } from '../ui/scroll-area'
 
 type TabDefinition = {
   value: string
@@ -91,7 +90,7 @@ export default function Tabs({
         deepBrowsing && lastScrollTop > threshold ? '-translate-y-[calc(100%+12rem)]' : ''
       )}
     >
-      <ScrollArea className="flex-1 w-0">
+      <div className="flex-1 w-0 overflow-hidden">
         <div className="flex w-fit relative">
           {tabs.map((tab, index) => (
             <div
@@ -116,8 +115,7 @@ export default function Tabs({
             }}
           />
         </div>
-        <ScrollBar orientation="horizontal" className="opacity-0 pointer-events-none" />
-      </ScrollArea>
+      </div>
       {options && <div className="py-1 flex items-center">{options}</div>}
     </div>
   )

@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { normalizeUrl } from '@/lib/url'
+import { normalizeUrl, isLocalNetworkUrl } from '@/lib/url'
 import { getRelaysFromNip07Extension, verifyNip05 } from '@/lib/nip05'
 import { useNostr } from '@/providers/NostrProvider'
 import { TMailboxRelay } from '@/types'
@@ -15,7 +15,7 @@ interface DiscoveredRelay {
   selected: boolean
 }
 
-export default function DiscoveredRelays({ onAdd }: { onAdd: (relays: TMailboxRelay[]) => void }) {
+export default function DiscoveredRelays({ onAdd, localOnly = false }: { onAdd: (relays: TMailboxRelay[]) => void; localOnly?: boolean }) {
   const { t } = useTranslation()
   const { profile, account } = useNostr()
   const [discoveredRelays, setDiscoveredRelays] = useState<DiscoveredRelay[]>([])
@@ -79,7 +79,13 @@ export default function DiscoveredRelays({ onAdd }: { onAdd: (relays: TMailboxRe
       // Note: Bunker relays are from the bunker connection URL itself
       // We could add logic here to extract relays from the bunker URL if needed
 
-      setDiscoveredRelays(Array.from(discovered.values()))
+      // Filter to only local relays if localOnly is true
+      let discoveredArray = Array.from(discovered.values())
+      if (localOnly) {
+        discoveredArray = discoveredArray.filter(relay => isLocalNetworkUrl(relay.url))
+      }
+
+      setDiscoveredRelays(discoveredArray)
     } catch (error) {
       console.error('Error discovering relays:', error)
       setErrorMsg(t('Failed to discover relays'))

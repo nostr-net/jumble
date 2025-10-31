@@ -1,4 +1,4 @@
-import { BIG_RELAY_URLS, ExtendedKind } from '@/constants'
+import { BIG_RELAY_URLS, ExtendedKind, PROFILE_FETCH_RELAY_URLS, PROFILE_RELAY_URLS } from '@/constants'
 import {
   compareEvents,
   getReplaceableCoordinate,
@@ -10,7 +10,7 @@ import { formatPubkey, isValidPubkey, pubkeyToNpub, userIdToPubkey } from '@/lib
 import { getPubkeysFromPTags, getServersFromServerTags, tagNameEquals } from '@/lib/tag'
 import { isLocalNetworkUrl, isWebsocketUrl, normalizeUrl } from '@/lib/url'
 import { isSafari } from '@/lib/utils'
-import { ISigner, TProfile, TPublishOptions, TRelayList, TSubRequestFilter } from '@/types'
+import { ISigner, TProfile, TPublishOptions, TRelayList, TMailboxRelay, TSubRequestFilter } from '@/types'
 import { sha256 } from '@noble/hashes/sha2'
 import DataLoader from 'dataloader'
 import dayjs from 'dayjs'
@@ -122,13 +122,14 @@ class ClientService extends EventTarget {
       if (
         [
           kinds.RelayList,
+          ExtendedKind.CACHE_RELAYS,
           kinds.Contacts,
           ExtendedKind.FAVORITE_RELAYS,
           ExtendedKind.BLOSSOM_SERVER_LIST,
           ExtendedKind.RELAY_REVIEW
         ].includes(event.kind)
       ) {
-        _additionalRelayUrls.push(...BIG_RELAY_URLS)
+        _additionalRelayUrls.push(...BIG_RELAY_URLS, ...PROFILE_RELAY_URLS)
       }
 
       const relayList = await this.fetchRelayList(event.pubkey)
@@ -153,57 +154,105 @@ class ClientService extends EventTarget {
       let finishedCount = 0
       const errors: { url: string; error: any }[] = []
       
+      // Add a global timeout to prevent hanging for more than 2 minutes
+      const globalTimeout = setTimeout(() => {
+        // Mark any unfinished relays as failed
+        uniqueRelayUrls.forEach(url => {
+          const alreadyFinished = relayStatuses.some(rs => rs.url === url)
+          if (!alreadyFinished) {
+            relayStatuses.push({ url, success: false, error: 'Timeout: Operation took too long' })
+            finishedCount++
+          }
+        })
+        
+        // Ensure we resolve even if not all relays finished
+        if (finishedCount < uniqueRelayUrls.length) {
+          finishedCount = uniqueRelayUrls.length
+          resolve({
+            success: successCount >= uniqueRelayUrls.length / 3,
+            relayStatuses,
+            successCount,
+            totalCount: uniqueRelayUrls.length
+          })
+        }
+      }, 120_000) // 2 minutes global timeout
+      
       Promise.allSettled(
         uniqueRelayUrls.map(async (url) => {
           // eslint-disable-next-line @typescript-eslint/no-this-alias
           const that = this
-          const relay = await this.pool.ensureRelay(url)
-          relay.publishTimeout = 10_000 // 10s
-          return relay
-            .publish(event)
-            .then(() => {
-              this.trackEventSeenOn(event.id, relay)
-              successCount++
-              relayStatuses.push({ url, success: true })
+          const isLocal = isLocalNetworkUrl(url)
+          const timeout = isLocal ? 5_000 : 10_000 // 5s for local, 10s for remote
+          
+          try {
+            // For local relays, add a connection timeout
+            let relay: Relay
+            if (isLocal) {
+              relay = await Promise.race([
+                this.pool.ensureRelay(url),
+                new Promise<Relay>((_, reject) =>
+                  setTimeout(() => reject(new Error('Local relay connection timeout')), timeout)
+                )
+              ])
+            } else {
+              relay = await this.pool.ensureRelay(url)
+            }
+            
+            relay.publishTimeout = timeout
+            
+            await relay
+              .publish(event)
+              .then(() => {
+                this.trackEventSeenOn(event.id, relay)
+                successCount++
+                relayStatuses.push({ url, success: true })
+              })
+              .catch((error) => {
+                if (
+                  error instanceof Error &&
+                  error.message.startsWith('auth-required') &&
+                  !!that.signer
+                ) {
+                  return relay
+                    .auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
+                    .then(() => relay.publish(event))
+                    .then(() => {
+                      this.trackEventSeenOn(event.id, relay)
+                      successCount++
+                      relayStatuses.push({ url, success: true })
+                    })
+                    .catch((authError) => {
+                      errors.push({ url, error: authError })
+                      relayStatuses.push({ url, success: false, error: authError.message })
+                    })
+                } else {
+                  errors.push({ url, error })
+                  relayStatuses.push({ url, success: false, error: error.message })
+                }
+              })
+          } catch (error) {
+            errors.push({ url, error })
+            relayStatuses.push({ 
+              url, 
+              success: false, 
+              error: error instanceof Error ? error.message : 'Connection failed' 
             })
-            .catch((error) => {
-              if (
-                error instanceof Error &&
-                error.message.startsWith('auth-required') &&
-                !!that.signer
-              ) {
-                return relay
-                  .auth((authEvt: EventTemplate) => that.signer!.signEvent(authEvt))
-                  .then(() => relay.publish(event))
-                  .then(() => {
-                    this.trackEventSeenOn(event.id, relay)
-                    successCount++
-                    relayStatuses.push({ url, success: true })
-                  })
-                  .catch((authError) => {
-                    errors.push({ url, error: authError })
-                    relayStatuses.push({ url, success: false, error: authError.message })
-                  })
-              } else {
-                errors.push({ url, error })
-                relayStatuses.push({ url, success: false, error: error.message })
-              }
-            })
-            .finally(() => {
-              // If one third of the relays have accepted the event, consider it a success
-              const isSuccess = successCount >= uniqueRelayUrls.length / 3
-              if (isSuccess) {
-                this.emitNewEvent(event)
-              }
-              if (++finishedCount >= uniqueRelayUrls.length) {
-                resolve({
-                  success: successCount >= uniqueRelayUrls.length / 3,
-                  relayStatuses,
-                  successCount,
-                  totalCount: uniqueRelayUrls.length
-                })
-              }
-            })
+          } finally {
+            // If one third of the relays have accepted the event, consider it a success
+            const isSuccess = successCount >= uniqueRelayUrls.length / 3
+            if (isSuccess) {
+              this.emitNewEvent(event)
+            }
+            if (++finishedCount >= uniqueRelayUrls.length) {
+              clearTimeout(globalTimeout)
+              resolve({
+                success: successCount >= uniqueRelayUrls.length / 3,
+                relayStatuses,
+                successCount,
+                totalCount: uniqueRelayUrls.length
+              })
+            }
+          }
         })
       )
     })
@@ -1120,22 +1169,173 @@ class ClientService extends EventTarget {
   }
 
   async fetchRelayLists(pubkeys: string[]): Promise<TRelayList[]> {
+    // First check IndexedDB for offline/quick access (prioritizes cache relays for offline use)
+    const storedRelayEvents = await Promise.all(
+      pubkeys.map(pubkey => indexedDb.getReplaceableEvent(pubkey, kinds.RelayList))
+    )
+    const storedCacheRelayEvents = await Promise.all(
+      pubkeys.map(pubkey => indexedDb.getReplaceableEvent(pubkey, ExtendedKind.CACHE_RELAYS))
+    )
+    
+    // Then fetch from relays (will update cache if newer)
     const relayEvents = await this.fetchReplaceableEventsFromBigRelays(pubkeys, kinds.RelayList)
+    
+    // Fetch cache relays from multiple sources: BIG_RELAY_URLS, PROFILE_FETCH_RELAY_URLS, and user's inboxes/outboxes
+    const cacheRelayEvents = await this.fetchCacheRelayEventsFromMultipleSources(pubkeys, relayEvents, storedRelayEvents)
 
-    return relayEvents.map((event) => {
-      if (event) {
-        return getRelayListFromEvent(event)
-      }
-      return {
-        write: BIG_RELAY_URLS,
-        read: BIG_RELAY_URLS,
+    return relayEvents.map((event, index) => {
+      // Use stored cache relay event if available (for offline), otherwise use fetched one
+      const storedCacheEvent = storedCacheRelayEvents[index]
+      const cacheEvent = cacheRelayEvents[index] || storedCacheEvent
+      
+      // Use stored relay event if no network event (for offline), otherwise use fetched one
+      const storedRelayEvent = storedRelayEvents[index]
+      const relayEvent = event || storedRelayEvent
+      
+      const relayList = relayEvent ? getRelayListFromEvent(relayEvent) : {
+        write: [],
+        read: [],
         originalRelays: []
       }
+      
+      // Merge cache relays (kind 10432) into the relay list
+      // Prioritize cache relays by placing them first in the list (for offline functionality)
+      if (cacheEvent) {
+        const cacheRelayList = getRelayListFromEvent(cacheEvent)
+        
+        // Merge read relays - cache relays first, then others (for offline priority)
+        const mergedRead = [...cacheRelayList.read, ...relayList.read]
+        const mergedWrite = [...cacheRelayList.write, ...relayList.write]
+        const mergedOriginalRelays = new Map<string, TMailboxRelay>()
+        
+        // Add cache relay original relays first (prioritized)
+        cacheRelayList.originalRelays.forEach(relay => {
+          mergedOriginalRelays.set(relay.url, relay)
+        })
+        // Then add regular relay original relays
+        relayList.originalRelays.forEach(relay => {
+          if (!mergedOriginalRelays.has(relay.url)) {
+            mergedOriginalRelays.set(relay.url, relay)
+          }
+        })
+        
+        // Deduplicate while preserving order (cache relays first)
+        return {
+          write: Array.from(new Set(mergedWrite)),
+          read: Array.from(new Set(mergedRead)),
+          originalRelays: Array.from(mergedOriginalRelays.values())
+        }
+      }
+      
+      // If no cache event, return original relay list or default (with cache as fallback)
+      if (!relayEvent) {
+        // Check if we have a stored cache relay event as fallback
+        if (storedCacheEvent) {
+          const cacheRelayList = getRelayListFromEvent(storedCacheEvent)
+          return {
+            write: cacheRelayList.write.length > 0 ? cacheRelayList.write : BIG_RELAY_URLS,
+            read: cacheRelayList.read.length > 0 ? cacheRelayList.read : BIG_RELAY_URLS,
+            originalRelays: cacheRelayList.originalRelays
+          }
+        }
+        return {
+          write: BIG_RELAY_URLS,
+          read: BIG_RELAY_URLS,
+          originalRelays: []
+        }
+      }
+      
+      return relayList
     })
   }
 
   async forceUpdateRelayListEvent(pubkey: string) {
     await this.replaceableEventBatchLoadFn([{ pubkey, kind: kinds.RelayList }])
+  }
+
+  /**
+   * Fetch cache relay events (kind 10432) from multiple sources:
+   * - BIG_RELAY_URLS
+   * - PROFILE_FETCH_RELAY_URLS
+   * - User's inboxes (read relays from kind 10002)
+   * - User's outboxes (write relays from kind 10002)
+   */
+  private async fetchCacheRelayEventsFromMultipleSources(
+    pubkeys: string[],
+    relayEvents: (NEvent | null | undefined)[],
+    storedRelayEvents: (NEvent | null | undefined)[]
+  ): Promise<(NEvent | null | undefined)[]> {
+    // Start with events from IndexedDB
+    const storedCacheRelayEvents = await Promise.all(
+      pubkeys.map(pubkey => indexedDb.getReplaceableEvent(pubkey, ExtendedKind.CACHE_RELAYS))
+    )
+    
+    // Determine which pubkeys need fetching (don't have stored events)
+    const pubkeysToFetch = pubkeys.filter((_, index) => !storedCacheRelayEvents[index])
+    if (pubkeysToFetch.length === 0) {
+      return storedCacheRelayEvents
+    }
+    
+    // Build list of relays to query from
+    const relayUrls = new Set<string>([...BIG_RELAY_URLS, ...PROFILE_FETCH_RELAY_URLS])
+    
+    // Add user's inboxes and outboxes from their relay list (kind 10002)
+    pubkeys.forEach((_pubkey, index) => {
+      const relayEvent = relayEvents[index] || storedRelayEvents[index]
+      if (relayEvent) {
+        const relayList = getRelayListFromEvent(relayEvent)
+        // Add read relays (inboxes)
+        relayList.read.forEach(url => relayUrls.add(url))
+        // Add write relays (outboxes)
+        relayList.write.forEach(url => relayUrls.add(url))
+      }
+    })
+    
+    // Fetch cache relay events from all sources
+    const cacheRelayEvents: (NEvent | null | undefined)[] = new Array(pubkeys.length).fill(undefined)
+    
+    // Initialize with stored events
+    storedCacheRelayEvents.forEach((event, index) => {
+      if (event) {
+        cacheRelayEvents[index] = event
+      }
+    })
+    
+    // Fetch missing cache relay events
+    if (pubkeysToFetch.length > 0) {
+      try {
+        const events = await this.query(Array.from(relayUrls), pubkeysToFetch.map(pubkey => ({
+          authors: [pubkey],
+          kinds: [ExtendedKind.CACHE_RELAYS]
+        })))
+        
+        // Map fetched events back to original pubkey order
+        const eventMap = new Map<string, NEvent>()
+        events.forEach(event => {
+          const key = event.pubkey
+          const existing = eventMap.get(key)
+          if (!existing || existing.created_at < event.created_at) {
+            eventMap.set(key, event)
+          }
+        })
+        
+        pubkeysToFetch.forEach((pubkey) => {
+          const pubkeyIndex = pubkeys.indexOf(pubkey)
+          if (pubkeyIndex !== -1) {
+            const event = eventMap.get(pubkey)
+            if (event) {
+              cacheRelayEvents[pubkeyIndex] = event
+              // Cache the event
+              indexedDb.putReplaceableEvent(event)
+            }
+          }
+        })
+      } catch (error) {
+        console.warn('[ClientService] Error fetching cache relay events:', error)
+      }
+    }
+    
+    return cacheRelayEvents
   }
 
   async updateRelayListCache(event: NEvent) {

@@ -437,6 +437,15 @@ export function createRelayListDraftEvent(mailboxRelays: TMailboxRelay[]): TDraf
   }
 }
 
+export function createCacheRelaysDraftEvent(mailboxRelays: TMailboxRelay[]): TDraftEvent {
+  return {
+    kind: ExtendedKind.CACHE_RELAYS,
+    content: '',
+    tags: mailboxRelays.map(({ url, scope }) => buildRTag(url, scope)),
+    created_at: dayjs().unix()
+  }
+}
+
 export function createFollowListDraftEvent(tags: string[][], content?: string): TDraftEvent {
   return {
     kind: kinds.Contacts,

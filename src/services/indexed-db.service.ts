@@ -23,6 +23,7 @@ const StoreNames = {
   EMOJI_SET_EVENTS: 'emojiSetEvents',
   FAVORITE_RELAYS: 'favoriteRelays',
   BLOCKED_RELAYS_EVENTS: 'blockedRelaysEvents',
+  CACHE_RELAYS_EVENTS: 'cacheRelaysEvents',
   RELAY_SETS: 'relaySets',
   FOLLOWING_FAVORITE_RELAYS: 'followingFavoriteRelays',
   RELAY_INFOS: 'relayInfos',
@@ -46,7 +47,7 @@ class IndexedDbService {
   init(): Promise<void> {
     if (!this.initPromise) {
       this.initPromise = new Promise((resolve, reject) => {
-        const request = window.indexedDB.open('jumble', 12)
+        const request = window.indexedDB.open('jumble', 13)
 
         request.onerror = (event) => {
           reject(event)
@@ -57,8 +58,8 @@ class IndexedDbService {
           resolve()
         }
 
-        request.onupgradeneeded = () => {
-          const db = request.result
+        request.onupgradeneeded = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result
           if (!db.objectStoreNames.contains(StoreNames.PROFILE_EVENTS)) {
             db.createObjectStore(StoreNames.PROFILE_EVENTS, { keyPath: 'key' })
           }
@@ -113,7 +114,9 @@ class IndexedDbService {
           if (!db.objectStoreNames.contains(StoreNames.PUBLICATION_EVENTS)) {
             db.createObjectStore(StoreNames.PUBLICATION_EVENTS, { keyPath: 'key' })
           }
-          this.db = db
+          if (!db.objectStoreNames.contains(StoreNames.CACHE_RELAYS_EVENTS)) {
+            db.createObjectStore(StoreNames.CACHE_RELAYS_EVENTS, { keyPath: 'key' })
+          }
         }
       })
       setTimeout(() => this.cleanUp(), 1000 * 60) // 1 minute
@@ -167,9 +170,26 @@ class IndexedDbService {
       return Promise.reject('store name not found')
     }
     await this.initPromise
+    
+    // Wait a bit for database upgrade to complete if store doesn't exist
+    if (this.db && !this.db.objectStoreNames.contains(storeName)) {
+      // Wait up to 2 seconds for store to be created (database upgrade)
+      let retries = 20
+      while (retries > 0 && this.db && !this.db.objectStoreNames.contains(storeName)) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        retries--
+      }
+    }
+    
     return new Promise((resolve, reject) => {
       if (!this.db) {
         return reject('database not initialized')
+      }
+      // Check if the store exists before trying to access it
+      if (!this.db.objectStoreNames.contains(storeName)) {
+        console.warn(`Store ${storeName} not found in database. Cannot save event.`)
+        // Return the event anyway (don't reject) - caching is optional
+        return resolve(event)
       }
       const transaction = this.db.transaction(storeName, 'readwrite')
       const store = transaction.objectStore(storeName)
@@ -214,6 +234,11 @@ class IndexedDbService {
     return new Promise((resolve, reject) => {
       if (!this.db) {
         return reject('database not initialized')
+      }
+      // Check if the store exists before trying to access it
+      if (!this.db.objectStoreNames.contains(storeName)) {
+        console.warn(`Store ${storeName} not found in database. Returning null.`)
+        return resolve(null)
       }
       const transaction = this.db.transaction(storeName, 'readonly')
       const store = transaction.objectStore(storeName)
@@ -477,6 +502,8 @@ class IndexedDbService {
         return StoreNames.FAVORITE_RELAYS
       case ExtendedKind.BLOCKED_RELAYS:
         return StoreNames.BLOCKED_RELAYS_EVENTS
+      case ExtendedKind.CACHE_RELAYS:
+        return StoreNames.CACHE_RELAYS_EVENTS
       case kinds.UserEmojiList:
         return StoreNames.USER_EMOJI_LIST_EVENTS
       case kinds.Emojisets:

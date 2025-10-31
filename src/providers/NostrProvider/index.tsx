@@ -51,6 +51,7 @@ type TNostrContext = {
   profile: TProfile | null
   profileEvent: Event | null
   relayList: TRelayList | null
+  cacheRelayListEvent: Event | null
   followListEvent: Event | null
   muteListEvent: Event | null
   bookmarkListEvent: Event | null
@@ -83,6 +84,7 @@ type TNostrContext = {
   startLogin: () => void
   checkLogin: <T>(cb?: () => T) => Promise<T | void>
   updateRelayListEvent: (relayListEvent: Event) => Promise<void>
+  updateCacheRelayListEvent: (cacheRelayListEvent: Event) => Promise<void>
   updateProfileEvent: (profileEvent: Event) => Promise<void>
   updateFollowListEvent: (followListEvent: Event) => Promise<void>
   updateMuteListEvent: (muteListEvent: Event, privateTags: string[][]) => Promise<void>
@@ -156,6 +158,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   }, [signer])
   const [profileEvent, setProfileEvent] = useState<Event | null>(null)
   const [relayList, setRelayList] = useState<TRelayList | null>(null)
+  const [cacheRelayListEvent, setCacheRelayListEvent] = useState<Event | null>(null)
   const [followListEvent, setFollowListEvent] = useState<Event | null>(null)
   const [muteListEvent, setMuteListEvent] = useState<Event | null>(null)
   const [bookmarkListEvent, setBookmarkListEvent] = useState<Event | null>(null)
@@ -228,6 +231,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
       const [
         storedRelayListEvent,
+        storedCacheRelayListEvent,
         storedProfileEvent,
         storedFollowListEvent,
         storedMuteListEvent,
@@ -237,6 +241,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         storedUserEmojiListEvent
       ] = await Promise.all([
         indexedDb.getReplaceableEvent(account.pubkey, kinds.RelayList),
+        indexedDb.getReplaceableEvent(account.pubkey, ExtendedKind.CACHE_RELAYS),
         indexedDb.getReplaceableEvent(account.pubkey, kinds.Metadata),
         indexedDb.getReplaceableEvent(account.pubkey, kinds.Contacts),
         indexedDb.getReplaceableEvent(account.pubkey, kinds.Mutelist),
@@ -283,17 +288,32 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         setUserEmojiListEvent(storedUserEmojiListEvent)
       }
 
-      const relayListEvents = await client.fetchEvents(BIG_RELAY_URLS, {
-        kinds: [kinds.RelayList],
-        authors: [account.pubkey]
-      })
+      const [relayListEvents, cacheRelayListEvents] = await Promise.all([
+        client.fetchEvents(BIG_RELAY_URLS, {
+          kinds: [kinds.RelayList],
+          authors: [account.pubkey]
+        }),
+        client.fetchEvents(BIG_RELAY_URLS, {
+          kinds: [ExtendedKind.CACHE_RELAYS],
+          authors: [account.pubkey]
+        })
+      ])
       const relayListEvent = getLatestEvent(relayListEvents) ?? storedRelayListEvent
+      const cacheRelayListEvent = getLatestEvent(cacheRelayListEvents) ?? storedCacheRelayListEvent
       const relayList = getRelayListFromEvent(relayListEvent, blockedRelays)
       if (relayListEvent) {
         client.updateRelayListCache(relayListEvent)
         await indexedDb.putReplaceableEvent(relayListEvent)
       }
-      setRelayList(relayList)
+      if (cacheRelayListEvent) {
+        await indexedDb.putReplaceableEvent(cacheRelayListEvent)
+        setCacheRelayListEvent(cacheRelayListEvent)
+      } else {
+        setCacheRelayListEvent(null)
+      }
+      // Fetch updated relay list (which merges both 10002 and 10432)
+      const mergedRelayList = await client.fetchRelayList(account.pubkey)
+      setRelayList(mergedRelayList)
 
       // Note: Deletion event fetching is now handled locally by individual components
       // for better performance and accuracy
@@ -872,8 +892,18 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
   }
 
   const updateRelayListEvent = async (relayListEvent: Event) => {
-    const newRelayList = await indexedDb.putReplaceableEvent(relayListEvent)
-    setRelayList(getRelayListFromEvent(newRelayList))
+    await indexedDb.putReplaceableEvent(relayListEvent)
+    // Fetch updated relay list (which merges both 10002 and 10432)
+    const mergedRelayList = await client.fetchRelayList(account?.pubkey || '')
+    setRelayList(mergedRelayList)
+  }
+
+  const updateCacheRelayListEvent = async (cacheRelayListEvent: Event) => {
+    const newCacheRelayList = await indexedDb.putReplaceableEvent(cacheRelayListEvent)
+    setCacheRelayListEvent(newCacheRelayList)
+    // Fetch updated relay list (which merges both 10002 and 10432)
+    const mergedRelayList = await client.fetchRelayList(account?.pubkey || '')
+    setRelayList(mergedRelayList)
   }
 
   const updateProfileEvent = async (profileEvent: Event) => {
@@ -956,6 +986,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         profile,
         profileEvent,
         relayList,
+        cacheRelayListEvent,
         followListEvent,
         muteListEvent,
         bookmarkListEvent,
@@ -985,6 +1016,7 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         checkLogin,
         signEvent,
         updateRelayListEvent,
+        updateCacheRelayListEvent,
         updateProfileEvent,
         updateFollowListEvent,
         updateMuteListEvent,

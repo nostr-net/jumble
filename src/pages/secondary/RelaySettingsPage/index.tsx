@@ -1,5 +1,6 @@
 import MailboxSetting from '@/components/MailboxSetting'
 import FavoriteRelaysSetting from '@/components/FavoriteRelaysSetting'
+import CacheRelaysSetting from '@/components/CacheRelaysSetting'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { forwardRef, useEffect, useState } from 'react'
@@ -14,6 +15,9 @@ const RelaySettingsPage = forwardRef(({ index, hideTitlebar = false }: { index?:
       case '#mailbox':
         setTabValue('mailbox')
         break
+      case '#cache-relays':
+        setTabValue('cache-relays')
+        break
       case '#favorite-relays':
         setTabValue('favorite-relays')
         break
@@ -26,12 +30,16 @@ const RelaySettingsPage = forwardRef(({ index, hideTitlebar = false }: { index?:
         <TabsList>
           <TabsTrigger value="favorite-relays">{t('Favorite Relays')}</TabsTrigger>
           <TabsTrigger value="mailbox">{t('Read & Write Relays')}</TabsTrigger>
+          <TabsTrigger value="cache-relays">{t('Cache Relays')}</TabsTrigger>
         </TabsList>
         <TabsContent value="favorite-relays">
           <FavoriteRelaysSetting />
         </TabsContent>
         <TabsContent value="mailbox">
           <MailboxSetting />
+        </TabsContent>
+        <TabsContent value="cache-relays">
+          <CacheRelaysSetting />
         </TabsContent>
       </Tabs>
     </SecondaryPageLayout>
