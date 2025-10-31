@@ -106,6 +106,12 @@ export default function Note({
     ) : (
       <WikiCard className="mt-2" event={event} />
     )
+  } else if (event.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN) {
+    content = showFull ? (
+      <MarkdownArticle className="mt-2" event={event} showImageGallery={true} />
+    ) : (
+      <WikiCard className="mt-2" event={event} />
+    )
   } else if (event.kind === ExtendedKind.PUBLICATION) {
     content = showFull ? (
       <PublicationIndex className="mt-2" event={event} />
@@ -160,10 +166,11 @@ export default function Note({
     content = <Zap className="mt-2" event={event} />
   } else {
     // Use MarkdownArticle for all other kinds
-    // Only 30023, 30041, and 30818 will show image gallery and article info
+    // Only 30023, 30041, 30817, and 30818 will show image gallery and article info
     const showImageGallery = event.kind === kinds.LongFormArticle || 
                             event.kind === ExtendedKind.PUBLICATION_CONTENT || 
-                            event.kind === ExtendedKind.WIKI_ARTICLE
+                            event.kind === ExtendedKind.WIKI_ARTICLE ||
+                            event.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN
     content = <MarkdownArticle className="mt-2" event={event} showImageGallery={showImageGallery} />
   }
 

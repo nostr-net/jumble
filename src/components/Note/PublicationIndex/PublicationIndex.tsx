@@ -3,6 +3,7 @@ import { Event } from 'nostr-tools'
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import AsciidocArticle from '../AsciidocArticle/AsciidocArticle'
+import MarkdownArticle from '../MarkdownArticle/MarkdownArticle'
 import { generateBech32IdFromATag } from '@/lib/tag'
 import client from '@/services/client.service'
 import logger from '@/lib/logger'
@@ -109,6 +110,7 @@ export default function PublicationIndex({
             
             if (!isNaN(kind) && kind === ExtendedKind.PUBLICATION_CONTENT || 
                 kind === ExtendedKind.WIKI_ARTICLE || 
+                kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN ||
                 kind === ExtendedKind.PUBLICATION) {
               // For this simplified version, we'll just extract the title from the coordinate
               const nestedTitle = identifier || 'Untitled'
@@ -414,6 +416,13 @@ export default function PublicationIndex({
               return (
                 <div key={index} id={sectionId} className="scroll-mt-4">
                   <AsciidocArticle event={ref.event} hideImagesAndInfo={true} />
+                </div>
+              )
+            } else if (ref.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN) {
+              // Render 30817 content as MarkdownArticle
+              return (
+                <div key={index} id={sectionId} className="scroll-mt-4">
+                  <MarkdownArticle event={ref.event} showImageGallery={false} />
                 </div>
               )
             } else {

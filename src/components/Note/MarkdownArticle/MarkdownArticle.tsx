@@ -505,7 +505,7 @@ export default function MarkdownArticle({
         </div>
       )}
       
-      {/* Image Carousel - Only show for article content (30023, 30041, 30818) */}
+      {/* Image Carousel - Only show for article content (30023, 30041, 30817, 30818) */}
       {showImageGallery && allImages.length > 0 && (
         <Collapsible open={isImagesOpen} onOpenChange={setIsImagesOpen} className="mt-8">
           <CollapsibleTrigger asChild>

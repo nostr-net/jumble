@@ -8,9 +8,14 @@ export type MarkupType = 'asciidoc' | 'advanced-markdown' | 'basic-markdown' | '
  * Detect the type of markup used in content
  */
 export function detectMarkupType(content: string, eventKind?: number): MarkupType {
-  // Publications and wikis use AsciiDoc
+  // Publications and wiki articles (30818) use AsciiDoc
   if (eventKind === 30041 || eventKind === 30818) {
     return 'asciidoc'
+  }
+  
+  // Wiki articles (30817) use markdown
+  if (eventKind === 30817) {
+    return 'advanced-markdown'
   }
   
   // Long Form Articles (kind 30023) should use markdown detection

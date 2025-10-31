@@ -80,10 +80,10 @@ const ProfileArticles = forwardRef<{ refresh: () => void }, ProfileArticlesProps
       const comprehensiveRelays = await buildComprehensiveRelayList()
       console.log('[ProfileArticles] Using comprehensive relay list:', comprehensiveRelays.length, 'relays')
       
-      // Fetch longform articles (kind 30023), wiki articles (kind 30818), publications (kind 30040), and highlights (kind 9802)
+      // Fetch longform articles (kind 30023), wiki articles (kinds 30817, 30818), publications (kind 30040), and highlights (kind 9802)
       const allEvents = await client.fetchEvents(comprehensiveRelays, {
         authors: [pubkey],
-        kinds: [kinds.LongFormArticle, 30818, 30040, kinds.Highlights], // LongFormArticle, WikiArticle, Publication, and Highlights
+        kinds: [kinds.LongFormArticle, 30817, 30818, 30040, kinds.Highlights], // LongFormArticle, WikiArticle (markdown), WikiArticle (asciidoc), Publication, and Highlights
         limit: 100
       })
       
