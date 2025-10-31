@@ -259,57 +259,59 @@ export default function PublicationIndex({
   }, [])
 
   // Build table of contents from references
-  // Also include items from main event tags if references haven't loaded yet
   const tableOfContents = useMemo<ToCItem[]>(() => {
     const toc: ToCItem[] = []
     
-    // Build ToC from all fetched references (recursively)
     for (const ref of references) {
-      // Only add top-level references (those directly in the main event)
-      const isTopLevel = referencesData.some(rd => 
-        (rd.coordinate && ref.coordinate && rd.coordinate === ref.coordinate) ||
-        (rd.eventId && ref.eventId && rd.eventId === ref.eventId)
-      )
+      if (!ref.event) continue
       
-      if (isTopLevel) {
-        const tocItem = buildToCItemFromRef(ref, references)
-        if (tocItem) {
-          toc.push(tocItem)
-        }
+      // Extract title from the event
+      const title = ref.event.tags.find(tag => tag[0] === 'title')?.[1] || 
+                    ref.event.tags.find(tag => tag[0] === 'd')?.[1] || 
+                    'Untitled'
+      
+      const tocItem: ToCItem = {
+        title,
+        coordinate: ref.coordinate || ref.eventId || '',
+        event: ref.event,
+        kind: ref.kind || ref.event.kind || 0
       }
-    }
-    
-    // If no references have loaded yet, build initial ToC from main event tags
-    if (toc.length === 0 && references.length === 0) {
-      // Parse a and e tags from the main event
-      for (const tag of event.tags) {
-        if (tag[0] === 'a' && tag[1]) {
-          const [kindStr, , identifier] = tag[1].split(':')
-          const kind = parseInt(kindStr)
-          
-          if (!isNaN(kind) && (kind === ExtendedKind.PUBLICATION_CONTENT || 
-                kind === ExtendedKind.WIKI_ARTICLE || 
-                kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN ||
-                kind === ExtendedKind.PUBLICATION)) {
-            toc.push({
-              title: identifier || 'Untitled',
-              coordinate: tag[1],
-              kind
-            })
+      
+      // For nested 30040 publications, recursively get their ToC
+      if (ref.kind === ExtendedKind.PUBLICATION && ref.event) {
+        const nestedRefs: ToCItem[] = []
+        
+        // Parse nested references from this publication
+        for (const tag of ref.event.tags) {
+          if (tag[0] === 'a' && tag[1]) {
+            const [kindStr, , identifier] = tag[1].split(':')
+            const kind = parseInt(kindStr)
+            
+            if (!isNaN(kind) && (kind === ExtendedKind.PUBLICATION_CONTENT || 
+                  kind === ExtendedKind.WIKI_ARTICLE || 
+                  kind === ExtendedKind.PUBLICATION)) {
+              // For this simplified version, we'll just extract the title from the coordinate
+              const nestedTitle = identifier || 'Untitled'
+              
+              nestedRefs.push({
+                title: nestedTitle,
+                coordinate: tag[1],
+                kind
+              })
+            }
           }
-        } else if (tag[0] === 'e' && tag[1]) {
-          // For e-tags without fetched event, use event ID as placeholder
-          toc.push({
-            title: 'Loading...',
-            coordinate: tag[1],
-            kind: 0
-          })
+        }
+        
+        if (nestedRefs.length > 0) {
+          tocItem.children = nestedRefs
         }
       }
+      
+      toc.push(tocItem)
     }
     
     return toc
-  }, [references, event, referencesData, buildToCItemFromRef])
+  }, [references])
 
   // Scroll to ToC
   const scrollToToc = useCallback(() => {
@@ -323,84 +325,13 @@ export default function PublicationIndex({
     }
   }, [])
 
-  // Scroll to section with offset for fixed header
-  const scrollToSection = useCallback((coordinate: string) => {
-    if (!coordinate) {
-      console.warn('[PublicationIndex] Cannot scroll: coordinate is empty')
-      return
+  // Scroll to section
+  const scrollToSection = (coordinate: string) => {
+    const element = document.getElementById(`section-${coordinate.replace(/:/g, '-')}`)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-    
-    // For e-tags, coordinate is the event ID (hex string, no colons)
-    // For a-tags, coordinate is kind:pubkey:identifier (has colons)
-    const sectionId = `section-${coordinate.replace(/:/g, '-')}`
-    
-    console.log('[PublicationIndex] Scrolling to section:', { coordinate, sectionId })
-    
-    // Try to find the element, with retry for elements that might still be rendering
-    const findAndScroll = (attempt = 0) => {
-      // Try the primary section ID format
-      let element = document.getElementById(sectionId)
-      
-      // Try alternative ID formats if primary not found
-      if (!element) {
-        const altId1 = `section-${coordinate}`
-        element = document.getElementById(altId1)
-        if (element) {
-          console.log('[PublicationIndex] Found section with alternative ID:', altId1)
-        }
-      }
-      
-      if (element) {
-        // Get the element's position relative to the viewport
-        const rect = element.getBoundingClientRect()
-        const elementTop = rect.top + window.scrollY
-        
-        // Account for fixed header/titlebar (typically around 4rem/64px, using 6rem/96px for safety)
-        const offset = 96
-        const scrollPosition = Math.max(0, elementTop - offset)
-        
-        console.log('[PublicationIndex] Found section element, scrolling to:', { 
-          scrollPosition, 
-          elementTop, 
-          elementId: element.id,
-          windowScrollY: window.scrollY,
-          rectTop: rect.top
-        })
-        
-        // Use requestAnimationFrame for smoother scrolling
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: scrollPosition, behavior: 'smooth' })
-        })
-        return true
-      }
-      
-      // Retry up to 10 times with increasing delay if element not found (might still be rendering)
-      if (attempt < 10) {
-        const delay = Math.min(100 * (attempt + 1), 1000) // Max 1 second delay
-        setTimeout(() => findAndScroll(attempt + 1), delay)
-        return false
-      }
-      
-      // Log all section IDs for debugging
-      const allSectionIds = Array.from(document.querySelectorAll('[id^="section-"]'))
-        .map(el => el.id)
-        .filter(id => id) // Filter out empty IDs
-      
-      console.warn('[PublicationIndex] Section not found after retries:', { 
-        coordinate, 
-        sectionId, 
-        altId1: `section-${coordinate}`,
-        attempt,
-        availableSections: allSectionIds.slice(0, 20) // Limit output
-      })
-      
-      // Show a helpful message
-      console.warn(`[PublicationIndex] Could not find section with ID: ${sectionId}. Available sections:`, allSectionIds.slice(0, 10))
-      return false
-    }
-    
-    findAndScroll()
-  }, [])
+  }
 
   // Export publication as AsciiDoc
   const exportPublication = async () => {
@@ -1326,19 +1257,10 @@ function ToCItemComponent({
 }) {
   const indentClass = level > 0 ? `ml-${level * 4}` : ''
   
-  const handleClick = () => {
-    if (!item.coordinate) {
-      console.warn('[PublicationIndex] ToC item has no coordinate:', item)
-      return
-    }
-    console.debug('[PublicationIndex] ToC item clicked:', { title: item.title, coordinate: item.coordinate })
-    onItemClick(item.coordinate)
-  }
-  
   return (
     <li className={cn('list-none', indentClass)}>
       <button
-        onClick={handleClick}
+        onClick={() => onItemClick(item.coordinate)}
         className="text-left text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer"
       >
         {item.title}
