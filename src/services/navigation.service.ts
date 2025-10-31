@@ -215,7 +215,7 @@ export class NavigationService {
     if (viewType === 'settings') return 'Settings'
     if (viewType === 'settings-sub') {
       if (pathname.includes('/general')) return 'General Settings'
-      if (pathname.includes('/relays')) return 'Relay Settings'
+      if (pathname.includes('/relays')) return 'Relays and Storage Settings'
       if (pathname.includes('/wallet')) return 'Wallet Settings'
       if (pathname.includes('/posts')) return 'Post Settings'
       if (pathname.includes('/translation')) return 'Translation Settings'
@@ -223,7 +223,7 @@ export class NavigationService {
     }
     if (viewType === 'profile') {
       if (pathname.includes('/following')) return 'Following'
-      if (pathname.includes('/relays')) return 'Relay Settings'
+      if (pathname.includes('/relays')) return 'Relays and Storage Settings'
       return 'Profile'
     }
     if (viewType === 'hashtag') return 'Hashtag'
@@ -240,7 +240,7 @@ export class NavigationService {
     }
     if (viewType === 'following') return 'Following'
     if (viewType === 'mute') return 'Muted Users'
-    if (viewType === 'others-relay-settings') return 'Relay Settings'
+    if (viewType === 'others-relay-settings') return 'Relays and Storage Settings'
     return 'Page'
   }
 

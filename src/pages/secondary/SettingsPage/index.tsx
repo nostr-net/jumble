@@ -44,7 +44,7 @@ const SettingsPage = forwardRef(({ index, hideTitlebar = false }: { index?: numb
       <SettingItem className="clickable" onClick={() => navigateToSettings(toRelaySettings())}>
         <div className="flex items-center gap-4">
           <Server />
-          <div>{t('Relays')}</div>
+          <div>{t('Relays and Storage Settings')}</div>
         </div>
         <ChevronRight />
       </SettingItem>

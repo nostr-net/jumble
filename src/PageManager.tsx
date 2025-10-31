@@ -266,7 +266,7 @@ export function useSmartSettingsNavigation() {
     if (url === '/settings') {
       window.history.pushState(null, '', url)
       setPrimaryNoteView(<SettingsPage index={0} hideTitlebar={true} />, 'settings')
-    } else if (url === '/settings/relays') {
+    } else if (url.startsWith('/settings/relays')) {
       window.history.pushState(null, '', url)
       setPrimaryNoteView(<RelaySettingsPage index={0} hideTitlebar={true} />, 'settings-sub')
     } else if (url === '/settings/wallet') {

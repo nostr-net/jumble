@@ -2,11 +2,13 @@ import { ExtendedKind } from '@/constants'
 import { tagNameEquals } from '@/lib/tag'
 import { TRelayInfo } from '@/types'
 import { Event, kinds } from 'nostr-tools'
+import { isReplaceableEvent } from '@/lib/event'
 
 type TValue<T = any> = {
   key: string
   value: T | null
   addedAt: number
+  masterPublicationKey?: string // For nested publication events, link to master publication
 }
 
 const StoreNames = {
@@ -47,7 +49,7 @@ class IndexedDbService {
   init(): Promise<void> {
     if (!this.initPromise) {
       this.initPromise = new Promise((resolve, reject) => {
-        const request = window.indexedDB.open('jumble', 13)
+        const request = window.indexedDB.open('jumble', 14)
 
         request.onerror = (event) => {
           reject(event)
@@ -465,11 +467,12 @@ class IndexedDbService {
   private getReplaceableEventKeyFromEvent(event: Event): string {
     if (
       [kinds.Metadata, kinds.Contacts].includes(event.kind) ||
-      (event.kind >= 10000 && event.kind < 20000)
+      (event.kind >= 10000 && event.kind < 20000 && event.kind !== ExtendedKind.PUBLICATION && event.kind !== ExtendedKind.PUBLICATION_CONTENT && event.kind !== ExtendedKind.WIKI_ARTICLE && event.kind !== ExtendedKind.WIKI_ARTICLE_MARKDOWN && event.kind !== kinds.LongFormArticle)
     ) {
       return this.getReplaceableEventKey(event.pubkey)
     }
 
+    // Publications and their nested content are replaceable by pubkey + d-tag
     const [, d] = event.tags.find(tagNameEquals('d')) ?? []
     return this.getReplaceableEventKey(event.pubkey, d)
   }
@@ -518,18 +521,119 @@ class IndexedDbService {
     }
   }
 
-  async putPublicationEvent(event: Event): Promise<Event> {
+  async putPublicationWithNestedEvents(masterEvent: Event, nestedEvents: Event[]): Promise<Event> {
+    // Store master publication as replaceable event
+    const masterKey = this.getReplaceableEventKeyFromEvent(masterEvent)
+    await this.putReplaceableEvent(masterEvent)
+    
+    // Store nested events, linking them to the master
+    for (const nestedEvent of nestedEvents) {
+      // Check if this is a replaceable event kind
+      if (isReplaceableEvent(nestedEvent.kind)) {
+        await this.putReplaceableEventWithMaster(nestedEvent, masterKey)
+      } else {
+        // For non-replaceable events, store by event ID with master link
+        await this.putNonReplaceableEventWithMaster(nestedEvent, masterKey)
+      }
+    }
+    
+    return masterEvent
+  }
+
+  private async putReplaceableEventWithMaster(event: Event, masterKey: string): Promise<Event> {
+    const storeName = this.getStoreNameByKind(event.kind)
+    if (!storeName) {
+      return Promise.reject('store name not found')
+    }
     await this.initPromise
+    
+    // Wait a bit for database upgrade to complete if store doesn't exist
+    if (this.db && !this.db.objectStoreNames.contains(storeName)) {
+      let retries = 20
+      while (retries > 0 && this.db && !this.db.objectStoreNames.contains(storeName)) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        retries--
+      }
+    }
+    
     return new Promise((resolve, reject) => {
       if (!this.db) {
         return reject('database not initialized')
       }
-      const transaction = this.db.transaction(StoreNames.PUBLICATION_EVENTS, 'readwrite')
-      const store = transaction.objectStore(StoreNames.PUBLICATION_EVENTS)
+      if (!this.db.objectStoreNames.contains(storeName)) {
+        console.warn(`Store ${storeName} not found in database. Cannot save event.`)
+        return resolve(event)
+      }
+      const transaction = this.db.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
 
+      const key = this.getReplaceableEventKeyFromEvent(event)
+      const getRequest = store.get(key)
+      getRequest.onsuccess = () => {
+        const oldValue = getRequest.result as TValue<Event> | undefined
+        if (oldValue?.value && oldValue.value.created_at >= event.created_at) {
+          // Update master key link even if event is not newer
+          if (oldValue.masterPublicationKey !== masterKey) {
+            const value = this.formatValue(key, oldValue.value)
+            value.masterPublicationKey = masterKey
+            store.put(value)
+          }
+          transaction.commit()
+          return resolve(oldValue.value)
+        }
+        // Store with master key link
+        const value = this.formatValue(key, event)
+        value.masterPublicationKey = masterKey
+        const putRequest = store.put(value)
+        putRequest.onsuccess = () => {
+          transaction.commit()
+          resolve(event)
+        }
+
+        putRequest.onerror = (event) => {
+          transaction.commit()
+          reject(event)
+        }
+      }
+
+      getRequest.onerror = (event) => {
+        transaction.commit()
+        reject(event)
+      }
+    })
+  }
+
+  private async putNonReplaceableEventWithMaster(event: Event, masterKey: string): Promise<Event> {
+    // For non-replaceable events, store by event ID in publication events store
+    const storeName = StoreNames.PUBLICATION_EVENTS
+    await this.initPromise
+    
+    // Wait a bit for database upgrade to complete if store doesn't exist
+    if (this.db && !this.db.objectStoreNames.contains(storeName)) {
+      let retries = 20
+      while (retries > 0 && this.db && !this.db.objectStoreNames.contains(storeName)) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        retries--
+      }
+    }
+    
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        return reject('database not initialized')
+      }
+      if (!this.db.objectStoreNames.contains(storeName)) {
+        console.warn(`Store ${storeName} not found in database. Cannot save event.`)
+        return resolve(event)
+      }
+      const transaction = this.db.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+
+      // For non-replaceable events, use event ID as key
       const key = event.id
-      // Always update, as these are not replaceable events
-      const putRequest = store.put(this.formatValue(key, event))
+      // For non-replaceable events, always update with master key link
+      const value = this.formatValue(key, event)
+      value.masterPublicationKey = masterKey
+      const putRequest = store.put(value)
       putRequest.onsuccess = () => {
         transaction.commit()
         resolve(event)
@@ -542,20 +646,139 @@ class IndexedDbService {
     })
   }
 
-  async getPublicationEvent(eventId: string): Promise<Event | undefined> {
-    await this.initPromise
-    return new Promise((resolve, reject) => {
-      if (!this.db) {
-        return reject('database not initialized')
+  async getPublicationEvent(coordinate: string): Promise<Event | undefined> {
+    // Parse coordinate (format: kind:pubkey:d-tag)
+    const coordinateParts = coordinate.split(':')
+    if (coordinateParts.length >= 2) {
+      const kind = parseInt(coordinateParts[0])
+      if (!isNaN(kind)) {
+        const pubkey = coordinateParts[1]
+        const d = coordinateParts[2] || undefined
+        const event = await this.getReplaceableEvent(pubkey, kind, d)
+        return event || undefined
       }
-      const transaction = this.db.transaction(StoreNames.PUBLICATION_EVENTS, 'readonly')
-      const store = transaction.objectStore(StoreNames.PUBLICATION_EVENTS)
-      const request = store.get(eventId)
+    }
+    return Promise.resolve(undefined)
+  }
+
+  async getPublicationStoreItems(storeName: string): Promise<Array<{ key: string; value: any; addedAt: number; nestedCount?: number }>> {
+    // For publication stores, only return master events with nested counts
+    await this.initPromise
+    if (!this.db || !this.db.objectStoreNames.contains(storeName)) {
+      return []
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(storeName, 'readonly')
+      const store = transaction.objectStore(storeName)
+      const request = store.openCursor()
+      
+      const masterEvents = new Map<string, { key: string; value: any; addedAt: number; nestedCount: number }>()
+      const nestedEvents: Array<{ key: string; masterKey?: string }> = []
 
       request.onsuccess = () => {
+        const cursor = (request as any).result
+        if (cursor) {
+          const item = cursor.value as TValue<Event>
+          const key = cursor.key as string
+          
+          if (item?.value) {
+            const event = item.value as Event
+            // Check if this is a master publication (kind 30040) or a nested event
+            if (event.kind === ExtendedKind.PUBLICATION && !item.masterPublicationKey) {
+              // This is a master publication
+              masterEvents.set(key, {
+                key,
+                value: event,
+                addedAt: item.addedAt,
+                nestedCount: 0
+              })
+            } else if (item.masterPublicationKey) {
+              // This is a nested event - track it for counting
+              nestedEvents.push({
+                key,
+                masterKey: item.masterPublicationKey
+              })
+            }
+          }
+          cursor.continue()
+        } else {
+          // Count nested events for each master
+          nestedEvents.forEach(nested => {
+            if (nested.masterKey && masterEvents.has(nested.masterKey)) {
+              const master = masterEvents.get(nested.masterKey)!
+              master.nestedCount++
+            }
+          })
+          
+          transaction.commit()
+          resolve(Array.from(masterEvents.values()))
+        }
+      }
+
+      request.onerror = (event) => {
         transaction.commit()
-        const cachedValue = (request.result as TValue<Event>)?.value
-        resolve(cachedValue || undefined)
+        reject(event)
+      }
+    })
+  }
+
+  async deletePublicationAndNestedEvents(pubkey: string, d?: string): Promise<{ deleted: number }> {
+    const masterKey = this.getReplaceableEventKey(pubkey, d)
+    const storeName = StoreNames.PUBLICATION_EVENTS
+    
+    await this.initPromise
+    if (!this.db || !this.db.objectStoreNames.contains(storeName)) {
+      return Promise.resolve({ deleted: 0 })
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+      const request = store.openCursor()
+      
+      const keysToDelete: string[] = []
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest).result
+        if (cursor) {
+          const value = cursor.value as TValue<Event>
+          const key = cursor.key as string
+          
+          // Delete if it's the master (matches masterKey) or linked to the master (has masterPublicationKey)
+          if (key === masterKey || value?.masterPublicationKey === masterKey) {
+            keysToDelete.push(key)
+          }
+          cursor.continue()
+        } else {
+          // Delete all identified keys
+          let deletedCount = 0
+          let completedCount = 0
+
+          if (keysToDelete.length === 0) {
+            transaction.commit()
+            return resolve({ deleted: 0 })
+          }
+
+          keysToDelete.forEach(key => {
+            const deleteRequest = store.delete(key)
+            deleteRequest.onsuccess = () => {
+              deletedCount++
+              completedCount++
+              if (completedCount === keysToDelete.length) {
+                transaction.commit()
+                resolve({ deleted: deletedCount })
+              }
+            }
+            deleteRequest.onerror = () => {
+              completedCount++
+              if (completedCount === keysToDelete.length) {
+                transaction.commit()
+                resolve({ deleted: deletedCount })
+              }
+            }
+          })
+        }
       }
 
       request.onerror = (event) => {
@@ -571,6 +794,286 @@ class IndexedDbService {
       value,
       addedAt: Date.now()
     }
+  }
+
+  async clearAllCache(): Promise<void> {
+    await this.initPromise
+    if (!this.db) {
+      return
+    }
+
+    const allStoreNames = Array.from(this.db.objectStoreNames)
+    const transaction = this.db.transaction(allStoreNames, 'readwrite')
+    
+    await Promise.allSettled(
+      allStoreNames.map(storeName => {
+        return new Promise<void>((resolve, reject) => {
+          const store = transaction.objectStore(storeName)
+          const request = store.clear()
+          request.onsuccess = () => resolve()
+          request.onerror = (event) => reject(event)
+        })
+      })
+    )
+  }
+
+  async getStoreInfo(): Promise<Record<string, number>> {
+    await this.initPromise
+    if (!this.db) {
+      return {}
+    }
+
+    const storeInfo: Record<string, number> = {}
+    const allStoreNames = Array.from(this.db.objectStoreNames)
+    
+    await Promise.allSettled(
+      allStoreNames.map(storeName => {
+        return new Promise<void>((resolve, reject) => {
+          const transaction = this.db!.transaction(storeName, 'readonly')
+          const store = transaction.objectStore(storeName)
+          const request = store.count()
+          request.onsuccess = () => {
+            storeInfo[storeName] = request.result
+            resolve()
+          }
+          request.onerror = (event) => reject(event)
+        })
+      })
+    )
+
+    return storeInfo
+  }
+
+  async getStoreItems(storeName: string): Promise<TValue<any>[]> {
+    await this.initPromise
+    if (!this.db || !this.db.objectStoreNames.contains(storeName)) {
+      return []
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(storeName, 'readonly')
+      const store = transaction.objectStore(storeName)
+      const request = store.getAll()
+      
+      request.onsuccess = () => {
+        transaction.commit()
+        resolve(request.result as TValue<any>[])
+      }
+      
+      request.onerror = (event) => {
+        transaction.commit()
+        reject(event)
+      }
+    })
+  }
+
+  async deleteStoreItem(storeName: string, key: string): Promise<void> {
+    await this.initPromise
+    if (!this.db || !this.db.objectStoreNames.contains(storeName)) {
+      return Promise.reject('Store not found')
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+      const request = store.delete(key)
+      
+      request.onsuccess = () => {
+        transaction.commit()
+        resolve()
+      }
+      
+      request.onerror = (event) => {
+        transaction.commit()
+        reject(event)
+      }
+    })
+  }
+
+  async clearStore(storeName: string): Promise<void> {
+    await this.initPromise
+    if (!this.db || !this.db.objectStoreNames.contains(storeName)) {
+      return Promise.reject('Store not found')
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+      const request = store.clear()
+      
+      request.onsuccess = () => {
+        transaction.commit()
+        resolve()
+      }
+      
+      request.onerror = (event) => {
+        transaction.commit()
+        reject(event)
+      }
+    })
+  }
+
+  async cleanupDuplicateReplaceableEvents(storeName: string): Promise<{ deleted: number; kept: number }> {
+    await this.initPromise
+    if (!this.db || !this.db.objectStoreNames.contains(storeName)) {
+      return Promise.reject('Store not found')
+    }
+
+    // Get the kind for this store - only clean up replaceable event stores
+    const kind = this.getKindByStoreName(storeName)
+    if (!kind || !this.isReplaceableEventKind(kind)) {
+      return Promise.reject('Not a replaceable event store')
+    }
+
+    // First pass: identify duplicates
+    const allItems = await this.getStoreItems(storeName)
+    const eventMap = new Map<string, { key: string; event: Event; addedAt: number }>()
+    const keysToDelete: string[] = []
+
+    for (const item of allItems) {
+      if (!item || !item.value) continue
+      
+      const replaceableKey = this.getReplaceableEventKeyFromEvent(item.value)
+      const existing = eventMap.get(replaceableKey)
+      
+      if (!existing || 
+          item.value.created_at > existing.event.created_at ||
+          (item.value.created_at === existing.event.created_at && 
+           item.addedAt > existing.addedAt)) {
+        // This event is newer, mark the old one for deletion if it exists
+        if (existing) {
+          keysToDelete.push(existing.key)
+        }
+        eventMap.set(replaceableKey, {
+          key: item.key,
+          event: item.value,
+          addedAt: item.addedAt
+        })
+      } else {
+        // This event is older or same, mark it for deletion
+        keysToDelete.push(item.key)
+      }
+    }
+
+    // Second pass: delete duplicates
+    if (keysToDelete.length === 0) {
+      return Promise.resolve({ deleted: 0, kept: eventMap.size })
+    }
+
+    return new Promise((resolve) => {
+      const transaction = this.db!.transaction(storeName, 'readwrite')
+      const store = transaction.objectStore(storeName)
+      
+      let deletedCount = 0
+      let completedCount = 0
+
+      keysToDelete.forEach(key => {
+        const deleteRequest = store.delete(key)
+        deleteRequest.onsuccess = () => {
+          deletedCount++
+          completedCount++
+          if (completedCount === keysToDelete.length) {
+            transaction.commit()
+            resolve({ deleted: deletedCount, kept: eventMap.size })
+          }
+        }
+        deleteRequest.onerror = () => {
+          completedCount++
+          if (completedCount === keysToDelete.length) {
+            transaction.commit()
+            resolve({ deleted: deletedCount, kept: eventMap.size })
+          }
+        }
+      })
+    })
+  }
+
+  private getKindByStoreName(storeName: string): number | undefined {
+    // Reverse lookup of getStoreNameByKind
+    if (storeName === StoreNames.PROFILE_EVENTS) return kinds.Metadata
+    if (storeName === StoreNames.RELAY_LIST_EVENTS) return kinds.RelayList
+    if (storeName === StoreNames.FOLLOW_LIST_EVENTS) return kinds.Contacts
+    if (storeName === StoreNames.MUTE_LIST_EVENTS) return kinds.Mutelist
+    if (storeName === StoreNames.BOOKMARK_LIST_EVENTS) return kinds.BookmarkList
+    if (storeName === StoreNames.PIN_LIST_EVENTS) return 10001
+    if (storeName === StoreNames.INTEREST_LIST_EVENTS) return 10015
+    if (storeName === StoreNames.BLOSSOM_SERVER_LIST_EVENTS) return ExtendedKind.BLOSSOM_SERVER_LIST
+    if (storeName === StoreNames.RELAY_SETS) return kinds.Relaysets
+    if (storeName === StoreNames.FAVORITE_RELAYS) return ExtendedKind.FAVORITE_RELAYS
+    if (storeName === StoreNames.BLOCKED_RELAYS_EVENTS) return ExtendedKind.BLOCKED_RELAYS
+    if (storeName === StoreNames.CACHE_RELAYS_EVENTS) return ExtendedKind.CACHE_RELAYS
+    if (storeName === StoreNames.USER_EMOJI_LIST_EVENTS) return kinds.UserEmojiList
+    if (storeName === StoreNames.EMOJI_SET_EVENTS) return kinds.Emojisets
+    // PUBLICATION_EVENTS is not replaceable, so we don't handle it here
+    return undefined
+  }
+
+  private isReplaceableEventKind(kind: number): boolean {
+    // Check if this is a replaceable event kind
+    return (
+      kind === kinds.Metadata ||
+      kind === kinds.Contacts ||
+      kind === kinds.RelayList ||
+      kind === kinds.Mutelist ||
+      kind === kinds.BookmarkList ||
+      (kind >= 10000 && kind < 20000) ||
+      kind === ExtendedKind.FAVORITE_RELAYS ||
+      kind === ExtendedKind.BLOCKED_RELAYS ||
+      kind === ExtendedKind.CACHE_RELAYS ||
+      kind === ExtendedKind.BLOSSOM_SERVER_LIST
+    )
+  }
+
+  async forceDatabaseUpgrade(): Promise<void> {
+    // Close the database first
+    if (this.db) {
+      this.db.close()
+      this.db = null
+      this.initPromise = null
+    }
+    
+    // Check current version
+    const checkRequest = window.indexedDB.open('jumble')
+    let currentVersion = 14
+    checkRequest.onsuccess = () => {
+      const db = checkRequest.result
+      currentVersion = db.version
+      db.close()
+    }
+    checkRequest.onerror = () => {
+      // If we can't check, start fresh
+      currentVersion = 14
+    }
+    await new Promise(resolve => setTimeout(resolve, 100)) // Wait for version check
+    
+    const newVersion = currentVersion + 1
+    
+    // Open with new version to trigger upgrade
+    return new Promise((resolve, reject) => {
+      const request = window.indexedDB.open('jumble', newVersion)
+      
+      request.onerror = (event) => {
+        reject(event)
+      }
+      
+      request.onsuccess = () => {
+        const db = request.result
+        // Don't close - keep it open for the service to use
+        this.db = db
+        this.initPromise = Promise.resolve()
+        resolve()
+      }
+      
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result
+        // Create any missing stores
+        Object.values(StoreNames).forEach(storeName => {
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.createObjectStore(storeName, { keyPath: 'key' })
+          }
+        })
+      }
+    })
   }
 
   private async cleanUp() {

@@ -5,7 +5,7 @@ export default {
     'New Note': 'New Note',
     Post: 'Post',
     Home: 'Home',
-    'Relay settings': 'Relay settings',
+    'Relay settings': 'Relays and Storage Settings',
     Settings: 'Settings',
     SidebarRelays: 'Relays',
     Refresh: 'Refresh',
@@ -57,7 +57,8 @@ export default {
     "username's muted": "{{username}}'s muted",
     Login: 'Login',
     'Follows you': 'Follows you',
-    'Relay Settings': 'Relay Settings',
+    'Relay Settings': 'Relays and Storage Settings',
+    'Relays and Storage Settings': 'Relays and Storage Settings',
     'Relay set name': 'Relay set name',
     'Add a new relay set': 'Add a new relay set',
     Add: 'Add',
@@ -464,6 +465,7 @@ export default {
     'Paste your one-time code here': 'Paste your one-time code here',
     Connect: 'Connect',
     'Set up your wallet to send and receive sats!': 'Set up your wallet to send and receive sats!',
-    'Set up': 'Set up'
+    'Set up': 'Set up',
+    'nested events': 'nested events'
   }
 }

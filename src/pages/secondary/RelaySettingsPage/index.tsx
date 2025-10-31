@@ -25,12 +25,12 @@ const RelaySettingsPage = forwardRef(({ index, hideTitlebar = false }: { index?:
   }, [])
 
   return (
-    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Relay settings')}>
+    <SecondaryPageLayout ref={ref} index={index} title={hideTitlebar ? undefined : t('Relays and Storage Settings')}>
       <Tabs value={tabValue} onValueChange={setTabValue} className="px-4 py-3 space-y-4">
         <TabsList>
           <TabsTrigger value="favorite-relays">{t('Favorite Relays')}</TabsTrigger>
           <TabsTrigger value="mailbox">{t('Read & Write Relays')}</TabsTrigger>
-          <TabsTrigger value="cache-relays">{t('Cache Relays')}</TabsTrigger>
+          <TabsTrigger value="cache-relays">{t('Cache')}</TabsTrigger>
         </TabsList>
         <TabsContent value="favorite-relays">
           <FavoriteRelaysSetting />

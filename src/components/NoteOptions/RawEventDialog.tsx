@@ -6,7 +6,11 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
 import { Event } from 'nostr-tools'
+import { WrapText } from 'lucide-react'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export default function RawEventDialog({
   event,
@@ -17,19 +21,51 @@ export default function RawEventDialog({
   isOpen: boolean
   onClose: () => void
 }) {
+  const { t } = useTranslation()
+  const [wordWrapEnabled, setWordWrapEnabled] = useState(true)
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="h-[60vh] w-[95vw] max-w-[400px] sm:w-[90vw] sm:max-w-[600px] md:w-[85vw] md:max-w-[800px] lg:w-[80vw] lg:max-w-[1000px] xl:w-[75vw] xl:max-w-[1200px] 2xl:w-[70vw] 2xl:max-w-[1400px]">
-        <DialogHeader>
-          <DialogTitle>Raw Event</DialogTitle>
-          <DialogDescription className="sr-only">View the raw event data</DialogDescription>
+      <DialogContent className="h-[60vh] w-[95vw] max-w-[400px] sm:w-[90vw] sm:max-w-[600px] md:w-[85vw] md:max-w-[800px] lg:w-[80vw] lg:max-w-[1000px] xl:w-[75vw] xl:max-w-[1200px] 2xl:w-[70vw] 2xl:max-w-[1400px] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0 pr-8">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <DialogTitle>Raw Event</DialogTitle>
+              <DialogDescription className="sr-only">View the raw event data</DialogDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setWordWrapEnabled(!wordWrapEnabled)}
+              title={wordWrapEnabled ? t('Disable word wrap') : t('Enable word wrap')}
+              className="shrink-0"
+            >
+              <WrapText className={`h-4 w-4 ${wordWrapEnabled ? '' : 'opacity-50'}`} />
+            </Button>
+          </div>
         </DialogHeader>
-        <ScrollArea className="h-full">
-          <pre className="text-sm text-muted-foreground select-text whitespace-pre-wrap break-words">
-            {JSON.stringify(event, null, 2)}
-          </pre>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+          <ScrollArea className="h-full w-full">
+            <div className="w-full min-w-0 max-w-full pr-4">
+              <pre 
+                className={`text-sm text-muted-foreground select-text min-w-0 ${wordWrapEnabled ? 'whitespace-pre-wrap overflow-x-hidden' : 'whitespace-pre overflow-x-auto'}`}
+                style={{ 
+                  wordBreak: wordWrapEnabled ? 'break-all' : 'normal',
+                  overflowWrap: wordWrapEnabled ? 'anywhere' : 'normal',
+                  maxWidth: '100%',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}
+              >
+                {JSON.stringify(event, null, 2)}
+              </pre>
+            </div>
+            <ScrollBar 
+              orientation="horizontal" 
+              className={wordWrapEnabled ? 'opacity-0 pointer-events-none' : ''} 
+            />
+          </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   )

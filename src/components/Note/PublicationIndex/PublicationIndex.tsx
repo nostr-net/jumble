@@ -10,15 +10,17 @@ import logger from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { MoreVertical } from 'lucide-react'
 import indexedDb from '@/services/indexed-db.service'
+import { isReplaceableEvent } from '@/lib/event'
 
 interface PublicationReference {
-  coordinate: string
-  event?: Event
-  kind: number
-  pubkey: string
-  identifier: string
-  relay?: string
+  coordinate?: string
   eventId?: string
+  event?: Event
+  kind?: number
+  pubkey?: string
+  identifier?: string
+  relay?: string
+  type: 'a' | 'e' // 'a' for addressable (coordinate), 'e' for event ID
 }
 
 interface ToCItem {
@@ -93,16 +95,16 @@ export default function PublicationIndex({
       
       const tocItem: ToCItem = {
         title,
-        coordinate: ref.coordinate,
+        coordinate: ref.coordinate || ref.eventId || '',
         event: ref.event,
-        kind: ref.kind
+        kind: ref.kind || ref.event?.kind || 0
       }
       
       // For nested 30040 publications, recursively get their ToC
-      if (ref.kind === ExtendedKind.PUBLICATION && ref.event) {
+      if ((ref.kind === ExtendedKind.PUBLICATION || ref.event?.kind === ExtendedKind.PUBLICATION) && ref.event) {
         const nestedRefs: ToCItem[] = []
         
-        // Parse nested references from this publication
+        // Parse nested references from this publication (both 'a' and 'e' tags)
         for (const tag of ref.event.tags) {
           if (tag[0] === 'a' && tag[1]) {
             const [kindStr, , identifier] = tag[1].split(':')
@@ -121,6 +123,16 @@ export default function PublicationIndex({
                 kind
               })
             }
+          } else if (tag[0] === 'e' && tag[1]) {
+            // For 'e' tags, we can't extract title from the tag alone
+            // The title will come from the fetched event if available
+            const nestedTitle = ref.event?.tags.find(t => t[0] === 'title')?.[1] || 'Untitled'
+            
+            nestedRefs.push({
+              title: nestedTitle,
+              coordinate: tag[1], // Use event ID as coordinate
+              kind: ref.event?.kind
+            })
           }
         }
         
@@ -181,15 +193,17 @@ export default function PublicationIndex({
     }
   }
 
-  // Extract references from 'a' tags
+  // Extract references from 'a' tags (addressable events) and 'e' tags (event IDs)
   const referencesData = useMemo(() => {
     const refs: PublicationReference[] = []
     for (const tag of event.tags) {
       if (tag[0] === 'a' && tag[1]) {
+        // Addressable event (kind:pubkey:identifier)
         const [kindStr, pubkey, identifier] = tag[1].split(':')
         const kind = parseInt(kindStr)
         if (!isNaN(kind)) {
           refs.push({
+            type: 'a',
             coordinate: tag[1],
             kind,
             pubkey,
@@ -198,6 +212,13 @@ export default function PublicationIndex({
             eventId: tag[3] // Optional event ID for version tracking
           })
         }
+      } else if (tag[0] === 'e' && tag[1]) {
+        // Event ID reference
+        refs.push({
+          type: 'e',
+          eventId: tag[1],
+          relay: tag[2]
+        })
       }
     }
     return refs
@@ -212,8 +233,8 @@ export default function PublicationIndex({
   useEffect(() => {
     setVisitedIndices(prev => new Set([...prev, currentCoordinate]))
     
-    // Cache the current publication index event using its actual event ID
-    indexedDb.putPublicationEvent(event).catch(err => {
+    // Cache the current publication index event as replaceable event
+    indexedDb.putReplaceableEvent(event).catch(err => {
       logger.error('[PublicationIndex] Error caching publication event:', err)
     })
   }, [currentCoordinate, event])
@@ -242,7 +263,7 @@ export default function PublicationIndex({
           if (!isMounted) break
           
           // Skip if this is a 30040 event we've already visited (prevent circular references)
-          if (ref.kind === ExtendedKind.PUBLICATION) {
+          if (ref.type === 'a' && ref.kind === ExtendedKind.PUBLICATION && ref.coordinate) {
             if (currentVisited.has(ref.coordinate)) {
               logger.debug('[PublicationIndex] Skipping visited 30040 index:', ref.coordinate)
               fetchedRefs.push({ ...ref, event: undefined })
@@ -251,39 +272,57 @@ export default function PublicationIndex({
           }
 
           try {
-            // Generate bech32 ID from the 'a' tag
-            const aTag = ['a', ref.coordinate, ref.relay || '', ref.eventId || '']
-            const bech32Id = generateBech32IdFromATag(aTag)
+            let fetchedEvent: Event | undefined = undefined
             
-            if (bech32Id) {
-              // First, check if we have this event by its eventId in the ref
-              let fetchedEvent: Event | undefined = undefined
+            if (ref.type === 'a' && ref.coordinate) {
+              // Handle addressable event (a tag)
+              const aTag = ['a', ref.coordinate, ref.relay || '', ref.eventId || '']
+              const bech32Id = generateBech32IdFromATag(aTag)
               
-              if (ref.eventId) {
-                // Try to get by event ID first
-                fetchedEvent = await indexedDb.getPublicationEvent(ref.eventId)
-              }
-              
-              // If not found by event ID, try to fetch from relay
-              if (!fetchedEvent) {
-                fetchedEvent = await client.fetchEvent(bech32Id)
-                // Save to cache using the fetched event's ID as the key
-                if (fetchedEvent) {
-                  await indexedDb.putPublicationEvent(fetchedEvent)
-                  logger.debug('[PublicationIndex] Cached event with ID:', fetchedEvent.id)
+              if (bech32Id) {
+                // Try to get by coordinate (replaceable event)
+                fetchedEvent = await indexedDb.getPublicationEvent(ref.coordinate)
+                
+                // If not found, try to fetch from relay
+                if (!fetchedEvent) {
+                  fetchedEvent = await client.fetchEvent(bech32Id)
+                  // Save to cache as replaceable event
+                  if (fetchedEvent) {
+                    await indexedDb.putReplaceableEvent(fetchedEvent)
+                    logger.debug('[PublicationIndex] Cached event with coordinate:', ref.coordinate)
+                  }
+                } else {
+                  logger.debug('[PublicationIndex] Loaded from cache by coordinate:', ref.coordinate)
                 }
               } else {
-                logger.debug('[PublicationIndex] Loaded from cache by event ID:', ref.eventId)
+                logger.warn('[PublicationIndex] Could not generate bech32 ID for:', ref.coordinate)
               }
+            } else if (ref.type === 'e' && ref.eventId) {
+              // Handle event ID reference (e tag)
+              // Try to fetch by event ID first
+              fetchedEvent = await client.fetchEvent(ref.eventId)
               
-              if (fetchedEvent && isMounted) {
-                fetchedRefs.push({ ...ref, event: fetchedEvent })
-              } else if (isMounted) {
-                logger.warn('[PublicationIndex] Could not fetch event for:', ref.coordinate)
-                fetchedRefs.push({ ...ref, event: undefined })
+              if (fetchedEvent) {
+                // Check if this is a replaceable event kind
+                if (isReplaceableEvent(fetchedEvent.kind)) {
+                  // Save to cache as replaceable event (will be linked to master via putPublicationWithNestedEvents)
+                  await indexedDb.putReplaceableEvent(fetchedEvent)
+                  logger.debug('[PublicationIndex] Cached replaceable event with ID:', ref.eventId)
+                } else {
+                  // For non-replaceable events, we'll link them to master later via putPublicationWithNestedEvents
+                  // Just cache them for now without master link - they'll be properly linked when we call putPublicationWithNestedEvents
+                  logger.debug('[PublicationIndex] Cached non-replaceable event with ID (will link to master):', ref.eventId)
+                }
+              } else {
+                logger.warn('[PublicationIndex] Could not fetch event for ID:', ref.eventId)
               }
+            }
+            
+            if (fetchedEvent && isMounted) {
+              fetchedRefs.push({ ...ref, event: fetchedEvent })
             } else if (isMounted) {
-              logger.warn('[PublicationIndex] Could not generate bech32 ID for:', ref.coordinate)
+              const identifier = ref.type === 'a' ? ref.coordinate : ref.eventId
+              logger.warn('[PublicationIndex] Could not fetch event for:', identifier || 'unknown')
               fetchedRefs.push({ ...ref, event: undefined })
             }
           } catch (error) {
@@ -297,6 +336,14 @@ export default function PublicationIndex({
         if (isMounted) {
           setReferences(fetchedRefs)
           setIsLoading(false)
+          
+          // Store master publication with all nested events
+          const nestedEvents = fetchedRefs.filter(ref => ref.event).map(ref => ref.event!).filter((e): e is Event => e !== undefined)
+          if (nestedEvents.length > 0) {
+            indexedDb.putPublicationWithNestedEvents(event, nestedEvents).catch(err => {
+              logger.error('[PublicationIndex] Error caching publication with nested events:', err)
+            })
+          }
         }
       } finally {
         clearTimeout(timeout)
@@ -395,30 +442,32 @@ export default function PublicationIndex({
               return (
                 <div key={index} className="p-4 border rounded-lg bg-muted/50">
                   <div className="text-sm text-muted-foreground">
-                    Reference {index + 1}: Unable to load event from coordinate {ref.coordinate}
+                    Reference {index + 1}: Unable to load event {ref.coordinate || ref.eventId || 'unknown'}
                   </div>
                 </div>
               )
             }
 
             // Render based on event kind
-            const sectionId = `section-${ref.coordinate.replace(/:/g, '-')}`
+            const coordinate = ref.coordinate || ref.eventId || ''
+            const sectionId = `section-${coordinate.replace(/:/g, '-')}`
+            const eventKind = ref.kind || ref.event.kind
             
-            if (ref.kind === ExtendedKind.PUBLICATION) {
+            if (eventKind === ExtendedKind.PUBLICATION) {
               // Recursively render nested 30040 publication index
               return (
                 <div key={index} id={sectionId} className="border-l-4 border-primary pl-6 scroll-mt-4">
                   <PublicationIndex event={ref.event} />
                 </div>
               )
-            } else if (ref.kind === ExtendedKind.PUBLICATION_CONTENT || ref.kind === ExtendedKind.WIKI_ARTICLE) {
+            } else if (eventKind === ExtendedKind.PUBLICATION_CONTENT || eventKind === ExtendedKind.WIKI_ARTICLE) {
               // Render 30041 or 30818 content as AsciidocArticle
               return (
                 <div key={index} id={sectionId} className="scroll-mt-4">
                   <AsciidocArticle event={ref.event} hideImagesAndInfo={true} />
                 </div>
               )
-            } else if (ref.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN) {
+            } else if (eventKind === ExtendedKind.WIKI_ARTICLE_MARKDOWN) {
               // Render 30817 content as MarkdownArticle
               return (
                 <div key={index} id={sectionId} className="scroll-mt-4">
@@ -430,7 +479,7 @@ export default function PublicationIndex({
               return (
                 <div key={index} className="p-4 border rounded-lg">
                   <div className="text-sm text-muted-foreground">
-                    Reference {index + 1}: Unsupported kind {ref.kind}
+                    Reference {index + 1}: Unsupported kind {eventKind}
                   </div>
                 </div>
               )
