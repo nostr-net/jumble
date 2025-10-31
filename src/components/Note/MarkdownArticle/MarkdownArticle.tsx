@@ -1,4 +1,4 @@
-import { SecondaryPageLink, useSecondaryPage } from '@/PageManager'
+import { SecondaryPageLink, useSecondaryPage, useSmartHashtagNavigation } from '@/PageManager'
 import ImageWithLightbox from '@/components/ImageWithLightbox'
 import MediaPlayer from '@/components/MediaPlayer'
 import Wikilink from '@/components/UniversalContent/Wikilink'
@@ -15,6 +15,7 @@ import remarkMath from 'remark-math'
 import 'katex/dist/katex.min.css'
 import NostrNode from './NostrNode'
 import { remarkNostr } from './remarkNostr'
+import { remarkHashtags } from './remarkHashtags'
 import { Components } from './types'
 
 export default function MarkdownArticle({
@@ -27,6 +28,7 @@ export default function MarkdownArticle({
   showImageGallery?: boolean
 }) {
   const { push } = useSecondaryPage()
+  const { navigateToHashtag } = useSmartHashtagNavigation()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   const contentRef = useRef<HTMLDivElement>(null)
   
@@ -129,14 +131,28 @@ export default function MarkdownArticle({
             
             // Normalize href to include leading slash if missing
             const normalizedHref = href.startsWith('/') ? href : `/${href}`
-            // Inline hashtags from content should always be green
+            // Render hashtags as inline span elements - force inline display with no margins
             return (
-              <SecondaryPageLink
-                to={normalizedHref}
-                className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline"
+              <span
+                className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer [&]:inline [&]:m-0 [&]:p-0 [&]:leading-normal"
+                style={{ display: 'inline', margin: 0, padding: 0 }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  navigateToHashtag(normalizedHref)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    navigateToHashtag(normalizedHref)
+                  }
+                }}
+                role="button"
+                tabIndex={0}
               >
                 {children}
-              </SecondaryPageLink>
+              </span>
             )
           }
           
@@ -369,6 +385,15 @@ export default function MarkdownArticle({
         .hljs-strong {
           font-weight: bold;
         }
+        /* Force hashtag links to stay inline - override prose styles */
+        .prose a[href^="/notes?t="],
+        .prose a[href^="notes?t="],
+        .prose span[role="button"][tabindex="0"] {
+          display: inline !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          line-height: inherit !important;
+        }
       `}</style>
       <div
         ref={contentRef}
@@ -386,65 +411,9 @@ export default function MarkdownArticle({
           className="w-full max-w-[400px] aspect-[3/1] object-cover my-0"
         />
       )}
-      <div className="break-words whitespace-pre-wrap">
-        {event.content.split(/(#\w+|\[\[[^\]]+\]\])/).map((part, index, array) => {
-          // Check if this part is a hashtag
-          if (part.match(/^#\w+$/)) {
-            const hashtag = part.slice(1)
-            const normalizedHashtag = hashtag.toLowerCase()
-            
-            // Only render as green link if this hashtag is actually in the content
-            if (!contentHashtags.has(normalizedHashtag)) {
-              // Hashtag not in content, render as plain text
-              return <span key={`hashtag-plain-${index}`}>{part}</span>
-            }
-            
-            // Add spaces before and after unless at start/end of line
-            const isStartOfLine = index === 0 || array[index - 1].match(/^[\s]*$/) !== null
-            const isEndOfLine = index === array.length - 1 || array[index + 1].match(/^[\s]*$/) !== null
-            
-            const beforeSpace = isStartOfLine ? '' : ' '
-            const afterSpace = isEndOfLine ? '' : ' '
-            
-            // Inline hashtags from content should always be green
-            return (
-              <span key={`hashtag-wrapper-${index}`}>
-                {beforeSpace && beforeSpace}
-                <a
-                  href={`/notes?t=${normalizedHashtag}`}
-                  className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    const url = `/notes?t=${normalizedHashtag}`
-                    console.log('[MarkdownArticle] Clicking hashtag, navigating to:', url)
-                    push(url)
-                  }}
-                >
-                  {part}
-                </a>
-                {afterSpace && afterSpace}
-              </span>
-            )
-          }
-          // Check if this part is a wikilink
-          if (part.match(/^\[\[([^\]]+)\]\]$/)) {
-            const content = part.slice(2, -2)
-            let target = content.includes('|') ? content.split('|')[0].trim() : content.trim()
-            let displayText = content.includes('|') ? content.split('|')[1].trim() : content.trim()
-            
-            if (content.startsWith('book:')) {
-              target = content.replace('book:', '').trim()
-            }
-            
-            const dtag = target.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-            
-            return <Wikilink key={`wikilink-${index}`} dTag={dtag} displayText={displayText} />
-          }
-          // Regular text
-          return <Markdown key={`text-${index}`} remarkPlugins={[remarkGfm, remarkMath, remarkNostr]} components={components}>{part}</Markdown>
-        })}
-      </div>
+      <Markdown remarkPlugins={[remarkGfm, remarkMath, remarkNostr, remarkHashtags]} components={components}>
+        {event.content}
+      </Markdown>
       
       {/* Inline Media - Show for non-article content (kinds 1, 11, 1111) */}
       {!showImageGallery && extractedMedia.videos.length > 0 && (

@@ -23,11 +23,18 @@ export const remarkHashtags: Plugin<[], Root> = () => {
         const hashtag = match[1]
 
         // Add text before the hashtag
+        // Normalize whitespace to prevent paragraph breaks around hashtags
         if (matchStart > lastIndex) {
-          children.push({
-            type: 'text',
-            value: text.slice(lastIndex, matchStart)
-          })
+          const beforeText = text.slice(lastIndex, matchStart)
+          // Replace ALL newlines with spaces to keep hashtags inline
+          // This prevents markdown from treating newlines as paragraph breaks
+          const normalized = beforeText.replace(/\s*\n+\s*/g, ' ')
+          if (normalized.trim()) {
+            children.push({
+              type: 'text',
+              value: normalized
+            })
+          }
         }
 
         // Create a link node for the hashtag
@@ -46,15 +53,30 @@ export const remarkHashtags: Plugin<[], Root> = () => {
       })
 
       // Add remaining text after the last match
+      // Normalize whitespace to prevent paragraph breaks
       if (lastIndex < text.length) {
-        children.push({
-          type: 'text',
-          value: text.slice(lastIndex)
-        })
+        const afterText = text.slice(lastIndex)
+        // Replace ALL newlines with spaces to keep hashtags inline
+        // This prevents markdown from treating newlines as paragraph breaks
+        const normalized = afterText.replace(/\s*\n+\s*/g, ' ')
+        if (normalized.trim()) {
+          children.push({
+            type: 'text',
+            value: normalized
+          })
+        }
       }
 
+      // Filter out empty text nodes to prevent paragraph breaks
+      const filteredChildren = children.filter((child) => {
+        if (child.type === 'text') {
+          return child.value.trim().length > 0
+        }
+        return true
+      })
+      
       // Replace the text node with the processed children
-      parent.children.splice(index, 1, ...children)
+      parent.children.splice(index, 1, ...filteredChildren)
     })
   }
 }
