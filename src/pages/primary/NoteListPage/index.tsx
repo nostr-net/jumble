@@ -1,6 +1,7 @@
 import { usePrimaryNoteView } from '@/PageManager'
 import BookmarkList from '@/components/BookmarkList'
 import RelayInfo from '@/components/RelayInfo'
+import VersionUpdateBanner from '@/components/VersionUpdateBanner'
 import { Button } from '@/components/ui/button'
 import PrimaryPageLayout from '@/layouts/PrimaryPageLayout'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
@@ -110,6 +111,7 @@ const NoteListPage = forwardRef((_, ref) => {
       }
       displayScrollToTopButton
     >
+      <VersionUpdateBanner />
       {content}
     </PrimaryPageLayout>
   )
