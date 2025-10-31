@@ -365,6 +365,11 @@ export default function AsciidocArticle({
         </header>
       )}
 
+      {/* Show title inline when used as nested content */}
+      {hideImagesAndInfo && metadata.title && (
+        <h2 className="text-2xl font-bold mb-4 leading-tight break-words">{metadata.title}</h2>
+      )}
+
       {/* Render AsciiDoc content (everything is now processed as AsciiDoc) */}
       <div 
         ref={contentRef} 

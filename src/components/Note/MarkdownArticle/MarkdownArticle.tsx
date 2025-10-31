@@ -489,17 +489,21 @@ export default function MarkdownArticle({
           text-decoration: underline !important;
         }
       `}</style>
-      <div
-        ref={contentRef}
-        className={`prose prose-zinc max-w-none dark:prose-invert break-words overflow-wrap-anywhere ${className || ''}`}
-      >
-      {!hideMetadata && metadata.title && <h1 className="break-words">{metadata.title}</h1>}
-      {!hideMetadata && metadata.summary && (
-        <blockquote>
-          <p className="break-words">{metadata.summary}</p>
-        </blockquote>
-      )}
-      {!hideMetadata && metadata.image && (() => {
+              <div
+                ref={contentRef}
+                className={`prose prose-zinc max-w-none dark:prose-invert break-words overflow-wrap-anywhere ${className || ''}`}
+              >
+                {!hideMetadata && metadata.title && <h1 className="break-words">{metadata.title}</h1>}
+                {!hideMetadata && metadata.summary && (
+                  <blockquote>
+                    <p className="break-words">{metadata.summary}</p>
+                  </blockquote>
+                )}
+                {/* Show title inline when metadata is hidden (for nested content) */}
+                {hideMetadata && metadata.title && (
+                  <h2 className="text-2xl font-bold mb-4 leading-tight break-words">{metadata.title}</h2>
+                )}
+                {!hideMetadata && metadata.image && (() => {
         // Find the index of the metadata image in allImages
         const cleanedMetadataImage = cleanUrl(metadata.image)
         const metadataImageIndex = cleanedMetadataImage
