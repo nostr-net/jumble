@@ -8,7 +8,7 @@ import {
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Event } from 'nostr-tools'
-import { WrapText } from 'lucide-react'
+import { WrapText, Copy, Check } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -23,6 +23,17 @@ export default function RawEventDialog({
 }) {
   const { t } = useTranslation()
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(event, null, 2))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -33,15 +44,24 @@ export default function RawEventDialog({
               <DialogTitle>Raw Event</DialogTitle>
               <DialogDescription className="sr-only">View the raw event data</DialogDescription>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setWordWrapEnabled(!wordWrapEnabled)}
-              title={wordWrapEnabled ? t('Disable word wrap') : t('Enable word wrap')}
-              className="shrink-0"
-            >
-              <WrapText className={`h-4 w-4 ${wordWrapEnabled ? '' : 'opacity-50'}`} />
-            </Button>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCopy}
+                title={copied ? t('Copied!') : t('Copy to clipboard')}
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setWordWrapEnabled(!wordWrapEnabled)}
+                title={wordWrapEnabled ? t('Disable word wrap') : t('Enable word wrap')}
+              >
+                <WrapText className={`h-4 w-4 ${wordWrapEnabled ? '' : 'opacity-50'}`} />
+              </Button>
+            </div>
           </div>
         </DialogHeader>
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
