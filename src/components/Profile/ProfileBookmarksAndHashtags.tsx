@@ -100,15 +100,54 @@ const ProfileBookmarksAndHashtags = forwardRef<{ refresh: () => void }, {
           .map(tag => tag[1])
           .reverse() // Reverse to show newest first
         
-        // console.log('[ProfileBookmarksAndHashtags] Found', eventIds.length, 'bookmark event IDs:', eventIds)
+        // Extract 'a' tags for replaceable events (publications, articles, etc.)
+        const aTags = bookmarkList.tags
+          .filter(tag => tag[0] === 'a' && tag[1])
+          .map(tag => tag[1])
+        
+        // console.log('[ProfileBookmarksAndHashtags] Found', eventIds.length, 'bookmark event IDs and', aTags.length, 'a tags')
+        
+        // Fetch both regular events and replaceable events
+        const eventPromises: Promise<Event[]>[] = []
         
         if (eventIds.length > 0) {
+          eventPromises.push(client.fetchEvents(comprehensiveRelays, {
+            ids: eventIds,
+            limit: 100
+          }))
+        }
+        
+        if (aTags.length > 0) {
+          // For 'a' tags, we need to fetch replaceable events
+          // Parse the coordinate to get kind, pubkey, and d tag
+          const aTagFetches = aTags.map(async (aTag) => {
+            // aTag format: "kind:pubkey:d"
+            const parts = aTag.split(':')
+            if (parts.length < 2) return null
+            const kind = parseInt(parts[0])
+            const pubkey = parts[1]
+            const d = parts[2] || ''
+            
+            const filter: any = {
+              authors: [pubkey],
+              kinds: [kind],
+              limit: 1
+            }
+            if (d) {
+              filter['#d'] = [d]
+            }
+            
+            const events = await client.fetchEvents(comprehensiveRelays, [filter])
+            return events[0] || null
+          })
+          
+          eventPromises.push(Promise.all(aTagFetches).then(events => events.filter((e): e is Event => e !== null)))
+        }
+        
+        if (eventPromises.length > 0) {
           try {
-            // Use the same comprehensive relay list we built for the bookmark list event
-            const events = await client.fetchEvents(comprehensiveRelays, {
-              ids: eventIds,
-              limit: 100
-            })
+            const eventArrays = await Promise.all(eventPromises)
+            const events = eventArrays.flat()
             logger.debug('[ProfileBookmarksAndHashtags] Fetched', events.length, 'bookmark events')
             
             if (isRefresh) {
@@ -300,15 +339,54 @@ const ProfileBookmarksAndHashtags = forwardRef<{ refresh: () => void }, {
           .map(tag => tag[1])
           .reverse() // Reverse to show newest first
         
-        // console.log('[ProfileBookmarksAndHashtags] Found', eventIds.length, 'pin event IDs:', eventIds)
+        // Extract 'a' tags for replaceable events (publications, articles, etc.)
+        const aTags = pinList.tags
+          .filter(tag => tag[0] === 'a' && tag[1])
+          .map(tag => tag[1])
+        
+        // console.log('[ProfileBookmarksAndHashtags] Found', eventIds.length, 'pin event IDs and', aTags.length, 'a tags')
+        
+        // Fetch both regular events and replaceable events
+        const eventPromises: Promise<Event[]>[] = []
         
         if (eventIds.length > 0) {
+          eventPromises.push(client.fetchEvents(comprehensiveRelays, {
+            ids: eventIds,
+            limit: 100
+          }))
+        }
+        
+        if (aTags.length > 0) {
+          // For 'a' tags, we need to fetch replaceable events
+          // Parse the coordinate to get kind, pubkey, and d tag
+          const aTagFetches = aTags.map(async (aTag) => {
+            // aTag format: "kind:pubkey:d"
+            const parts = aTag.split(':')
+            if (parts.length < 2) return null
+            const kind = parseInt(parts[0])
+            const pubkey = parts[1]
+            const d = parts[2] || ''
+            
+            const filter: any = {
+              authors: [pubkey],
+              kinds: [kind],
+              limit: 1
+            }
+            if (d) {
+              filter['#d'] = [d]
+            }
+            
+            const events = await client.fetchEvents(comprehensiveRelays, [filter])
+            return events[0] || null
+          })
+          
+          eventPromises.push(Promise.all(aTagFetches).then(events => events.filter((e): e is Event => e !== null)))
+        }
+        
+        if (eventPromises.length > 0) {
           try {
-            // Use the same comprehensive relay list we built for the pin list event
-            const events = await client.fetchEvents(comprehensiveRelays, {
-              ids: eventIds,
-              limit: 100
-            })
+            const eventArrays = await Promise.all(eventPromises)
+            const events = eventArrays.flat()
             logger.debug('[ProfileBookmarksAndHashtags] Fetched', events.length, 'pin events')
             
             if (isRefresh) {
