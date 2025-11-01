@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { Drawer, DrawerContent, DrawerOverlay } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerOverlay } from '@/components/ui/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,6 +101,9 @@ export default function RepostButton({ event, hideCount = false }: { event: Even
         <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
           <DrawerOverlay onClick={() => setIsDrawerOpen(false)} />
           <DrawerContent hideOverlay>
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>Repost</DrawerTitle>
+            </DrawerHeader>
             <div className="py-2">
               <Button
                 onClick={(e) => {

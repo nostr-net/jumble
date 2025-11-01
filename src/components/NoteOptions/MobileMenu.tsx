@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { Drawer, DrawerContent, DrawerOverlay } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerOverlay } from '@/components/ui/drawer'
 import { ArrowLeft } from 'lucide-react'
 import { MenuAction, SubMenuAction } from './useMenuActions'
 
@@ -32,6 +32,9 @@ export function MobileMenu({
       <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
         <DrawerOverlay onClick={closeDrawer} />
         <DrawerContent hideOverlay className="max-h-[80vh]">
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>Options</DrawerTitle>
+          </DrawerHeader>
           <div className="overflow-y-auto overscroll-contain py-2" style={{ touchAction: 'pan-y' }}>
             {!showSubMenu ? (
               menuActions.map((action, index) => {

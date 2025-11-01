@@ -1,5 +1,5 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Drawer, DrawerContent } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { Dispatch } from 'react'
 import AccountManager from '../AccountManager'
@@ -17,6 +17,10 @@ export default function LoginDialog({
     return (
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerContent className="max-h-[90vh]">
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>Account Manager</DrawerTitle>
+            <DrawerDescription>Manage your Nostr account and settings</DrawerDescription>
+          </DrawerHeader>
           <div className="flex flex-col p-4 gap-4 overflow-auto">
             <AccountManager close={() => setOpen(false)} />
           </div>

@@ -1,6 +1,6 @@
 import { Button, ButtonProps } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Drawer, DrawerContent, DrawerOverlay, DrawerTrigger } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerOverlay, DrawerTrigger } from '@/components/ui/drawer'
 import { Separator } from '@/components/ui/separator'
 import { ExtendedKind } from '@/constants'
 import { getReplaceableEventIdentifier, getNoteBech32Id } from '@/lib/event'
@@ -176,7 +176,12 @@ export default function ClientSelect({
               setOpen(false)
             }}
           />
-          <DrawerContent hideOverlay>{content}</DrawerContent>
+          <DrawerContent hideOverlay>
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>Client Selection</DrawerTitle>
+            </DrawerHeader>
+            {content}
+          </DrawerContent>
         </Drawer>
       </div>
     )

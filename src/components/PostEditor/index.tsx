@@ -10,7 +10,8 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
-  SheetHeader
+  SheetHeader,
+  SheetTitle
 } from '@/components/ui/sheet'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import postEditor from '@/services/post-editor.service'
@@ -60,8 +61,9 @@ export default function PostEditor({
         >
           <ScrollArea className="px-4 h-full max-h-screen" scrollBarClassName="opacity-100">
             <div className="space-y-4 px-2 py-6">
-              <SheetHeader>
-                <SheetDescription className="hidden" />
+              <SheetHeader className="sr-only">
+                <SheetTitle>Post Editor</SheetTitle>
+                <SheetDescription>Create a new post or reply</SheetDescription>
               </SheetHeader>
               {content}
             </div>

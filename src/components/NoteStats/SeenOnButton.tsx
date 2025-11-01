@@ -1,6 +1,6 @@
 import { useSecondaryPage } from '@/PageManager'
 import { Button } from '@/components/ui/button'
-import { Drawer, DrawerContent, DrawerOverlay } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerOverlay } from '@/components/ui/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +54,9 @@ export default function SeenOnButton({ event }: { event: Event }) {
         <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
           <DrawerOverlay onClick={() => setIsDrawerOpen(false)} />
           <DrawerContent hideOverlay>
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>Seen on</DrawerTitle>
+            </DrawerHeader>
             <div className="py-2">
               {relays.map((relay) => (
                 <Button

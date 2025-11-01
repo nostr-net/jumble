@@ -1,4 +1,4 @@
-import { Drawer, DrawerContent, DrawerOverlay } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerOverlay } from '@/components/ui/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -164,6 +164,9 @@ export default function LikeButton({ event, hideCount = false }: { event: Event;
         <Drawer open={isEmojiReactionsOpen} onOpenChange={setIsEmojiReactionsOpen}>
           <DrawerOverlay onClick={() => setIsEmojiReactionsOpen(false)} />
           <DrawerContent hideOverlay>
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>React</DrawerTitle>
+            </DrawerHeader>
             {(isDiscussion || isReplyToDiscussion) ? (
               <DiscussionEmojis
                 onEmojiClick={(emoji) => {

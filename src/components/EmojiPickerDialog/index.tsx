@@ -1,4 +1,4 @@
-import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +24,9 @@ export default function EmojiPickerDialog({
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerTrigger asChild>{children}</DrawerTrigger>
         <DrawerContent>
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>Emoji Picker</DrawerTitle>
+          </DrawerHeader>
           <EmojiPicker
             onEmojiClick={(emoji, e) => {
               e.stopPropagation()
