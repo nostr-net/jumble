@@ -48,7 +48,8 @@ export default function MediaPlayer({
     const video = document.createElement('video')
     video.src = src
     video.preload = 'metadata'
-    video.crossOrigin = 'anonymous'
+    // Only set crossOrigin for resources that support it (prevents CORS errors)
+    // video.crossOrigin = 'anonymous'
 
     video.onloadedmetadata = () => {
       setMediaType(video.videoWidth > 0 || video.videoHeight > 0 ? 'video' : 'audio')
