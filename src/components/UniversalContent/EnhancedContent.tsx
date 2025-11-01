@@ -173,7 +173,7 @@ export default function EnhancedContent({
   })
 
   return (
-    <div className={cn('text-wrap break-words whitespace-pre-wrap', className)}>
+    <div className={cn('prose prose-base prose-zinc max-w-none text-wrap break-words whitespace-pre-wrap dark:prose-invert', className)}>
       {/* Render images that appear in content in a single carousel at the top */}
       {imagesInContent.length > 0 && (
         <ImageGallery

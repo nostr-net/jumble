@@ -111,7 +111,7 @@ export default function ReplyNote({
             {show ? (
               (() => {
                 const parsedContent = parseNostrContent(event.content, event)
-                return renderNostrContent(parsedContent, 'mt-2 prose prose-sm prose-zinc max-w-none break-words dark:prose-invert w-full')
+                return renderNostrContent(parsedContent, 'mt-2 prose prose-base prose-zinc max-w-none break-words dark:prose-invert w-full')
               })()
             ) : (
               <Button
