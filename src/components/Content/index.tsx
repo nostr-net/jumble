@@ -27,7 +27,6 @@ import {
 import Emoji from '../Emoji'
 import ImageGallery from '../ImageGallery'
 import MediaPlayer from '../MediaPlayer'
-import WebPreview from '../WebPreview'
 import YoutubeEmbeddedPlayer from '../YoutubeEmbeddedPlayer'
 
 export default function Content({
@@ -47,7 +46,7 @@ export default function Content({
   // Use unified media extraction service
   const extractedMedia = useMediaExtraction(event, _content)
   
-  const { nodes, lastNormalUrl, emojiInfos } = useMemo(() => {
+  const { nodes, emojiInfos } = useMemo(() => {
     if (!_content) return {}
 
     const nodes = parseContent(_content, [
@@ -62,11 +61,7 @@ export default function Content({
 
     const emojiInfos = getEmojiInfosFromEmojiTags(event?.tags)
 
-    const lastNormalUrlNode = nodes.findLast((node) => node.type === 'url')
-    const lastNormalUrl =
-      typeof lastNormalUrlNode?.data === 'string' ? cleanUrl(lastNormalUrlNode.data) : undefined
-
-    return { nodes, emojiInfos, lastNormalUrl }
+    return { nodes, emojiInfos }
   }, [_content, event])
 
   if (!nodes || nodes.length === 0) {
@@ -242,7 +237,7 @@ export default function Content({
               />
             )
           }
-          // Regular URL, not an image or media
+          // Regular URL, not an image or media - show WebPreview
           return <EmbeddedNormalUrl url={node.data} key={index} />
         }
         if (node.type === 'invoice') {
@@ -279,7 +274,6 @@ export default function Content({
         }
         return null
       })}
-      {lastNormalUrl && <WebPreview className="mt-2" url={lastNormalUrl} />}
     </div>
   )
 }

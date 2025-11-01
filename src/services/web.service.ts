@@ -9,27 +9,28 @@ class WebService {
       return await Promise.all(
         urls.map(async (url) => {
           try {
-            // Skip metadata fetching for known problematic domains to reduce CORS errors
-            const problematicDomains = [
-              'imdb.com',
-              'alby.com', 
-              'github.com',
-              'mycelium.social',
-              'void.cat'
-            ]
+            // Check if we should use proxy server to avoid CORS issues
+            const proxyServer = import.meta.env.VITE_PROXY_SERVER
+            const isProxyUrl = url.includes('/sites/')
             
-            if (problematicDomains.some(domain => url.includes(domain))) {
-              return {}
+            // If proxy is configured and URL isn't already proxied, use proxy
+            let fetchUrl = url
+            if (proxyServer && !isProxyUrl) {
+              fetchUrl = `${proxyServer}/sites/${encodeURIComponent(url)}`
             }
             
-            // Add timeout and better error handling for CORS issues
+            // Add timeout and better error handling
             const controller = new AbortController()
-            const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout (reduced from 5s)
+            const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout for proxy
             
-            const res = await fetch(url, {
+            // Fetch with appropriate headers
+            const res = await fetch(fetchUrl, {
               signal: controller.signal,
               mode: 'cors',
-              credentials: 'omit'
+              credentials: 'omit',
+              headers: {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+              }
             })
             
             clearTimeout(timeoutId)

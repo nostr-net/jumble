@@ -5,6 +5,7 @@
 import { nip19 } from 'nostr-tools'
 import { EmbeddedMention, EmbeddedNote } from '@/components/Embedded'
 import ImageGallery from '@/components/ImageGallery'
+import WebPreview from '@/components/WebPreview'
 import { cleanUrl, isImage, isMedia } from '@/lib/url'
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { TImetaInfo } from '@/types'
@@ -478,16 +479,13 @@ export function renderNostrContent(parsedContent: ParsedNostrContent, className?
         }
         
         if (element.type === 'url' && element.url) {
+          // Use WebPreview for URLs to show OpenGraph cards
           return (
-            <a
+            <WebPreview
               key={index}
-              href={element.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:text-primary/80 hover:underline break-words"
-            >
-              {element.content}
-            </a>
+              url={element.url}
+              className="mt-2"
+            />
           )
         }
         

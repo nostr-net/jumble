@@ -11,11 +11,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useFetchEvent } from '@/hooks'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { getParentBech32Id, getParentETag, getRootBech32Id } from '@/lib/event'
+import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNote, toNoteList } from '@/lib/link'
 import { tagNameEquals } from '@/lib/tag'
 import { cn } from '@/lib/utils'
 import { Ellipsis } from 'lucide-react'
 import type { Event } from 'nostr-tools'
+import { kinds } from 'nostr-tools'
 import { forwardRef, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import NotFound from './NotFound'
@@ -41,6 +43,14 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
         return 'Note: Text Post'
       case 30023: // kinds.LongFormArticle
         return 'Note: Longform Article'
+      case 30040: // ExtendedKind.PUBLICATION
+        return 'Note: Publication'
+      case 30041: // ExtendedKind.PUBLICATION_CONTENT
+        return 'Note: Publication Content'
+      case 30817: // ExtendedKind.WIKI_ARTICLE_MARKDOWN
+        return 'Note: Wiki Article'
+      case 30818: // ExtendedKind.WIKI_ARTICLE
+        return 'Note: Wiki Article'
       case 20: // ExtendedKind.PICTURE
         return 'Note: Picture'
       case 21: // ExtendedKind.VIDEO
@@ -72,6 +82,22 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
     }
   }
 
+  // Get article metadata for OpenGraph tags
+  const articleMetadata = useMemo(() => {
+    if (!finalEvent) return null
+    const articleKinds = [
+      kinds.LongFormArticle, // 30023
+      ExtendedKind.PUBLICATION, // 30040
+      ExtendedKind.PUBLICATION_CONTENT, // 30041
+      ExtendedKind.WIKI_ARTICLE_MARKDOWN, // 30817
+      ExtendedKind.WIKI_ARTICLE // 30818
+    ]
+    if (articleKinds.includes(finalEvent.kind)) {
+      return getLongFormArticleMetadataFromEvent(finalEvent)
+    }
+    return null
+  }, [finalEvent])
+
   // Store title in sessionStorage for primary note view when hideTitlebar is true
   // This must be called before any early returns to follow Rules of Hooks
   useEffect(() => {
@@ -82,6 +108,84 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
       window.dispatchEvent(new Event('notePageTitleUpdated'))
     }
   }, [hideTitlebar, finalEvent])
+
+  // Helper function to update or create meta tags
+  function updateMetaTag(property: string, content: string) {
+    // Remove property prefix if present (e.g., 'og:title' or 'property="og:title"')
+    const prop = property.startsWith('og:') || property.startsWith('article:') ? property : property.replace(/^property="|"$/, '')
+    
+    let meta = document.querySelector(`meta[property="${prop}"]`)
+    if (!meta) {
+      meta = document.createElement('meta')
+      meta.setAttribute('property', prop)
+      document.head.appendChild(meta)
+    }
+    meta.setAttribute('content', content)
+  }
+
+  // Update OpenGraph metadata for articles
+  useEffect(() => {
+    if (!articleMetadata || !finalEvent) {
+      // Reset to default meta tags
+      updateMetaTag('og:title', 'Jumble')
+      updateMetaTag('og:description', 'A user-friendly Nostr client focused on relay feed browsing and relay discovery')
+      updateMetaTag('og:image', 'https://github.com/CodyTseng/jumble/blob/master/resources/og-image.png?raw=true')
+      updateMetaTag('og:type', 'website')
+      updateMetaTag('og:url', window.location.href)
+      
+      // Remove article:tag if it exists
+      const articleTagMeta = document.querySelector('meta[property="article:tag"]')
+      if (articleTagMeta) {
+        articleTagMeta.remove()
+      }
+      
+      return
+    }
+
+    // Set article-specific OpenGraph metadata
+    const title = articleMetadata.title || 'Article'
+    const description = articleMetadata.summary || ''
+    const image = articleMetadata.image || 'https://github.com/CodyTseng/jumble/blob/master/resources/og-image.png?raw=true'
+    const tags = articleMetadata.tags || []
+
+    updateMetaTag('og:title', title)
+    updateMetaTag('og:description', description)
+    updateMetaTag('og:image', image)
+    updateMetaTag('og:type', 'article')
+    updateMetaTag('og:url', window.location.href)
+    
+    // Remove old article:tag if it exists
+    const oldArticleTagMeta = document.querySelector('meta[property="article:tag"]')
+    if (oldArticleTagMeta) {
+      oldArticleTagMeta.remove()
+    }
+    
+    // Add article-specific tags (one meta tag per tag)
+    tags.forEach(tag => {
+      const tagMeta = document.createElement('meta')
+      tagMeta.setAttribute('property', 'article:tag')
+      tagMeta.setAttribute('content', tag)
+      document.head.appendChild(tagMeta)
+    })
+
+    // Update document title
+    document.title = `${title} - Jumble`
+
+    // Cleanup function
+    return () => {
+      // Reset to default on unmount
+      updateMetaTag('og:title', 'Jumble')
+      updateMetaTag('og:description', 'A user-friendly Nostr client focused on relay feed browsing and relay discovery')
+      updateMetaTag('og:image', 'https://github.com/CodyTseng/jumble/blob/master/resources/og-image.png?raw=true')
+      updateMetaTag('og:type', 'website')
+      updateMetaTag('og:url', window.location.href)
+      
+      // Remove article:tag meta tags
+      document.querySelectorAll('meta[property="article:tag"]').forEach(meta => meta.remove())
+      
+      document.title = 'Jumble'
+    }
+  }, [articleMetadata, finalEvent])
 
   if (!event && isFetching) {
     return (

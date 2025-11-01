@@ -1,9 +1,7 @@
-import { useSmartNoteNavigation } from '@/PageManager'
 import { Event } from 'nostr-tools'
-import { ExternalLink, Highlighter } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
+import { Highlighter } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
-import { toNote } from '@/lib/link'
+import HighlightSourcePreview from '@/components/UniversalContent/HighlightSourcePreview'
 
 export default function Highlight({
   event,
@@ -12,9 +10,6 @@ export default function Highlight({
   event: Event
   className?: string
 }) {
-  const { t } = useTranslation()
-  const { navigateToNote } = useSmartNoteNavigation()
-  
   try {
 
     // Extract the source (e-tag, a-tag, or r-tag) with improved priority handling
@@ -118,36 +113,10 @@ export default function Highlight({
               </div>
             )}
 
-            {/* Source link */}
+            {/* Source preview card */}
             {source && (
-              <div className="text-xs text-muted-foreground flex items-center gap-2">
-                <span>{t('Source')}:</span>
-                {source.type === 'url' ? (
-                  <a
-                    href={source.value}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline flex items-center gap-1"
-                  >
-                    {source.value.length > 50 ? source.value.substring(0, 50) + '...' : source.value}
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                ) : (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const noteUrl = toNote(source.bech32)
-                      console.log('Navigating to:', noteUrl, 'from source:', source)
-                      navigateToNote(noteUrl)
-                    }}
-                    className="text-blue-500 hover:underline font-mono cursor-pointer"
-                  >
-                    {source.type === 'event' 
-                      ? `note1${source.bech32.substring(5, 13)}...` 
-                      : `naddr1${source.bech32.substring(6, 14)}...`
-                    }
-                  </span>
-                )}
+              <div className="mt-3">
+                <HighlightSourcePreview source={source} className="w-full" />
               </div>
             )}
           </div>

@@ -2,10 +2,11 @@ import { SecondaryPageLink, useSecondaryPage, useSmartHashtagNavigation } from '
 import Image from '@/components/Image'
 import MediaPlayer from '@/components/MediaPlayer'
 import Wikilink from '@/components/UniversalContent/Wikilink'
+import WebPreview from '@/components/WebPreview'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNote, toNoteList, toProfile } from '@/lib/link'
 import { useMediaExtraction } from '@/hooks'
-import { cleanUrl } from '@/lib/url'
+import { cleanUrl, isImage, isMedia } from '@/lib/url'
 import { ExternalLink } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
 import { ExtendedKind } from '@/constants'
@@ -230,6 +231,20 @@ export default function MarkdownArticle({
               >
                 {children}
               </a>
+            )
+          }
+          
+          // Check if this is a regular HTTP/HTTPS URL that should show WebPreview
+          const cleanedHref = cleanUrl(href)
+          const isRegularUrl = href.startsWith('http://') || href.startsWith('https://')
+          const shouldShowPreview = isRegularUrl && !isImage(cleanedHref) && !isMedia(cleanedHref)
+          
+          // For regular URLs, wrap in a component that shows WebPreview
+          if (shouldShowPreview) {
+            return (
+              <span className="inline-block mt-2">
+                <WebPreview url={cleanedHref} className="w-full max-w-md" />
+              </span>
             )
           }
           
