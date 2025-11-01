@@ -260,9 +260,13 @@ export default function WebPreview({ url, className }: { url: string; className?
       >
         <Image image={{ url: image }} className="w-full max-w-[400px] h-44 rounded-none" hideIfError />
         <div className="bg-muted p-2 w-full">
-          <div className="text-xs text-muted-foreground">{hostname}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-muted-foreground truncate">{hostname}</div>
+            <ExternalLink className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+          </div>
           {title && <div className="font-semibold line-clamp-1">{title}</div>}
           {!title && description && <div className="font-semibold line-clamp-1">{description}</div>}
+          <div className="text-xs text-muted-foreground truncate mt-1">{url}</div>
         </div>
       </div>
     )
@@ -270,7 +274,7 @@ export default function WebPreview({ url, className }: { url: string; className?
 
   return (
     <div
-      className={cn('p-0 clickable flex w-full border rounded-lg overflow-hidden', className)}
+      className={cn('p-2 clickable flex w-full border rounded-lg overflow-hidden gap-2', className)}
       onClick={(e) => {
         e.stopPropagation()
         window.open(url, '_blank')
@@ -279,18 +283,22 @@ export default function WebPreview({ url, className }: { url: string; className?
       {image && (
         <Image
           image={{ url: image }}
-          className="aspect-[4/3] xl:aspect-video bg-foreground h-44 max-w-[400px] rounded-none"
+          className="aspect-[4/3] xl:aspect-video bg-foreground h-44 max-w-[400px] rounded-none flex-shrink-0"
           hideIfError
         />
       )}
       <div className="flex-1 w-0 p-2">
-        <div className="text-xs text-muted-foreground">{hostname}</div>
-        {title && <div className="font-semibold line-clamp-2">{title}</div>}
+        <div className="flex items-center gap-2 mb-1">
+          <div className="text-xs text-muted-foreground truncate">{hostname}</div>
+          <ExternalLink className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+        </div>
+        {title && <div className="font-semibold line-clamp-2 mb-1">{title}</div>}
         {description && (
-          <div className={cn("line-clamp-5", title ? "text-xs text-muted-foreground" : "text-sm font-semibold")}>
+          <div className={cn("line-clamp-3 mb-1", title ? "text-xs text-muted-foreground" : "text-sm font-semibold")}>
             {description}
           </div>
         )}
+        <div className="text-xs text-muted-foreground truncate">{url}</div>
       </div>
     </div>
   )

@@ -8,7 +8,7 @@ import UserAvatar from '@/components/UserAvatar'
 import { Card } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useFetchEvent } from '@/hooks'
+import { useFetchEvent, useFetchProfile } from '@/hooks'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { getParentBech32Id, getParentETag, getRootBech32Id } from '@/lib/event'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
@@ -21,6 +21,69 @@ import { kinds } from 'nostr-tools'
 import { forwardRef, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import NotFound from './NotFound'
+
+// Helper function to get event type name (matching WebPreview)
+function getEventTypeName(kind: number): string {
+  switch (kind) {
+    case kinds.ShortTextNote:
+      return 'Text Post'
+    case kinds.LongFormArticle:
+      return 'Longform Article'
+    case ExtendedKind.PICTURE:
+      return 'Picture'
+    case ExtendedKind.VIDEO:
+      return 'Video'
+    case ExtendedKind.SHORT_VIDEO:
+      return 'Short Video'
+    case ExtendedKind.POLL:
+      return 'Poll'
+    case ExtendedKind.COMMENT:
+      return 'Comment'
+    case ExtendedKind.VOICE:
+      return 'Voice Post'
+    case ExtendedKind.VOICE_COMMENT:
+      return 'Voice Comment'
+    case kinds.Highlights:
+      return 'Highlight'
+    case ExtendedKind.PUBLICATION:
+      return 'Publication'
+    case ExtendedKind.PUBLICATION_CONTENT:
+      return 'Publication Content'
+    case ExtendedKind.WIKI_ARTICLE:
+      return 'Wiki Article'
+    case ExtendedKind.WIKI_ARTICLE_MARKDOWN:
+      return 'Wiki Article'
+    case ExtendedKind.DISCUSSION:
+      return 'Discussion'
+    default:
+      return `Event (kind ${kind})`
+  }
+}
+
+// Helper function to extract and strip markdown/asciidoc for preview (matching WebPreview)
+function stripMarkdown(content: string): string {
+  let text = content
+  // Remove markdown headers
+  text = text.replace(/^#{1,6}\s+/gm, '')
+  // Remove markdown bold/italic
+  text = text.replace(/\*\*([^*]+)\*\*/g, '$1')
+  text = text.replace(/\*([^*]+)\*/g, '$1')
+  // Remove markdown links
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+  // Remove asciidoc headers
+  text = text.replace(/^=+\s+/gm, '')
+  // Remove asciidoc bold/italic
+  text = text.replace(/\*\*([^*]+)\*\*/g, '$1')
+  text = text.replace(/_([^_]+)_/g, '$1')
+  // Remove code blocks
+  text = text.replace(/```[\s\S]*?```/g, '')
+  text = text.replace(/`([^`]+)`/g, '$1')
+  // Remove HTML tags
+  text = text.replace(/<[^>]+>/g, '')
+  // Clean up whitespace
+  text = text.replace(/\n{3,}/g, '\n\n')
+  return text.trim()
+}
 
 const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string; index?: number; hideTitlebar?: boolean }, ref) => {
   const { t } = useTranslation()
@@ -36,6 +99,9 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
   )
   const { isFetching: isFetchingRootEvent, event: rootEvent } = useFetchEvent(rootEventId)
   const { isFetching: isFetchingParentEvent, event: parentEvent } = useFetchEvent(parentEventId)
+  
+  // Fetch profile for author (for OpenGraph metadata)
+  const { profile: authorProfile } = useFetchProfile(finalEvent?.pubkey)
 
   const getNoteTypeTitle = (kind: number): string => {
     switch (kind) {
@@ -114,24 +180,41 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
     // Remove property prefix if present (e.g., 'og:title' or 'property="og:title"')
     const prop = property.startsWith('og:') || property.startsWith('article:') ? property : property.replace(/^property="|"$/, '')
     
-    let meta = document.querySelector(`meta[property="${prop}"]`)
+    // Handle Twitter card tags (they use name attribute, not property)
+    const isTwitterTag = prop.startsWith('twitter:')
+    const selector = isTwitterTag ? `meta[name="${prop}"]` : `meta[property="${prop}"]`
+    
+    let meta = document.querySelector(selector)
     if (!meta) {
       meta = document.createElement('meta')
-      meta.setAttribute('property', prop)
+      if (isTwitterTag) {
+        meta.setAttribute('name', prop)
+      } else {
+        meta.setAttribute('property', prop)
+      }
       document.head.appendChild(meta)
     }
     meta.setAttribute('content', content)
   }
 
-  // Update OpenGraph metadata for articles
+  // Update OpenGraph metadata to match fallback cards
   useEffect(() => {
-    if (!articleMetadata || !finalEvent) {
-      // Reset to default meta tags
-      updateMetaTag('og:title', 'Jumble')
-      updateMetaTag('og:description', 'A user-friendly Nostr client focused on relay feed browsing and relay discovery')
+    if (!finalEvent) {
+      // Reset to default meta tags with richer information
+      const defaultUrl = window.location.href
+      const truncatedDefaultUrl = defaultUrl.length > 150 ? defaultUrl.substring(0, 147) + '...' : defaultUrl
+      updateMetaTag('og:title', 'Jumble - Imwald Edition 🌲')
+      updateMetaTag('og:description', `${truncatedDefaultUrl} - A user-friendly Nostr client focused on relay feed browsing and relay discovery. The Imwald edition focuses on publications and articles.`)
       updateMetaTag('og:image', 'https://github.com/CodyTseng/jumble/blob/master/resources/og-image.png?raw=true')
       updateMetaTag('og:type', 'website')
       updateMetaTag('og:url', window.location.href)
+      updateMetaTag('og:site_name', 'Jumble - Imwald Edition 🌲')
+      
+      // Twitter card meta tags
+      updateMetaTag('twitter:card', 'summary_large_image')
+      updateMetaTag('twitter:title', 'Jumble - Imwald Edition 🌲')
+      updateMetaTag('twitter:description', `${truncatedDefaultUrl} - A user-friendly Nostr client focused on relay feed browsing and relay discovery. The Imwald edition focuses on publications and articles.`)
+      updateMetaTag('twitter:image', 'https://github.com/CodyTseng/jumble/blob/master/resources/og-image.png?raw=true')
       
       // Remove article:tag if it exists
       const articleTagMeta = document.querySelector('meta[property="article:tag"]')
@@ -142,17 +225,100 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
       return
     }
 
-    // Set article-specific OpenGraph metadata
-    const title = articleMetadata.title || 'Article'
-    const description = articleMetadata.summary || ''
-    const image = articleMetadata.image || 'https://github.com/CodyTseng/jumble/blob/master/resources/og-image.png?raw=true'
-    const tags = articleMetadata.tags || []
+    // Get event metadata matching fallback card format
+    const eventMetadata = getLongFormArticleMetadataFromEvent(finalEvent)
+    const eventTypeName = getEventTypeName(finalEvent.kind)
+    const eventTitle = eventMetadata?.title || eventTypeName
+    const eventSummary = eventMetadata?.summary || ''
+    
+    // Generate content preview (matching fallback card)
+    let contentPreview = ''
+    if (finalEvent.content) {
+      const stripped = stripMarkdown(finalEvent.content)
+      contentPreview = stripped.length > 500 ? stripped.substring(0, 500) + '...' : stripped
+    }
+    
+    // Build description matching fallback card: username • event type, title, summary, content preview, URL
+    // Always show note-specific info, even if profile isn't loaded yet
+    const authorName = authorProfile?.username || ''
+    const parts: string[] = []
+    
+    // Always include event type (this is note-specific)
+    if (eventTypeName) {
+      parts.push(eventTypeName)
+    }
+    if (authorName) {
+      parts.push(`@${authorName}`)
+    }
+    
+    let ogDescription = ''
+    if (parts.length > 0) {
+      ogDescription = parts.join(' • ')
+    } else {
+      // Fallback if nothing available yet
+      ogDescription = 'Event'
+    }
+    
+    // Always show title if available (note-specific)
+    if (eventTitle && eventTitle !== eventTypeName) {
+      ogDescription += (ogDescription ? ' | ' : '') + eventTitle
+    }
+    
+    // Show summary if available (note-specific)
+    if (eventSummary) {
+      ogDescription += (ogDescription ? ' - ' : '') + eventSummary
+    }
+    
+    // Truncate URL to 150 chars before adding it
+    const fullUrl = window.location.href
+    const truncatedUrl = fullUrl.length > 150 ? fullUrl.substring(0, 147) + '...' : fullUrl
+    
+    // Calculate remaining space for content preview (max 300 chars total, leave room for URL)
+    const maxDescLength = 300
+    const urlPart = ` | ${truncatedUrl}`
+    const remainingLength = maxDescLength - (ogDescription.length + urlPart.length)
+    
+    // Always try to include content preview if available (this is note-specific!)
+    if (contentPreview && remainingLength > 20) {
+      const truncatedContent = contentPreview.length > remainingLength 
+        ? contentPreview.substring(0, remainingLength - 3) + '...' 
+        : contentPreview
+      ogDescription += (ogDescription ? ' ' : '') + truncatedContent
+    }
+    
+    // Add truncated URL at the end
+    ogDescription += (ogDescription ? urlPart : truncatedUrl)
+    
+    // Ensure we have note-specific content - if description is still too generic, add more event info
+    if (!authorName && !eventSummary && !contentPreview && ogDescription.includes('Event') && !ogDescription.includes('|')) {
+      // Add at least the event kind or some identifier to make it note-specific
+      ogDescription = ogDescription.replace('Event', `${eventTypeName} (kind ${finalEvent.kind})`)
+    }
 
-    updateMetaTag('og:title', title)
-    updateMetaTag('og:description', description)
+    const image = eventMetadata?.image || (authorProfile?.avatar ? `https://jumble.imwald.eu/api/avatar/${authorProfile.pubkey}` : 'https://github.com/CodyTseng/jumble/blob/master/resources/og-image.png?raw=true')
+    const tags = eventMetadata?.tags || []
+    
+    // For articles, use article type; for other events, use website type
+    const isArticle = articleMetadata !== null
+    const ogType = isArticle ? 'article' : 'website'
+
+    updateMetaTag('og:title', `${eventTitle} - Jumble Imwald Edition`)
+    updateMetaTag('og:description', ogDescription)
     updateMetaTag('og:image', image)
-    updateMetaTag('og:type', 'article')
+    updateMetaTag('og:type', ogType)
     updateMetaTag('og:url', window.location.href)
+    updateMetaTag('og:site_name', 'Jumble - Imwald Edition 🌲')
+    
+    // Add author for articles
+    if (isArticle && authorName) {
+      updateMetaTag('article:author', authorName)
+    }
+    
+    // Twitter card meta tags
+    updateMetaTag('twitter:card', 'summary_large_image')
+    updateMetaTag('twitter:title', `${eventTitle} - Jumble Imwald Edition`)
+    updateMetaTag('twitter:description', ogDescription.length > 200 ? ogDescription.substring(0, 197) + '...' : ogDescription)
+    updateMetaTag('twitter:image', image)
     
     // Remove old article:tag if it exists
     const oldArticleTagMeta = document.querySelector('meta[property="article:tag"]')
@@ -161,31 +327,40 @@ const NotePage = forwardRef(({ id, index, hideTitlebar = false }: { id?: string;
     }
     
     // Add article-specific tags (one meta tag per tag)
-    tags.forEach(tag => {
-      const tagMeta = document.createElement('meta')
-      tagMeta.setAttribute('property', 'article:tag')
-      tagMeta.setAttribute('content', tag)
-      document.head.appendChild(tagMeta)
-    })
+    if (isArticle) {
+      tags.forEach(tag => {
+        const tagMeta = document.createElement('meta')
+        tagMeta.setAttribute('property', 'article:tag')
+        tagMeta.setAttribute('content', tag)
+        document.head.appendChild(tagMeta)
+      })
+    }
 
     // Update document title
-    document.title = `${title} - Jumble`
+    document.title = `${eventTitle} - Jumble Imwald Edition`
 
     // Cleanup function
     return () => {
-      // Reset to default on unmount
-      updateMetaTag('og:title', 'Jumble')
-      updateMetaTag('og:description', 'A user-friendly Nostr client focused on relay feed browsing and relay discovery')
+      // Reset to default on unmount with richer information
+      const cleanupUrl = window.location.href
+      const truncatedCleanupUrl = cleanupUrl.length > 150 ? cleanupUrl.substring(0, 147) + '...' : cleanupUrl
+      updateMetaTag('og:title', 'Jumble - Imwald Edition 🌲')
+      updateMetaTag('og:description', `${truncatedCleanupUrl} - A user-friendly Nostr client focused on relay feed browsing and relay discovery. The Imwald edition focuses on publications and articles.`)
       updateMetaTag('og:image', 'https://github.com/CodyTseng/jumble/blob/master/resources/og-image.png?raw=true')
       updateMetaTag('og:type', 'website')
       updateMetaTag('og:url', window.location.href)
+      updateMetaTag('og:site_name', 'Jumble - Imwald Edition 🌲')
       
       // Remove article:tag meta tags
       document.querySelectorAll('meta[property="article:tag"]').forEach(meta => meta.remove())
+      const authorMeta = document.querySelector('meta[property="article:author"]')
+      if (authorMeta) {
+        authorMeta.remove()
+      }
       
-      document.title = 'Jumble'
+      document.title = 'Jumble - Imwald Edition 🌲'
     }
-  }, [articleMetadata, finalEvent])
+  }, [finalEvent, articleMetadata, authorProfile])
 
   if (!event && isFetching) {
     return (

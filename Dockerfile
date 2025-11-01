@@ -27,7 +27,15 @@ RUN printf "server {\n\
     root /usr/share/nginx/html;\n\
     index index.html;\n\
 \n\
+    # Detect social media scrapers and other bots\n\
+    set \$is_scraper 0;\n\
+    if (\$http_user_agent ~* \"facebookexternalhit|Twitterbot|LinkedInBot|Slackbot|WhatsApp|Applebot|Googlebot|bingbot|YandexBot|Baiduspider|Slurp|DuckDuckBot|Baiduspider|YandexBot|Sogou|Exabot|facebot|ia_archiver\") {\n\
+        set \$is_scraper 1;\n\
+    }\n\
+\n\
     location / {\n\
+        # For scrapers, serve index.html (they'll see static meta tags)\n\
+        # Note: To get dynamic meta tags, you need SSR or a meta tag service\n\
         try_files \$uri \$uri/ /index.html;\n\
     }\n\
 \n\
