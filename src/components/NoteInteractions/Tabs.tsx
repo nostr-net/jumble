@@ -45,14 +45,14 @@ export function Tabs({
   }, [selectedTab, visibleTabs])
 
   return (
-    <div className="w-fit">
-      <div className="flex relative">
+    <div className="w-full">
+      <div className="flex flex-wrap relative gap-1">
         {visibleTabs.map((tab, index) => (
           <div
             key={tab.value}
             ref={(el) => (tabRefs.current[index] = el)}
             className={cn(
-              `text-center px-4 py-2 font-semibold clickable cursor-pointer rounded-lg`,
+              `text-center px-4 py-2 font-semibold whitespace-nowrap clickable cursor-pointer rounded-lg`,
               selectedTab === tab.value ? '' : 'text-muted-foreground'
             )}
             onClick={() => onTabChange(tab.value)}

@@ -904,15 +904,19 @@ const DiscussionsPage = forwardRef((_, ref) => {
             className="w-full sm:w-auto px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="all">All Topics ({allEventMap.size})</option>
-            {availableTopics.map(({ topic, count, isDynamic, isMainTopic, isSubtopic }) => (
-              <option key={topic} value={topic}>
-                {isDynamic && isMainTopic ? '🔥 ' : ''}
-                {isDynamic && isSubtopic ? '📌 ' : ''}
-                {topic} ({count})
-                {isDynamic && isMainTopic ? ' [Main Topic]' : ''}
-                {isDynamic && isSubtopic ? ' [Subtopic]' : ''}
-              </option>
-            ))}
+            {availableTopics.map(({ topic, count, isDynamic, isMainTopic, isSubtopic }) => {
+              const isGroupsTopic = topic === 'groups'
+              return (
+                <option key={topic} value={topic}>
+                  {isGroupsTopic ? '👥 ' : ''}
+                  {isDynamic && isMainTopic && !isGroupsTopic ? '🔥 ' : ''}
+                  {isDynamic && isSubtopic ? '📌 ' : ''}
+                  {topic} ({count})
+                  {isDynamic && isMainTopic ? ' [Main Topic]' : ''}
+                  {isDynamic && isSubtopic ? ' [Subtopic]' : ''}
+                </option>
+              )
+            })}
           </select>
           
           {/* Time Span Dropdown */}
@@ -949,13 +953,15 @@ const DiscussionsPage = forwardRef((_, ref) => {
             {Array.from(groupedEvents.entries()).map(([mainTopic, group]) => {
               const topicInfo = availableTopics.find(t => t.topic === mainTopic)
               const isDynamicMain = topicInfo?.isDynamic && topicInfo?.isMainTopic
+              const isGroupsTopic = mainTopic === 'groups'
               
               return (
                 <div key={mainTopic} className="space-y-4">
                   {/* Main Topic Header */}
                   <h2 className="text-lg font-semibold mb-3 capitalize flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                     <span className="flex items-center gap-2">
-                      {isDynamicMain && <span className="text-orange-500">🔥</span>}
+                      {isGroupsTopic && <span className="text-blue-500">👥</span>}
+                      {isDynamicMain && !isGroupsTopic && <span className="text-orange-500">🔥</span>}
                       {mainTopic} ({group.entries.length + Array.from(group.subtopics.values()).reduce((sum, events) => sum + events.length, 0)} {group.entries.length + Array.from(group.subtopics.values()).reduce((sum, events) => sum + events.length, 0) === 1 ? t('thread') : t('threads')})
                     </span>
                     {isDynamicMain && <span className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 px-2 py-1 rounded w-fit">Main Topic</span>}

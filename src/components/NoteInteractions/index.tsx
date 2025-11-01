@@ -1,4 +1,3 @@
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { ExtendedKind } from '@/constants'
 import { shouldHideInteractions } from '@/lib/event-filtering'
@@ -55,10 +54,9 @@ export default function NoteInteractions({
   return (
     <>
       <div className="flex items-center justify-between">
-        <ScrollArea className="flex-1 w-0">
+        <div className="flex-1 w-0">
           <Tabs selectedTab={type} onTabChange={setType} hideRepostsAndQuotes={isDiscussion} />
-          <ScrollBar orientation="horizontal" className="opacity-0 pointer-events-none" />
-        </ScrollArea>
+        </div>
         <Separator orientation="vertical" className="h-6" />
         {type === 'replies' && isDiscussion && (
           <>

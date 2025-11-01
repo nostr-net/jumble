@@ -8,6 +8,7 @@ import { useMediaExtraction } from '@/hooks'
 import { cleanUrl } from '@/lib/url'
 import { ExternalLink } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
+import { ExtendedKind } from '@/constants'
 import React, { useMemo, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -561,7 +562,8 @@ export default function MarkdownArticle({
                   </blockquote>
                 )}
                 {/* Show title inline when metadata is hidden (for nested content) */}
-                {hideMetadata && metadata.title && (
+                {/* Don't show title for discussions - it's already shown by the Note component */}
+                {hideMetadata && metadata.title && event.kind !== ExtendedKind.DISCUSSION && (
                   <h2 className="text-2xl font-bold mb-4 leading-tight break-words">{metadata.title}</h2>
                 )}
                 {!hideMetadata && metadata.image && (() => {

@@ -141,9 +141,10 @@ export default function CreateThreadDialog({
     if (dynamicTopics) {
       // Add dynamic main topics first
       dynamicTopics.mainTopics.forEach(dynamicTopic => {
+        const isGroupsTopic = dynamicTopic.id === 'groups'
         combined.push({
           id: dynamicTopic.id,
-          label: `${dynamicTopic.label} (${dynamicTopic.count}) 🔥`,
+          label: `${dynamicTopic.label} (${dynamicTopic.count}) ${isGroupsTopic ? '👥' : '🔥'}`,
           icon: Hash // Use Hash icon for dynamic topics
         })
       })

@@ -10,6 +10,7 @@ import Username from '@/components/Username'
 import UserAvatar from '@/components/UserAvatar'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { extractAllTopics, extractGroupInfo } from '@/lib/discussion-topics'
+import { removeEmojis } from '@/lib/utils'
 
 interface ThreadCardProps {
   thread: NostrEvent
@@ -33,9 +34,10 @@ export default function ThreadCard({
   const { t } = useTranslation()
   const { isSmallScreen } = useScreenSize()
 
-  // Extract title from tags
+  // Extract title from tags and remove emojis
   const titleTag = thread.tags.find(tag => tag[0] === 'title' && tag[1])
-  const title = titleTag?.[1] || t('Untitled')
+  const rawTitle = titleTag?.[1] || t('Untitled')
+  const title = removeEmojis(rawTitle) || t('Untitled')
 
   // Get topic info
   const topicTag = thread.tags.find(tag => tag[0] === 't' && tag[1])
@@ -67,10 +69,11 @@ export default function ThreadCard({
   
   // Vote counts are no longer displayed, keeping variables for potential future use
   
-  // Get content preview
-  const contentPreview = thread.content.length > 250 
-    ? thread.content.substring(0, 250) + '...'
-    : thread.content
+  // Get content preview - remove emojis first, then truncate
+  const contentWithoutEmojis = removeEmojis(thread.content)
+  const contentPreview = contentWithoutEmojis.length > 250 
+    ? contentWithoutEmojis.substring(0, 250) + '...'
+    : contentWithoutEmojis
 
 
   return (
