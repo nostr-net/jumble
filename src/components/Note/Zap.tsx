@@ -1,5 +1,6 @@
 import { useFetchEvent } from '@/hooks'
 import { getZapInfoFromEvent } from '@/lib/event-metadata'
+import { shouldHideInteractions } from '@/lib/event-filtering'
 import { formatAmount } from '@/lib/lightning'
 import { toNote, toProfile } from '@/lib/link'
 import { cn } from '@/lib/utils'
@@ -12,11 +13,29 @@ import Username from '../Username'
 import UserAvatar from '../UserAvatar'
 
 export default function Zap({ event, className }: { event: Event; className?: string }) {
+  // In quiet mode, we need to check the target event (if this is a zap receipt for an event)
+  // For profile zaps, we can't check quiet mode since we don't have an event
+  const zapInfo = useMemo(() => getZapInfoFromEvent(event), [event])
+  const { event: targetEvent } = useFetchEvent(zapInfo?.eventId)
+  
+  // Check if the target event (if any) is in quiet mode
+  const inQuietMode = targetEvent ? shouldHideInteractions(targetEvent) : false
+  
+  // Hide zap receipts in quiet mode as they contain emojis and text
+  if (inQuietMode) {
+    return null
+  }
   const { t } = useTranslation()
   const { navigateToNote } = useSmartNoteNavigation()
   const { push } = useSecondaryPage()
-  const zapInfo = useMemo(() => getZapInfoFromEvent(event), [event])
-  const { event: targetEvent } = useFetchEvent(zapInfo?.eventId)
+
+  if (!zapInfo || !zapInfo.senderPubkey || !zapInfo.amount) {
+    return (
+      <div className={cn('text-sm text-muted-foreground p-4 border rounded-lg', className)}>
+        [{t('Invalid zap receipt')}]
+      </div>
+    )
+  }
 
   // Determine if this is an event zap or profile zap
   const isEventZap = targetEvent || zapInfo?.eventId

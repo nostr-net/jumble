@@ -1,6 +1,7 @@
 import { useSecondaryPage } from '@/PageManager'
 import { ExtendedKind } from '@/constants'
 import { useNoteStatsById } from '@/hooks/useNoteStatsById'
+import { shouldHideInteractions } from '@/lib/event-filtering'
 import { toProfile } from '@/lib/link'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
@@ -16,6 +17,7 @@ import Username from '../Username'
 const SHOW_COUNT = 20
 
 export default function ReactionList({ event }: { event: Event }) {
+  const inQuietMode = shouldHideInteractions(event)
   const { t } = useTranslation()
   const { push } = useSecondaryPage()
   const { isSmallScreen } = useScreenSize()
@@ -59,7 +61,7 @@ export default function ReactionList({ event }: { event: Event }) {
         >
           <div className="w-6 flex flex-col items-center">
             <Emoji
-              emoji={like.emoji}
+              emoji={inQuietMode ? '+' : like.emoji}
               classNames={{
                 text: 'text-xl'
               }}

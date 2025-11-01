@@ -1,5 +1,6 @@
 import { useSecondaryPage } from '@/PageManager'
 import { useNoteStatsById } from '@/hooks/useNoteStatsById'
+import { shouldHideInteractions } from '@/lib/event-filtering'
 import { formatAmount } from '@/lib/lightning'
 import { toProfile } from '@/lib/link'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
@@ -16,6 +17,12 @@ import Username from '../Username'
 const SHOW_COUNT = 20
 
 export default function ZapList({ event }: { event: Event }) {
+  const inQuietMode = shouldHideInteractions(event)
+  
+  // Hide zap receipts in quiet mode as they contain emojis and text
+  if (inQuietMode) {
+    return null
+  }
   const { t } = useTranslation()
   const { push } = useSecondaryPage()
   const { isSmallScreen } = useScreenSize()

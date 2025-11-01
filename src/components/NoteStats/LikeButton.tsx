@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ExtendedKind } from '@/constants'
 import { useNoteStatsById } from '@/hooks/useNoteStatsById'
+import { shouldHideInteractions } from '@/lib/event-filtering'
 import { createDeletionRequestDraftEvent, createReactionDraftEvent } from '@/lib/draft-event'
 import { getRootEventHexId } from '@/lib/event'
 import { useNostr } from '@/providers/NostrProvider'
@@ -34,6 +35,7 @@ export default function LikeButton({ event, hideCount = false }: { event: Event;
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const noteStats = useNoteStatsById(event.id)
   const isDiscussion = event.kind === ExtendedKind.DISCUSSION
+  const inQuietMode = shouldHideInteractions(event)
   
   // Check if this is a reply to a discussion event
   const [isReplyToDiscussion, setIsReplyToDiscussion] = useState(false)
@@ -143,7 +145,7 @@ export default function LikeButton({ event, hideCount = false }: { event: Event;
         <Loader className="animate-spin" />
       ) : myLastEmoji ? (
         <>
-          <Emoji emoji={myLastEmoji} classNames={{ img: 'size-4' }} />
+          <Emoji emoji={inQuietMode ? '+' : myLastEmoji} classNames={{ img: 'size-4' }} />
           {!hideCount && !!likeCount && <div className="text-sm">{formatCount(likeCount)}</div>}
         </>
       ) : (

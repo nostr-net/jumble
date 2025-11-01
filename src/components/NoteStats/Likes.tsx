@@ -1,5 +1,6 @@
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { useNoteStatsById } from '@/hooks/useNoteStatsById'
+import { shouldHideInteractions } from '@/lib/event-filtering'
 import { createReactionDraftEvent } from '@/lib/draft-event'
 import { cn } from '@/lib/utils'
 import { useNostr } from '@/providers/NostrProvider'
@@ -11,6 +12,7 @@ import { useMemo, useRef, useState } from 'react'
 import Emoji from '../Emoji'
 
 export default function Likes({ event }: { event: Event }) {
+  const inQuietMode = shouldHideInteractions(event)
   const { pubkey, checkLogin, publish } = useNostr()
   const noteStats = useNoteStatsById(event.id)
   const [liking, setLiking] = useState<string | null>(null)
@@ -24,14 +26,23 @@ export default function Likes({ event }: { event: Event }) {
 
     const stats = new Map<string, { key: string; emoji: TEmoji | string; pubkeys: Set<string> }>()
     _likes.forEach((item) => {
-      const key = typeof item.emoji === 'string' ? item.emoji : item.emoji.url
-      if (!stats.has(key)) {
-        stats.set(key, { key, pubkeys: new Set(), emoji: item.emoji })
+      // In quiet mode, normalize all emojis to "+" to prevent trolling with funny emojis
+      if (inQuietMode) {
+        const key = '+'
+        if (!stats.has(key)) {
+          stats.set(key, { key, pubkeys: new Set(), emoji: '+' })
+        }
+        stats.get(key)?.pubkeys.add(item.pubkey)
+      } else {
+        const key = typeof item.emoji === 'string' ? item.emoji : item.emoji.url
+        if (!stats.has(key)) {
+          stats.set(key, { key, pubkeys: new Set(), emoji: item.emoji })
+        }
+        stats.get(key)?.pubkeys.add(item.pubkey)
       }
-      stats.get(key)?.pubkeys.add(item.pubkey)
     })
     return Array.from(stats.values()).sort((a, b) => b.pubkeys.size - a.pubkeys.size)
-  }, [noteStats, event])
+  }, [noteStats, event, inQuietMode])
 
   if (!likes.length) return null
 
