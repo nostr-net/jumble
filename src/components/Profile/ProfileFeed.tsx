@@ -99,6 +99,17 @@ const ProfileFeed = forwardRef<{ refresh: () => void }, ProfileFeedProps>(({ pub
       // Sort by creation time (newest first)
       eventsToShow.sort((a, b) => b.created_at - a.created_at)
       
+      // If initial load returns 0 events but it's not a retry, wait and retry once
+      // This handles cases where relays return "too many concurrent REQS" and return empty results
+      if (!isRetry && !isRefresh && eventsToShow.length === 0 && retryCount === 0) {
+        console.log('[ProfileFeed] Got 0 events on initial load, retrying after delay...')
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1)
+          fetchPosts(true)
+        }, 2000) // Wait 2 seconds before retry to let relays recover
+        return
+      }
+      
       if (isRefresh) {
         // For refresh, append new events and deduplicate
         setEvents(prevEvents => {
@@ -166,17 +177,17 @@ const ProfileFeed = forwardRef<{ refresh: () => void }, ProfileFeedProps>(({ pub
     )
   }, [events, searchQuery])
 
-  // Separate effect for initial fetch only with a small delay
+  // Separate effect for initial fetch only - delay slightly to avoid race conditions with other tabs
   useEffect(() => {
     if (pubkey) {
-      // Add a small delay to let the component fully mount and relays to be ready
-      const timer = setTimeout(() => {
+      // Small delay to stagger initial fetches across tabs and allow relay list cache to populate
+      const timeoutId = setTimeout(() => {
         fetchPosts()
-      }, 500) // 500ms delay
-      
-      return () => clearTimeout(timer)
+      }, 100) // 100ms delay to allow previous fetches to populate cache
+      return () => clearTimeout(timeoutId)
     }
-  }, [pubkey]) // Only depend on pubkey to avoid loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pubkey]) // Only depend on pubkey - fetchPosts is stable from useCallback
 
   if (isLoading || isRetrying) {
     return (

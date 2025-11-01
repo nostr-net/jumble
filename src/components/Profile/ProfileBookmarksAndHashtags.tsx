@@ -378,19 +378,19 @@ const ProfileBookmarksAndHashtags = forwardRef<{ refresh: () => void }, {
     refresh
   }), [refresh])
 
-  // Fetch data when component mounts or pubkey changes with a small delay
+  // Fetch data when component mounts or pubkey changes - delay slightly to avoid race conditions
   useEffect(() => {
     if (pubkey) {
-      // Add a small delay to let the component fully mount and relays to be ready
-      const timer = setTimeout(() => {
+      // Small delay to stagger initial fetches and allow relay list cache to populate
+      const timeoutId = setTimeout(() => {
         fetchBookmarks()
         fetchHashtags()
         fetchPins()
-      }, 500) // 500ms delay
-      
-      return () => clearTimeout(timer)
+      }, 200) // 200ms delay (longest since this component does 3 fetches) to allow previous fetches to populate cache
+      return () => clearTimeout(timeoutId)
     }
-  }, [pubkey]) // Only depend on pubkey to avoid loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pubkey]) // Only depend on pubkey - fetch functions are stable from useCallback
 
   // Check if the requested tab has content
   const hasContent = useMemo(() => {

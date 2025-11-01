@@ -52,6 +52,7 @@ class ClientService extends EventTarget {
   > = {}
   private replaceableEventCacheMap = new Map<string, NEvent>()
   private eventCacheMap = new Map<string, Promise<NEvent | undefined>>()
+  private relayListRequestCache = new Map<string, Promise<TRelayList>>() // Cache in-flight relay list requests
   private eventDataLoader = new DataLoader<string, NEvent | undefined>(
     (ids) => Promise.all(ids.map((id) => this._fetchEvent(id))),
     { cacheMap: this.eventCacheMap }
@@ -755,21 +756,62 @@ class ClientService extends EventTarget {
   private async query(urls: string[], filter: Filter | Filter[], onevent?: (evt: NEvent) => void) {
     return await new Promise<NEvent[]>((resolve) => {
       const events: NEvent[] = []
+      let hasEosed = false
+      let resolveTimeout: ReturnType<typeof setTimeout> | null = null
+      
+      const resolveWithEvents = () => {
+        if (resolveTimeout) {
+          clearTimeout(resolveTimeout)
+          resolveTimeout = null
+        }
+        sub.close()
+        resolve(events)
+      }
+      
       const sub = this.subscribe(urls, filter, {
         onevent(evt) {
           onevent?.(evt)
           events.push(evt)
+          // If we got events, clear any timeout - we're making progress
+          if (resolveTimeout) {
+            clearTimeout(resolveTimeout)
+            resolveTimeout = null
+          }
         },
         oneose: (eosed) => {
           if (eosed) {
-            sub.close()
-            resolve(events)
+            hasEosed = true
+            // Wait a bit more after EOSE to ensure we got all events
+            resolveTimeout = setTimeout(() => {
+              resolveWithEvents()
+            }, 500)
           }
         },
         onclose: () => {
-          resolve(events)
+          // Only resolve immediately on close if we've received EOSE or have events
+          // Otherwise, wait a bit to see if more events come
+          if (hasEosed || events.length > 0) {
+            if (resolveTimeout) {
+              clearTimeout(resolveTimeout)
+            }
+            resolve(events)
+          } else {
+            // Wait up to 3 seconds for events if connection closes early
+            resolveTimeout = setTimeout(() => {
+              resolve(events)
+            }, 3000)
+          }
         }
       })
+      
+      // Fallback timeout: resolve after 10 seconds max to prevent hanging
+      setTimeout(() => {
+        if (resolveTimeout) {
+          clearTimeout(resolveTimeout)
+        }
+        sub.close()
+        resolve(events)
+      }, 10000)
     })
   }
 
@@ -1240,8 +1282,24 @@ class ClientService extends EventTarget {
   }
 
   async fetchRelayList(pubkey: string): Promise<TRelayList> {
-    const [relayList] = await this.fetchRelayLists([pubkey])
-    return relayList
+    // Deduplicate concurrent requests for the same pubkey's relay list
+    const existingRequest = this.relayListRequestCache.get(pubkey)
+    if (existingRequest) {
+      return existingRequest
+    }
+    
+    const requestPromise = (async () => {
+      try {
+        const [relayList] = await this.fetchRelayLists([pubkey])
+        return relayList
+      } finally {
+        // Remove from cache after completion (cache result in replaceableEventCacheMap)
+        this.relayListRequestCache.delete(pubkey)
+      }
+    })()
+    
+    this.relayListRequestCache.set(pubkey, requestPromise)
+    return requestPromise
   }
 
   async fetchRelayLists(pubkeys: string[]): Promise<TRelayList[]> {
