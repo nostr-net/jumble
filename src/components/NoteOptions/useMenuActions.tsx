@@ -1,5 +1,6 @@
 import { ExtendedKind } from '@/constants'
 import { getNoteBech32Id, isProtectedEvent, getRootEventHexId } from '@/lib/event'
+import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNjump } from '@/lib/link'
 import logger from '@/lib/logger'
 import { pubkeyToNpub } from '@/lib/pubkey'
@@ -10,8 +11,9 @@ import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
-import { Bell, BellOff, Code, Copy, Link, SatelliteDish, Trash2, TriangleAlert, Pin } from 'lucide-react'
-import { Event } from 'nostr-tools'
+import { Bell, BellOff, Code, Copy, Link, SatelliteDish, Trash2, TriangleAlert, Pin, FileDown, Globe, BookOpen } from 'lucide-react'
+import { Event, kinds } from 'nostr-tools'
+import { nip19 } from 'nostr-tools'
 import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -303,7 +305,120 @@ export function useMenuActions({
     return items
   }, [pubkey, relayUrls, relaySets])
 
+  // Check if this is an article-type event
+  const isArticleType = useMemo(() => {
+    return event.kind === kinds.LongFormArticle ||
+           event.kind === ExtendedKind.WIKI_ARTICLE ||
+           event.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN ||
+           event.kind === ExtendedKind.PUBLICATION ||
+           event.kind === ExtendedKind.PUBLICATION_CONTENT
+  }, [event.kind])
+
+  // Get article metadata for export
+  const articleMetadata = useMemo(() => {
+    if (!isArticleType) return null
+    return getLongFormArticleMetadataFromEvent(event)
+  }, [isArticleType, event])
+
+  // Extract d-tag for Wikistr URL
+  const dTag = useMemo(() => {
+    if (!isArticleType) return ''
+    return event.tags.find(tag => tag[0] === 'd')?.[1] || ''
+  }, [isArticleType, event])
+
+  // Generate naddr for Alexandria URL
+  const naddr = useMemo(() => {
+    if (!isArticleType || !dTag) return ''
+    try {
+      const relays = event.tags
+        .filter(tag => tag[0] === 'relay')
+        .map(tag => tag[1])
+        .filter(Boolean)
+      
+      return nip19.naddrEncode({
+        kind: event.kind,
+        pubkey: event.pubkey,
+        identifier: dTag,
+        relays: relays.length > 0 ? relays : undefined
+      })
+    } catch (error) {
+      console.error('Error generating naddr:', error)
+      return ''
+    }
+  }, [isArticleType, event, dTag])
+
   const menuActions: MenuAction[] = useMemo(() => {
+    // Export functions for articles
+    const exportAsMarkdown = () => {
+      if (!isArticleType) return
+      
+      try {
+        const title = articleMetadata?.title || 'Article'
+        const content = event.content
+        const filename = `${title}.md`
+        
+        const blob = new Blob([content], { type: 'text/markdown' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        
+        logger.info('[NoteOptions] Exported article as Markdown')
+        toast.success(t('Article exported as Markdown'))
+      } catch (error) {
+        logger.error('[NoteOptions] Error exporting article:', error)
+        toast.error(t('Failed to export article'))
+      }
+    }
+
+    const exportAsAsciidoc = () => {
+      if (!isArticleType) return
+      
+      try {
+        const title = articleMetadata?.title || 'Article'
+        const content = event.content
+        const filename = `${title}.adoc`
+        
+        const blob = new Blob([content], { type: 'text/plain' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        
+        logger.info('[NoteOptions] Exported article as AsciiDoc')
+        toast.success(t('Article exported as AsciiDoc'))
+      } catch (error) {
+        logger.error('[NoteOptions] Error exporting article:', error)
+        toast.error(t('Failed to export article'))
+      }
+    }
+
+    // View on external sites functions
+    const handleViewOnWikistr = () => {
+      if (!dTag) return
+      closeDrawer()
+      window.open(`https://wikistr.imwald.eu/${dTag}*${event.pubkey}`, '_blank', 'noopener,noreferrer')
+    }
+
+    const handleViewOnAlexandria = () => {
+      if (!naddr) return
+      closeDrawer()
+      window.open(`https://next-alexandria.gitcitadel.eu/publication/naddr/${naddr}`, '_blank', 'noopener,noreferrer')
+    }
+
+    const handleViewOnDecentNewsroom = () => {
+      if (!dTag) return
+      closeDrawer()
+      window.open(`https://decentnewsroom.com/article/d/${dTag}`, '_blank', 'noopener,noreferrer')
+    }
     const actions: MenuAction[] = [
       {
         icon: Copy,
@@ -339,6 +454,76 @@ export function useMenuActions({
         separator: true
       }
     ]
+
+    // Add export options for article-type events
+    if (isArticleType) {
+      const isMarkdownFormat = event.kind === kinds.LongFormArticle || event.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN
+      const isAsciidocFormat = event.kind === ExtendedKind.WIKI_ARTICLE || event.kind === ExtendedKind.PUBLICATION || event.kind === ExtendedKind.PUBLICATION_CONTENT
+      
+      if (isMarkdownFormat) {
+        actions.push({
+          icon: FileDown,
+          label: t('Export as Markdown'),
+          onClick: () => {
+            closeDrawer()
+            exportAsMarkdown()
+          },
+          separator: true
+        })
+      }
+      
+      if (isAsciidocFormat) {
+        actions.push({
+          icon: FileDown,
+          label: t('Export as AsciiDoc'),
+          onClick: () => {
+            closeDrawer()
+            exportAsAsciidoc()
+          },
+          separator: true
+        })
+      }
+
+      // Add view options based on event kind
+      if (event.kind === kinds.LongFormArticle) {
+        // For LongFormArticle (30023): Alexandria and DecentNewsroom
+        if (naddr) {
+          actions.push({
+            icon: BookOpen,
+            label: t('View on Alexandria'),
+            onClick: handleViewOnAlexandria
+          })
+        }
+        if (dTag) {
+          actions.push({
+            icon: Globe,
+            label: t('View on DecentNewsroom'),
+            onClick: handleViewOnDecentNewsroom
+          })
+        }
+      } else if (
+        event.kind === ExtendedKind.PUBLICATION_CONTENT ||
+        event.kind === ExtendedKind.PUBLICATION ||
+        event.kind === ExtendedKind.WIKI_ARTICLE ||
+        event.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN
+      ) {
+        // For 30041, 30040, 30818, 30817: Alexandria and Wikistr
+        if (naddr) {
+          actions.push({
+            icon: BookOpen,
+            label: t('View on Alexandria'),
+            onClick: handleViewOnAlexandria
+          })
+        }
+        if (dTag) {
+          actions.push({
+            icon: Globe,
+            label: t('View on Wikistr'),
+            onClick: handleViewOnWikistr
+          })
+        }
+      }
+    }
 
     const isProtected = isProtectedEvent(event)
     const isDiscussion = event.kind === ExtendedKind.DISCUSSION
@@ -446,7 +631,11 @@ export function useMenuActions({
     unmutePubkey,
     attemptDelete,
     isPinned,
-    handlePinNote
+    handlePinNote,
+    isArticleType,
+    articleMetadata,
+    dTag,
+    naddr
   ])
 
   return menuActions

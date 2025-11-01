@@ -4,11 +4,8 @@ import { useSecondaryPage } from '@/PageManager'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { Event, kinds } from 'nostr-tools'
-import { nip19 } from 'nostr-tools'
 import { useMemo } from 'react'
-import { BookOpen } from 'lucide-react'
 import Image from '../Image'
-import ArticleExportMenu from '../ArticleExportMenu/ArticleExportMenu'
 
 export default function PublicationCard({
   event,
@@ -22,37 +19,9 @@ export default function PublicationCard({
   const { autoLoadMedia } = useContentPolicy()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
 
-  // Generate naddr for Alexandria URL
-  const naddr = useMemo(() => {
-    try {
-      const dTag = event.tags.find(tag => tag[0] === 'd')?.[1] || ''
-      const relays = event.tags
-        .filter(tag => tag[0] === 'relay')
-        .map(tag => tag[1])
-        .filter(Boolean)
-      
-      return nip19.naddrEncode({
-        kind: event.kind,
-        pubkey: event.pubkey,
-        identifier: dTag,
-        relays: relays.length > 0 ? relays : undefined
-      })
-    } catch (error) {
-      console.error('Error generating naddr:', error)
-      return ''
-    }
-  }, [event])
-
   const handleCardClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     push(toNote(event.id))
-  }
-
-  const handleAlexandriaClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (naddr) {
-      window.open(`https://next-alexandria.gitcitadel.eu/publication/naddr/${naddr}`, '_blank', 'noopener,noreferrer')
-    }
   }
 
   const titleComponent = <div className="text-xl font-semibold line-clamp-2">{metadata.title}</div>
@@ -78,16 +47,6 @@ export default function PublicationCard({
     <div className="text-sm text-muted-foreground line-clamp-4">{metadata.summary}</div>
   )
 
-  const alexandriaButton = naddr && (
-    <button
-      onClick={handleAlexandriaClick}
-      className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 rounded-md transition-colors"
-    >
-      <BookOpen className="w-4 h-4" />
-      View in Alexandria
-    </button>
-  )
-
   if (isSmallScreen) {
     return (
       <div className={className}>
@@ -106,10 +65,6 @@ export default function PublicationCard({
             {titleComponent}
             {summaryComponent}
             {tagsComponent}
-            <div className="flex justify-end gap-2 items-center">
-              <ArticleExportMenu event={event} title={metadata.title || 'Article'} />
-              {alexandriaButton}
-            </div>
           </div>
         </div>
       </div>
@@ -134,10 +89,6 @@ export default function PublicationCard({
             {titleComponent}
             {summaryComponent}
             {tagsComponent}
-            <div className="flex justify-end gap-2 items-center">
-              <ArticleExportMenu event={event} title={metadata.title || 'Article'} />
-              {alexandriaButton}
-            </div>
           </div>
         </div>
       </div>

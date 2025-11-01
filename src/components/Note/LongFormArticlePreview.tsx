@@ -6,7 +6,6 @@ import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { Event, kinds } from 'nostr-tools'
 import { useMemo } from 'react'
 import Image from '../Image'
-import ArticleExportMenu from '../ArticleExportMenu/ArticleExportMenu'
 
 export default function LongFormArticlePreview({
   event,
@@ -66,9 +65,6 @@ export default function LongFormArticlePreview({
             {titleComponent}
             {summaryComponent}
             {tagsComponent}
-            <div className="flex justify-end">
-              <ArticleExportMenu event={event} title={metadata.title || 'Article'} />
-            </div>
           </div>
         </div>
       </div>
@@ -93,9 +89,6 @@ export default function LongFormArticlePreview({
             {titleComponent}
             {summaryComponent}
             {tagsComponent}
-            <div className="flex justify-end">
-              <ArticleExportMenu event={event} title={metadata.title || 'Article'} />
-            </div>
           </div>
         </div>
       </div>

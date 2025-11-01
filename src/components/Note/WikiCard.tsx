@@ -4,11 +4,8 @@ import { useSecondaryPage } from '@/PageManager'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { Event, kinds } from 'nostr-tools'
-import { nip19 } from 'nostr-tools'
 import { useMemo } from 'react'
-import { BookOpen, Globe } from 'lucide-react'
 import Image from '../Image'
-import ArticleExportMenu from '../ArticleExportMenu/ArticleExportMenu'
 
 export default function WikiCard({
   event,
@@ -22,48 +19,9 @@ export default function WikiCard({
   const { autoLoadMedia } = useContentPolicy()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
 
-  // Extract d-tag for Wikistr URL
-  const dTag = useMemo(() => {
-    return event.tags.find(tag => tag[0] === 'd')?.[1] || ''
-  }, [event])
-
-  // Generate naddr for Alexandria URL
-  const naddr = useMemo(() => {
-    try {
-      const relays = event.tags
-        .filter(tag => tag[0] === 'relay')
-        .map(tag => tag[1])
-        .filter(Boolean)
-      
-      return nip19.naddrEncode({
-        kind: event.kind,
-        pubkey: event.pubkey,
-        identifier: dTag,
-        relays: relays.length > 0 ? relays : undefined
-      })
-    } catch (error) {
-      console.error('Error generating naddr:', error)
-      return ''
-    }
-  }, [event, dTag])
-
   const handleCardClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     push(toNote(event.id))
-  }
-
-  const handleWikistrClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (dTag) {
-      window.open(`https://wikistr.imwald.eu/${dTag}*${event.pubkey}`, '_blank', 'noopener,noreferrer')
-    }
-  }
-
-  const handleAlexandriaClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (naddr) {
-      window.open(`https://next-alexandria.gitcitadel.eu/publication/naddr/${naddr}`, '_blank', 'noopener,noreferrer')
-    }
   }
 
   const titleComponent = <div className="text-xl font-semibold line-clamp-2">{metadata.title}</div>
@@ -88,30 +46,6 @@ export default function WikiCard({
   const summaryComponent = metadata.summary && (
     <div className="text-sm text-muted-foreground line-clamp-4">{metadata.summary}</div>
   )
-  
-  const buttons = (
-    <div className="flex gap-2 flex-wrap items-center">
-      <ArticleExportMenu event={event} title={metadata.title || 'Article'} />
-      {dTag && (
-        <button
-          onClick={handleWikistrClick}
-          className="flex items-center gap-2 px-3 py-2 text-sm bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-800 dark:text-green-200 rounded-md transition-colors"
-        >
-          <Globe className="w-4 h-4" />
-          View in Wikistr
-        </button>
-      )}
-      {naddr && (
-        <button
-          onClick={handleAlexandriaClick}
-          className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-800 dark:text-blue-200 rounded-md transition-colors"
-        >
-          <BookOpen className="w-4 h-4" />
-          View in Alexandria
-        </button>
-      )}
-    </div>
-  )
 
   if (isSmallScreen) {
     return (
@@ -131,9 +65,6 @@ export default function WikiCard({
             {titleComponent}
             {summaryComponent}
             {tagsComponent}
-            <div className="flex justify-end">
-              {buttons}
-            </div>
           </div>
         </div>
       </div>
@@ -158,9 +89,6 @@ export default function WikiCard({
             {titleComponent}
             {summaryComponent}
             {tagsComponent}
-            <div className="flex justify-end">
-              {buttons}
-            </div>
           </div>
         </div>
       </div>

@@ -93,7 +93,7 @@ export default function ZapDialog({
               <UserAvatar size="small" userId={pubkey} />
               <Username userId={pubkey} className="truncate flex-1 w-0 text-start h-5" />
             </DrawerTitle>
-            <DialogDescription></DialogDescription>
+            <DialogDescription className="sr-only">{t('Send a Lightning payment to this user')}</DialogDescription>
           </DrawerHeader>
           <ZapDialogContent
             open={open}
@@ -117,6 +117,7 @@ export default function ZapDialog({
             <UserAvatar size="small" userId={pubkey} />
             <Username userId={pubkey} className="truncate flex-1 max-w-fit text-start h-5" />
           </DialogTitle>
+          <DialogDescription className="sr-only">{t('Send a Lightning payment to this user')}</DialogDescription>
         </DialogHeader>
         <ZapDialogContent
           open={open}
