@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { normalizeUrl } from '@/lib/url'
+import { normalizeUrl, isLocalNetworkUrl } from '@/lib/url'
 import { useNostr } from '@/providers/NostrProvider'
 import { TMailboxRelay, TMailboxRelayScope } from '@/types'
 import { useEffect, useState } from 'react'
@@ -67,7 +67,9 @@ export default function MailboxSetting() {
   useEffect(() => {
     if (!relayList) return
 
-    setRelays(relayList.originalRelays)
+    // Filter out cache relays (local network URLs) - they belong in kind 10432, not kind 10002
+    const mailboxRelays = relayList.originalRelays.filter(relay => !isLocalNetworkUrl(relay.url))
+    setRelays(mailboxRelays)
   }, [relayList])
 
   if (!pubkey) {

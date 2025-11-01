@@ -848,13 +848,14 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       
       // Attach relayStatuses only temporarily for UI feedback, then remove it
       // This prevents it from being included in the event when serialized
+      // Use a longer delay to ensure UI components can read it before deletion
       if (relayStatuses) {
         (event as any).relayStatuses = relayStatuses
-        // Remove it immediately after return so it's not persisted
-        // The components that need it will read it synchronously
+        // Remove it after a delay to allow UI components to read it
+        // Components should read it immediately after publish() returns
         setTimeout(() => {
           delete (event as any).relayStatuses
-        }, 0)
+        }, 100)
       }
       
       return event
@@ -946,17 +947,27 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
 
   const updateRelayListEvent = async (relayListEvent: Event) => {
     await indexedDb.putReplaceableEvent(relayListEvent)
+    // Clear the relay list cache to force a fresh fetch
+    if (account?.pubkey) {
+      client.clearRelayListCache(account.pubkey)
+    }
     // Fetch updated relay list (which merges both 10002 and 10432)
     const mergedRelayList = await client.fetchRelayList(account?.pubkey || '')
     setRelayList(mergedRelayList)
   }
 
   const updateCacheRelayListEvent = async (cacheRelayListEvent: Event) => {
-    const newCacheRelayList = await indexedDb.putReplaceableEvent(cacheRelayListEvent)
-    setCacheRelayListEvent(newCacheRelayList)
-    // Fetch updated relay list (which merges both 10002 and 10432)
-    const mergedRelayList = await client.fetchRelayList(account?.pubkey || '')
-    setRelayList(mergedRelayList)
+    await indexedDb.putReplaceableEvent(cacheRelayListEvent)
+    // Clear the relay list cache to ensure fresh fetches use the updated event
+    if (account?.pubkey) {
+      client.clearRelayListCache(account.pubkey)
+    }
+    // Set local state immediately with the event we just saved
+    // This will trigger the component's useEffect to update the UI immediately
+    setCacheRelayListEvent(cacheRelayListEvent)
+    // Don't update relayList here - it's a computed merge of kind 10002 + 10432
+    // The merged list will be computed on-the-fly when needed via fetchRelayList()
+    // This ensures kind 10002 and 10432 remain separate and are only merged when publishing/using
   }
 
   const updateProfileEvent = async (profileEvent: Event) => {

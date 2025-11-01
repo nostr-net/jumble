@@ -35,7 +35,7 @@ export default function NewMailboxRelayInput({
 
   return (
     <div>
-      <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row gap-4">
         <Input
           className={newRelayUrlError ? 'border-destructive' : ''}
           placeholder={t('Add a new relay')}
@@ -44,7 +44,7 @@ export default function NewMailboxRelayInput({
           onChange={handleRelayUrlInputChange}
           onBlur={save}
         />
-        <Button onClick={save}>{t('Add')}</Button>
+        <Button className="w-full sm:w-auto" onClick={save}>{t('Add')}</Button>
       </div>
       {newRelayUrlError && <div className="text-destructive text-xs mt-1">{newRelayUrlError}</div>}
     </div>

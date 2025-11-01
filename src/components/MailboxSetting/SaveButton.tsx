@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { createRelayListDraftEvent } from '@/lib/draft-event'
-import { showPublishingFeedback, showSimplePublishSuccess } from '@/lib/publishing-feedback'
+import { showPublishingFeedback, showSimplePublishSuccess, showPublishingError } from '@/lib/publishing-feedback'
 import { useNostr } from '@/providers/NostrProvider'
 import { TMailboxRelay } from '@/types'
 import { CloudUpload, Loader } from 'lucide-react'
@@ -27,22 +27,43 @@ export default function SaveButton({
     try {
       const event = createRelayListDraftEvent(mailboxRelays)
       const result = await publish(event)
+      
+      // Read relayStatuses immediately before it might be deleted
+      const relayStatuses = (result as any).relayStatuses
+      
       await updateRelayListEvent(result)
       setHasChange(false)
       
       // Show publishing feedback
-      if ((result as any).relayStatuses) {
+      if (relayStatuses && relayStatuses.length > 0) {
         showPublishingFeedback({
           success: true,
-          relayStatuses: (result as any).relayStatuses,
-          successCount: (result as any).relayStatuses.filter((s: any) => s.success).length,
-          totalCount: (result as any).relayStatuses.length
+          relayStatuses: relayStatuses,
+          successCount: relayStatuses.filter((s: any) => s.success).length,
+          totalCount: relayStatuses.length
         }, {
           message: t('Mailbox relays saved'),
           duration: 6000
         })
       } else {
         showSimplePublishSuccess(t('Mailbox relays saved'))
+      }
+    } catch (error) {
+      console.error('Failed to save relay list:', error)
+      // Show error feedback with relay statuses if available
+      if (error instanceof Error && (error as any).relayStatuses) {
+        const errorRelayStatuses = (error as any).relayStatuses
+        showPublishingFeedback({
+          success: false,
+          relayStatuses: errorRelayStatuses,
+          successCount: errorRelayStatuses.filter((s: any) => s.success).length,
+          totalCount: errorRelayStatuses.length
+        }, {
+          message: error.message || t('Failed to save relay list'),
+          duration: 6000
+        })
+      } else {
+        showPublishingError(error instanceof Error ? error : new Error(t('Failed to save relay list')))
       }
     } finally {
       setPushing(false)

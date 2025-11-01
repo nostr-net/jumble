@@ -965,35 +965,59 @@ class IndexedDbService {
     const allItems = await this.getStoreItems(storeName)
     const eventMap = new Map<string, { key: string; event: Event; addedAt: number }>()
     const keysToDelete: string[] = []
+    let invalidItemsCount = 0
 
     for (const item of allItems) {
-      if (!item || !item.value) continue
+      if (!item || !item.value) {
+        invalidItemsCount++
+        continue
+      }
       
-      const replaceableKey = this.getReplaceableEventKeyFromEvent(item.value)
-      const existing = eventMap.get(replaceableKey)
+      // Skip if event doesn't have required fields
+      if (!item.value.pubkey || !item.value.kind || !item.value.created_at) {
+        invalidItemsCount++
+        continue
+      }
       
-      if (!existing || 
-          item.value.created_at > existing.event.created_at ||
-          (item.value.created_at === existing.event.created_at && 
-           item.addedAt > existing.addedAt)) {
-        // This event is newer, mark the old one for deletion if it exists
-        if (existing) {
-          keysToDelete.push(existing.key)
+      try {
+        const replaceableKey = this.getReplaceableEventKeyFromEvent(item.value)
+        const existing = eventMap.get(replaceableKey)
+        
+        if (!existing || 
+            item.value.created_at > existing.event.created_at ||
+            (item.value.created_at === existing.event.created_at && 
+             item.addedAt > existing.addedAt)) {
+          // This event is newer, mark the old one for deletion if it exists
+          if (existing) {
+            keysToDelete.push(existing.key)
+          }
+          eventMap.set(replaceableKey, {
+            key: item.key,
+            event: item.value,
+            addedAt: item.addedAt
+          })
+        } else {
+          // This event is older or same, mark it for deletion
+          keysToDelete.push(item.key)
         }
-        eventMap.set(replaceableKey, {
-          key: item.key,
-          event: item.value,
-          addedAt: item.addedAt
-        })
-      } else {
-        // This event is older or same, mark it for deletion
-        keysToDelete.push(item.key)
+      } catch (error) {
+        // If we can't generate a replaceable key, skip this item
+        console.warn('Failed to get replaceable key for item:', item.key, error)
+        invalidItemsCount++
+        continue
       }
     }
 
     // Second pass: delete duplicates
+    const totalProcessed = eventMap.size + keysToDelete.length
+    const actualKept = eventMap.size
+    
     if (keysToDelete.length === 0) {
-      return Promise.resolve({ deleted: 0, kept: eventMap.size })
+      // No duplicates found, but verify counts match
+      if (totalProcessed + invalidItemsCount !== allItems.length) {
+        console.warn(`Count mismatch: total items=${allItems.length}, processed=${totalProcessed}, invalid=${invalidItemsCount}`)
+      }
+      return Promise.resolve({ deleted: 0, kept: actualKept })
     }
 
     return new Promise((resolve) => {
@@ -1010,14 +1034,20 @@ class IndexedDbService {
           completedCount++
           if (completedCount === keysToDelete.length) {
             transaction.commit()
-            resolve({ deleted: deletedCount, kept: eventMap.size })
+            const actualKept = eventMap.size
+            const totalProcessed = actualKept + deletedCount
+            if (totalProcessed + invalidItemsCount !== allItems.length) {
+              console.warn(`Count mismatch after deletion: total items=${allItems.length}, kept=${actualKept}, deleted=${deletedCount}, invalid=${invalidItemsCount}`)
+            }
+            resolve({ deleted: deletedCount, kept: actualKept })
           }
         }
         deleteRequest.onerror = () => {
           completedCount++
           if (completedCount === keysToDelete.length) {
             transaction.commit()
-            resolve({ deleted: deletedCount, kept: eventMap.size })
+            const actualKept = eventMap.size
+            resolve({ deleted: deletedCount, kept: actualKept })
           }
         }
       })

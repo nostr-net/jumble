@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { normalizeUrl, isLocalNetworkUrl } from '@/lib/url'
 import { useNostr } from '@/providers/NostrProvider'
 import { TMailboxRelay, TMailboxRelayScope } from '@/types'
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DndContext,
@@ -28,15 +28,17 @@ import DiscoveredRelays from '../MailboxSetting/DiscoveredRelays'
 import { createCacheRelaysDraftEvent } from '@/lib/draft-event'
 import { getRelayListFromEvent } from '@/lib/event-metadata'
 import { showPublishingFeedback, showSimplePublishSuccess, showPublishingError } from '@/lib/publishing-feedback'
-import { CloudUpload, Loader, Trash2, RefreshCw, Database, WrapText, Search, X } from 'lucide-react'
+import { CloudUpload, Loader, Trash2, RefreshCw, Database, WrapText, Search, X, TriangleAlert } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import indexedDb from '@/services/indexed-db.service'
 import postEditorCache from '@/services/post-editor-cache.service'
 import { StorageKey } from '@/constants'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { toast } from 'sonner'
+import { Event } from 'nostr-tools'
 
 export default function CacheRelaysSetting() {
   const { t } = useTranslation()
@@ -374,7 +376,20 @@ export default function CacheRelaysSetting() {
       setSearchQuery('')
       // Update cache info
       loadCacheInfo()
-      toast.success(t('Cleaned up {{deleted}} duplicate entries, kept {{kept}}', { deleted: result.deleted, kept: result.kept }))
+      // Reload items to get accurate count after cleanup
+      const itemsAfterCleanup = await indexedDb.getStoreItems(selectedStore)
+      const actualCount = itemsAfterCleanup.length
+      
+      // Show message with actual count
+      if (actualCount !== result.kept) {
+        toast.success(t('Cleaned up {{deleted}} duplicate entries, kept {{kept}} (total items after cleanup: {{total}})', { 
+          deleted: result.deleted, 
+          kept: result.kept,
+          total: actualCount
+        }))
+      } else {
+        toast.success(t('Cleaned up {{deleted}} duplicate entries, kept {{kept}}', { deleted: result.deleted, kept: result.kept }))
+      }
     } catch (error) {
       console.error('Failed to cleanup duplicates:', error)
       if (error instanceof Error && error.message === 'Not a replaceable event store') {
@@ -386,6 +401,52 @@ export default function CacheRelaysSetting() {
       setLoadingItems(false)
     }
   }
+
+  // Check if an event is invalid
+  const isInvalidEvent = useCallback((item: { key: string; value: any; addedAt: number }): boolean => {
+    if (!item || !item.value) return true
+    
+    const event = item.value as Event
+    // Check for required Nostr event fields
+    if (!event.pubkey || !event.kind || typeof event.created_at !== 'number') {
+      return true
+    }
+    
+    // Check for tags array (required for Nostr events)
+    if (!event.tags || !Array.isArray(event.tags)) {
+      return true
+    }
+    
+    // Check for id and sig (these should be present in valid events)
+    if (!event.id || !event.sig) {
+      return true
+    }
+    
+    return false
+  }, [])
+
+  // Get explanation for why an event is invalid
+  const getInvalidEventExplanation = useCallback((item: { key: string; value: any; addedAt: number }): string => {
+    if (!item || !item.value) {
+      return t('Event has no value data')
+    }
+    
+    const event = item.value as Event
+    const missing: string[] = []
+    
+    if (!event.pubkey) missing.push(t('pubkey'))
+    if (!event.kind) missing.push(t('kind'))
+    if (typeof event.created_at !== 'number') missing.push(t('created_at'))
+    if (!event.tags || !Array.isArray(event.tags)) missing.push(t('tags'))
+    if (!event.id) missing.push(t('id'))
+    if (!event.sig) missing.push(t('sig'))
+    
+    if (missing.length > 0) {
+      return t('Event is missing required fields: {{fields}}', { fields: missing.join(', ') })
+    }
+    
+    return t('Event appears to be invalid or corrupted')
+  }, [t])
 
   const save = async () => {
     if (!pubkey) return
@@ -477,10 +538,10 @@ export default function CacheRelaysSetting() {
         <div className="text-xs text-muted-foreground space-y-1">
           <div>{t('Clear cached data stored in your browser, including IndexedDB events, localStorage settings, and service worker caches.')}</div>
         </div>
-        <div className="flex flex-row gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
-            className="flex-1"
+            className="flex-1 w-full sm:w-auto"
             onClick={handleClearCache}
           >
             <Trash2 className="h-4 w-4 mr-2" />
@@ -488,7 +549,7 @@ export default function CacheRelaysSetting() {
           </Button>
           <Button
             variant="outline"
-            className="flex-1"
+            className="flex-1 w-full sm:w-auto"
             onClick={handleRefreshCache}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -496,7 +557,7 @@ export default function CacheRelaysSetting() {
           </Button>
           <Button
             variant="outline"
-            className="flex-1"
+            className="flex-1 w-full sm:w-auto"
             onClick={handleBrowseCache}
           >
             <Database className="h-4 w-4 mr-2" />
@@ -581,35 +642,114 @@ export default function CacheRelaysSetting() {
                   <div className="flex items-center justify-center py-8">
                     <Loader className="animate-spin h-6 w-6" />
                   </div>
-                ) : storeItems.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">{t('No items in this store.')}</div>
                 ) : (
-                  <div className="space-y-2">
-                    <div className="text-xs text-muted-foreground mb-2">
-                      {storeItems.length} {t('items')}
+                  <>
+                    <div className="relative py-1">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder={t('Search items...')}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-8"
+                      />
                     </div>
-                    {storeItems.map((item, index) => {
-                      const nestedCount = (item as any).nestedCount
-                      return (
-                        <div key={item.key || index} className="border rounded-lg p-3 break-words">
-                          <div className="font-semibold text-xs mb-2 break-all">
-                            {item.key}
-                            {typeof nestedCount === 'number' && nestedCount > 0 && (
-                              <span className="ml-2 text-muted-foreground">
-                                ({nestedCount} {t('nested events')})
-                              </span>
-                            )}
+                    {storeItems.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">{t('No items in this store.')}</div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs text-muted-foreground">
+                            {filteredStoreItems.length} {t('of')} {storeItems.length} {t('items')}
+                            {searchQuery.trim() && ` ${t('matching')} "${searchQuery}"`}
                           </div>
-                          <div className="text-xs text-muted-foreground mb-2">
-                            {t('Added at')}: {new Date(item.addedAt).toLocaleString()}
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleCleanupDuplicates}
+                              className="h-7 text-xs"
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              {t('Cleanup Duplicates')}
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={handleDeleteAllItems}
+                              className="h-7 text-xs"
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" />
+                              {t('Delete All')}
+                            </Button>
                           </div>
-                          <pre className={`text-xs bg-muted p-2 rounded overflow-auto max-h-96 select-text ${wordWrapEnabled ? 'overflow-x-hidden whitespace-pre-wrap break-words' : 'overflow-x-auto whitespace-pre'}`}>
-                            {JSON.stringify(item.value, null, 2)}
-                          </pre>
                         </div>
-                      )
-                    })}
-                  </div>
+                        {filteredStoreItems.length === 0 ? (
+                          <div className="text-sm text-muted-foreground">{t('No items match your search.')}</div>
+                        ) : (
+                          filteredStoreItems.map((item, index) => {
+                            const nestedCount = (item as any).nestedCount
+                            const invalid = isInvalidEvent(item)
+                            const invalidExplanation = invalid ? getInvalidEventExplanation(item) : ''
+                            return (
+                              <div key={item.key || index} className="border rounded-lg p-3 break-words relative">
+                                <div className="absolute top-2 right-2 flex items-center gap-1">
+                                  {invalid && (
+                                    <HoverCard>
+                                      <HoverCardTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 w-6 p-0 text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400"
+                                          title={invalidExplanation}
+                                        >
+                                          <TriangleAlert className="h-3 w-3" />
+                                        </Button>
+                                      </HoverCardTrigger>
+                                      <HoverCardContent className="w-80">
+                                        <div className="space-y-2">
+                                          <div className="font-semibold text-sm flex items-center gap-2">
+                                            <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+                                            {t('Invalid Event')}
+                                          </div>
+                                          <div className="text-sm text-muted-foreground">
+                                            {invalidExplanation}
+                                          </div>
+                                        </div>
+                                      </HoverCardContent>
+                                    </HoverCard>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteItem(item.key)}
+                                    className="h-6 w-6 p-0"
+                                    title={t('Delete item')}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                                <div className={`font-semibold text-xs mb-2 break-all ${invalid ? 'pr-16' : 'pr-8'}`}>
+                                  {item.key}
+                                  {typeof nestedCount === 'number' && nestedCount > 0 && (
+                                    <span className="ml-2 text-muted-foreground">
+                                      ({nestedCount} {t('nested events')})
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground mb-2">
+                                  {t('Added at')}: {new Date(item.addedAt).toLocaleString()}
+                                </div>
+                                <pre className={`text-xs bg-muted p-2 rounded overflow-auto max-h-96 select-text ${wordWrapEnabled ? 'overflow-x-hidden whitespace-pre-wrap break-words' : 'overflow-x-auto whitespace-pre'}`}>
+                                  {JSON.stringify(item.value, null, 2)}
+                                </pre>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    )}
+                  </>
                 )
               )}
             </div>
@@ -729,18 +869,47 @@ export default function CacheRelaysSetting() {
                           ) : (
                             filteredStoreItems.map((item, index) => {
                               const nestedCount = (item as any).nestedCount
+                              const invalid = isInvalidEvent(item)
+                              const invalidExplanation = invalid ? getInvalidEventExplanation(item) : ''
                               return (
                                 <div key={item.key || index} className="border rounded-lg p-3 break-words relative">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleDeleteItem(item.key)}
-                                    className="absolute top-2 right-2 h-6 w-6 p-0"
-                                    title={t('Delete item')}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </Button>
-                                  <div className="font-semibold text-xs mb-2 break-all pr-8">
+                                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                                    {invalid && (
+                                      <HoverCard>
+                                        <HoverCardTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0 text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400"
+                                            title={invalidExplanation}
+                                          >
+                                            <TriangleAlert className="h-3 w-3" />
+                                          </Button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent className="w-80">
+                                          <div className="space-y-2">
+                                            <div className="font-semibold text-sm flex items-center gap-2">
+                                              <TriangleAlert className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+                                              {t('Invalid Event')}
+                                            </div>
+                                            <div className="text-sm text-muted-foreground">
+                                              {invalidExplanation}
+                                            </div>
+                                          </div>
+                                        </HoverCardContent>
+                                      </HoverCard>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteItem(item.key)}
+                                      className="h-6 w-6 p-0"
+                                      title={t('Delete item')}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                  <div className={`font-semibold text-xs mb-2 break-all ${invalid ? 'pr-16' : 'pr-8'}`}>
                                     {item.key}
                                     {typeof nestedCount === 'number' && nestedCount > 0 && (
                                       <span className="ml-2 text-muted-foreground">

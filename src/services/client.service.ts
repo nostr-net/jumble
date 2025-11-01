@@ -1285,6 +1285,10 @@ class ClientService extends EventTarget {
     return relayEvent ?? null
   }
 
+  clearRelayListCache(pubkey: string) {
+    this.relayListRequestCache.delete(pubkey)
+  }
+
   async fetchRelayList(pubkey: string): Promise<TRelayList> {
     // Deduplicate concurrent requests for the same pubkey's relay list
     const existingRequest = this.relayListRequestCache.get(pubkey)
