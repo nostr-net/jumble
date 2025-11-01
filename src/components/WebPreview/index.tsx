@@ -79,11 +79,7 @@ export default function WebPreview({ url, className }: { url: string; className?
   const { autoLoadMedia } = useContentPolicy()
   const { isSmallScreen } = useScreenSize()
   
-  console.log(`[WebPreview] Rendering with URL: ${url}, autoLoadMedia: ${autoLoadMedia}`)
-  
   const { title, description, image } = useFetchWebMetadata(url)
-  
-  console.log(`[WebPreview] Metadata received - title: ${title || 'none'}, description: ${description || 'none'}, image: ${image || 'none'}`)
 
   const hostname = useMemo(() => {
     try {

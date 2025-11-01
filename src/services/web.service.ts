@@ -12,20 +12,10 @@ class WebService {
           const proxyServer = import.meta.env.VITE_PROXY_SERVER
           const isProxyUrl = url.includes('/sites/')
           
-          // Debug logging for proxy configuration
-          if (proxyServer) {
-            console.log(`[WebService] Proxy server configured: ${proxyServer}`)
-          } else {
-            console.warn(`[WebService] No proxy server configured. VITE_PROXY_SERVER is:`, import.meta.env.VITE_PROXY_SERVER)
-          }
-          
           // If proxy is configured and URL isn't already proxied, use proxy
           let fetchUrl = url
           if (proxyServer && !isProxyUrl) {
             fetchUrl = `${proxyServer}/sites/${encodeURIComponent(url)}`
-            console.log(`[WebService] Using proxy URL: ${fetchUrl}`)
-          } else {
-            console.log(`[WebService] Fetching directly (no proxy): ${fetchUrl}`)
           }
           
           try {
@@ -47,20 +37,10 @@ class WebService {
             clearTimeout(timeoutId)
             
             if (!res.ok) {
-              // Log all errors for debugging
-              console.warn(`[WebService] Failed to fetch metadata for ${url} (via ${fetchUrl}): ${res.status} ${res.statusText}`)
-              if (res.status !== 404 && res.status !== 0) {
-                console.warn(`[WebService] Response headers:`, Object.fromEntries(res.headers.entries()))
-              }
               return {}
             }
             
             const html = await res.text()
-            
-            // Debug: Log a snippet of the HTML to see what we're getting
-            const htmlSnippet = html.substring(0, 500)
-            console.log(`[WebService] Received HTML snippet for ${url} (via ${fetchUrl}):`, htmlSnippet)
-            
             const parser = new DOMParser()
             const doc = parser.parseFromString(html, 'text/html')
 
@@ -75,19 +55,7 @@ class WebService {
 
             return { title, description, image }
           } catch (error) {
-            // Log all errors for debugging
-            if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-              // This is likely a CORS error
-              console.warn(`[WebService] CORS/Network error fetching metadata for ${url} (via ${fetchUrl}):`, error.message)
-              return {}
-            }
-            if (error instanceof Error && error.name === 'AbortError') {
-              // Timeout
-              console.warn(`[WebService] Timeout fetching metadata for ${url} (via ${fetchUrl})`)
-              return {}
-            }
-            // Log other unexpected errors
-            console.warn(`[WebService] Unexpected error fetching metadata for ${url} (via ${fetchUrl}):`, error)
+            // Silent fail - return empty metadata on any error
             return {}
           }
         })
