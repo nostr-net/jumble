@@ -320,7 +320,10 @@ export default function PostContent({
         // Full success - clean up and close
         postEditorCache.clearPostCache({ defaultContent, parentEvent })
         deleteDraftEventCache(draftEvent)
-        addReplies([newEvent])
+        // Remove relayStatuses before storing the event (it's only for UI feedback)
+        const cleanEvent = { ...newEvent }
+        delete (cleanEvent as any).relayStatuses
+        addReplies([cleanEvent])
         close()
       } catch (error) {
         console.error('Publishing error:', error)

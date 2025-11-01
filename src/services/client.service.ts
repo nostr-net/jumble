@@ -901,12 +901,16 @@ class ClientService extends EventTarget {
   }
 
   addEventToCache(event: NEvent) {
-    this.eventDataLoader.prime(event.id, Promise.resolve(event))
-    if (isReplaceableEvent(event.kind)) {
-      const coordinate = getReplaceableCoordinateFromEvent(event)
+    // Remove relayStatuses before caching (it's metadata for logging, not part of the event)
+    const cleanEvent = { ...event } as NEvent
+    delete (cleanEvent as any).relayStatuses
+    
+    this.eventDataLoader.prime(cleanEvent.id, Promise.resolve(cleanEvent))
+    if (isReplaceableEvent(cleanEvent.kind)) {
+      const coordinate = getReplaceableCoordinateFromEvent(cleanEvent)
       const cachedEvent = this.replaceableEventCacheMap.get(coordinate)
-      if (!cachedEvent || compareEvents(event, cachedEvent) > 0) {
-        this.replaceableEventCacheMap.set(coordinate, event)
+      if (!cachedEvent || compareEvents(cleanEvent, cachedEvent) > 0) {
+        this.replaceableEventCacheMap.set(coordinate, cleanEvent)
       }
     }
   }

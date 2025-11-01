@@ -830,10 +830,9 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
     try {
       const publishResult = await client.publishEvent(relays, event)
       
-      // Store relay status for display
-      if (publishResult.relayStatuses.length > 0) {
-        (event as any).relayStatuses = publishResult.relayStatuses
-      }
+      // Store relay status temporarily for display (but don't persist it on the event)
+      // This metadata is only for logging/feedback, not part of the actual event
+      const relayStatuses = publishResult.relayStatuses.length > 0 ? publishResult.relayStatuses : undefined
       
       // If publishing failed completely, throw an error so the form doesn't close
       if (!publishResult.success) {
@@ -847,15 +846,35 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
         throw error
       }
       
+      // Attach relayStatuses only temporarily for UI feedback, then remove it
+      // This prevents it from being included in the event when serialized
+      if (relayStatuses) {
+        (event as any).relayStatuses = relayStatuses
+        // Remove it immediately after return so it's not persisted
+        // The components that need it will read it synchronously
+        setTimeout(() => {
+          delete (event as any).relayStatuses
+        }, 0)
+      }
+      
       return event
     } catch (error) {
       // Check for authentication-related errors
       if (error instanceof AggregateError && (error as any).relayStatuses) {
-        (event as any).relayStatuses = (error as any).relayStatuses
+        // Attach relayStatuses temporarily for UI feedback
+        const errorRelayStatuses = (error as any).relayStatuses as Array<{ url: string; success: boolean; error?: string }>
+        
+        // Attach to event temporarily for UI feedback
+        (event as any).relayStatuses = errorRelayStatuses
+        
+        // Remove it after a brief delay to allow UI components to read it
+        setTimeout(() => {
+          delete (event as any).relayStatuses
+        }, 100)
         
         // Check if any relay returned an "invalid key" error
-        const invalidKeyErrors = (error as any).relayStatuses.filter(
-          (status: any) => status.error && status.error.includes('invalid key')
+        const invalidKeyErrors = errorRelayStatuses.filter(
+          (status) => status.error && status.error.includes('invalid key')
         )
         
         if (invalidKeyErrors.length > 0) {

@@ -167,7 +167,11 @@ class IndexedDbService {
   }
 
   async putReplaceableEvent(event: Event): Promise<Event> {
-    const storeName = this.getStoreNameByKind(event.kind)
+    // Remove relayStatuses before storing (it's metadata for logging, not part of the event)
+    const cleanEvent = { ...event }
+    delete (cleanEvent as any).relayStatuses
+    
+    const storeName = this.getStoreNameByKind(cleanEvent.kind)
     if (!storeName) {
       return Promise.reject('store name not found')
     }
@@ -191,23 +195,23 @@ class IndexedDbService {
       if (!this.db.objectStoreNames.contains(storeName)) {
         console.warn(`Store ${storeName} not found in database. Cannot save event.`)
         // Return the event anyway (don't reject) - caching is optional
-        return resolve(event)
+        return resolve(cleanEvent)
       }
       const transaction = this.db.transaction(storeName, 'readwrite')
       const store = transaction.objectStore(storeName)
 
-      const key = this.getReplaceableEventKeyFromEvent(event)
+      const key = this.getReplaceableEventKeyFromEvent(cleanEvent)
       const getRequest = store.get(key)
       getRequest.onsuccess = () => {
         const oldValue = getRequest.result as TValue<Event> | undefined
-        if (oldValue?.value && oldValue.value.created_at >= event.created_at) {
+        if (oldValue?.value && oldValue.value.created_at >= cleanEvent.created_at) {
           transaction.commit()
           return resolve(oldValue.value)
         }
-        const putRequest = store.put(this.formatValue(key, event))
+        const putRequest = store.put(this.formatValue(key, cleanEvent))
         putRequest.onsuccess = () => {
           transaction.commit()
-          resolve(event)
+          resolve(cleanEvent)
         }
 
         putRequest.onerror = (event) => {
@@ -541,7 +545,11 @@ class IndexedDbService {
   }
 
   private async putReplaceableEventWithMaster(event: Event, masterKey: string): Promise<Event> {
-    const storeName = this.getStoreNameByKind(event.kind)
+    // Remove relayStatuses before storing (it's metadata for logging, not part of the event)
+    const cleanEvent = { ...event }
+    delete (cleanEvent as any).relayStatuses
+    
+    const storeName = this.getStoreNameByKind(cleanEvent.kind)
     if (!storeName) {
       return Promise.reject('store name not found')
     }
@@ -562,16 +570,16 @@ class IndexedDbService {
       }
       if (!this.db.objectStoreNames.contains(storeName)) {
         console.warn(`Store ${storeName} not found in database. Cannot save event.`)
-        return resolve(event)
+        return resolve(cleanEvent)
       }
       const transaction = this.db.transaction(storeName, 'readwrite')
       const store = transaction.objectStore(storeName)
 
-      const key = this.getReplaceableEventKeyFromEvent(event)
+      const key = this.getReplaceableEventKeyFromEvent(cleanEvent)
       const getRequest = store.get(key)
       getRequest.onsuccess = () => {
         const oldValue = getRequest.result as TValue<Event> | undefined
-        if (oldValue?.value && oldValue.value.created_at >= event.created_at) {
+        if (oldValue?.value && oldValue.value.created_at >= cleanEvent.created_at) {
           // Update master key link even if event is not newer
           if (oldValue.masterPublicationKey !== masterKey) {
             const value = this.formatValue(key, oldValue.value)
@@ -582,12 +590,12 @@ class IndexedDbService {
           return resolve(oldValue.value)
         }
         // Store with master key link
-        const value = this.formatValue(key, event)
+        const value = this.formatValue(key, cleanEvent)
         value.masterPublicationKey = masterKey
         const putRequest = store.put(value)
         putRequest.onsuccess = () => {
           transaction.commit()
-          resolve(event)
+          resolve(cleanEvent)
         }
 
         putRequest.onerror = (event) => {
