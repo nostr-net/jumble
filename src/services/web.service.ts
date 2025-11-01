@@ -8,16 +8,27 @@ class WebService {
     async (urls) => {
       return await Promise.all(
         urls.map(async (url) => {
+          // Check if we should use proxy server to avoid CORS issues
+          const proxyServer = import.meta.env.VITE_PROXY_SERVER
+          const isProxyUrl = url.includes('/sites/')
+          
+          // Debug logging for proxy configuration
+          if (proxyServer) {
+            console.log(`[WebService] Proxy server configured: ${proxyServer}`)
+          } else {
+            console.warn(`[WebService] No proxy server configured. VITE_PROXY_SERVER is:`, import.meta.env.VITE_PROXY_SERVER)
+          }
+          
+          // If proxy is configured and URL isn't already proxied, use proxy
+          let fetchUrl = url
+          if (proxyServer && !isProxyUrl) {
+            fetchUrl = `${proxyServer}/sites/${encodeURIComponent(url)}`
+            console.log(`[WebService] Using proxy URL: ${fetchUrl}`)
+          } else {
+            console.log(`[WebService] Fetching directly (no proxy): ${fetchUrl}`)
+          }
+          
           try {
-            // Check if we should use proxy server to avoid CORS issues
-            const proxyServer = import.meta.env.VITE_PROXY_SERVER
-            const isProxyUrl = url.includes('/sites/')
-            
-            // If proxy is configured and URL isn't already proxied, use proxy
-            let fetchUrl = url
-            if (proxyServer && !isProxyUrl) {
-              fetchUrl = `${proxyServer}/sites/${encodeURIComponent(url)}`
-            }
             
             // Add timeout and better error handling
             const controller = new AbortController()
@@ -36,9 +47,10 @@ class WebService {
             clearTimeout(timeoutId)
             
             if (!res.ok) {
-              // Don't log 404s and CORS errors as they're expected
+              // Log all errors for debugging
+              console.warn(`[WebService] Failed to fetch metadata for ${url} (via ${fetchUrl}): ${res.status} ${res.statusText}`)
               if (res.status !== 404 && res.status !== 0) {
-                console.warn(`Failed to fetch metadata for ${url}: ${res.status} ${res.statusText}`)
+                console.warn(`[WebService] Response headers:`, Object.fromEntries(res.headers.entries()))
               }
               return {}
             }
@@ -58,17 +70,19 @@ class WebService {
 
             return { title, description, image }
           } catch (error) {
-            // Only log unexpected errors, not CORS or network issues
+            // Log all errors for debugging
             if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-              // This is likely a CORS error - don't log it
+              // This is likely a CORS error
+              console.warn(`[WebService] CORS/Network error fetching metadata for ${url} (via ${fetchUrl}):`, error.message)
               return {}
             }
             if (error instanceof Error && error.name === 'AbortError') {
-              // Timeout - don't log it
+              // Timeout
+              console.warn(`[WebService] Timeout fetching metadata for ${url} (via ${fetchUrl})`)
               return {}
             }
             // Log other unexpected errors
-            console.warn(`Unexpected error fetching metadata for ${url}:`, error)
+            console.warn(`[WebService] Unexpected error fetching metadata for ${url} (via ${fetchUrl}):`, error)
             return {}
           }
         })
