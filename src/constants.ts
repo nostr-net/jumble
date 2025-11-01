@@ -173,7 +173,7 @@ export const SUPPORTED_KINDS = [
   ExtendedKind.PUBLICATION,
   ExtendedKind.WIKI_ARTICLE,
   ExtendedKind.WIKI_ARTICLE_MARKDOWN,
-  ExtendedKind.PUBLICATION_CONTENT,
+  // ExtendedKind.PUBLICATION_CONTENT, // Excluded - publication content should only be embedded in publications
   // NIP-89 Application Handlers
   ExtendedKind.APPLICATION_HANDLER_RECOMMENDATION,
   ExtendedKind.APPLICATION_HANDLER_INFO

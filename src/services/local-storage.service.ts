@@ -211,10 +211,17 @@ class LocalStorageService {
           showKinds.push(ExtendedKind.WIKI_ARTICLE)
         }
       }
+      if (showKindsVersion < 5) {
+        // Remove publication content from existing users' filters (should only be embedded)
+        const pubContentIndex = showKinds.indexOf(ExtendedKind.PUBLICATION_CONTENT)
+        if (pubContentIndex !== -1) {
+          showKinds.splice(pubContentIndex, 1)
+        }
+      }
       this.showKinds = showKinds
     }
     window.localStorage.setItem(StorageKey.SHOW_KINDS, JSON.stringify(this.showKinds))
-    window.localStorage.setItem(StorageKey.SHOW_KINDS_VERSION, '4')
+    window.localStorage.setItem(StorageKey.SHOW_KINDS_VERSION, '5')
 
     this.hideContentMentioningMutedUsers =
       window.localStorage.getItem(StorageKey.HIDE_CONTENT_MENTIONING_MUTED_USERS) === 'true'

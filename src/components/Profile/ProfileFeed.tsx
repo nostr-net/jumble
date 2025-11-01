@@ -15,7 +15,6 @@ interface ProfileFeedProps {
 }
 
 const ProfileFeed = forwardRef<{ refresh: () => void }, ProfileFeedProps>(({ pubkey, topSpace, searchQuery = '' }, ref) => {
-  console.log('[ProfileFeed] Component rendered with pubkey:', pubkey)
   const [events, setEvents] = useState<Event[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [retryCount, setRetryCount] = useState(0)
@@ -45,14 +44,8 @@ const ProfileFeed = forwardRef<{ refresh: () => void }, ProfileFeedProps>(({ pub
       
       const uniqueRelays = Array.from(new Set(normalizedRelays))
       
-      console.log('[ProfileFeed] Comprehensive relay list:', uniqueRelays.length, 'relays')
-      console.log('[ProfileFeed] User relays (read):', userRelayList.read?.length || 0)
-      console.log('[ProfileFeed] User relays (write):', userRelayList.write?.length || 0)
-      console.log('[ProfileFeed] Favorite relays:', favoriteRelays?.length || 0)
-      
       return uniqueRelays
     } catch (error) {
-      console.warn('[ProfileFeed] Error building relay list, using fallback:', error)
       return FAST_READ_RELAY_URLS
     }
   }, [pubkey, favoriteRelays])
@@ -74,11 +67,8 @@ const ProfileFeed = forwardRef<{ refresh: () => void }, ProfileFeedProps>(({ pub
         setIsRefreshing(true)
       }
       
-      console.log('[ProfileFeed] Fetching events for pubkey:', pubkey, isRetry ? `(retry ${retryCount + 1}/${maxRetries})` : '')
-      
       // Build comprehensive relay list including user's personal relays
       const comprehensiveRelays = await buildComprehensiveRelayList()
-      console.log('[ProfileFeed] Using comprehensive relay list:', comprehensiveRelays.length, 'relays')
       
       // Now try to fetch text notes specifically
       const allEvents = await client.fetchEvents(comprehensiveRelays, {
@@ -86,13 +76,6 @@ const ProfileFeed = forwardRef<{ refresh: () => void }, ProfileFeedProps>(({ pub
         kinds: [1], // Text notes only
         limit: 100
       })
-      
-      console.log('[ProfileFeed] Fetched total events:', allEvents.length)
-      console.log('[ProfileFeed] Sample events:', allEvents.slice(0, 3).map(e => ({ id: e.id, content: e.content.substring(0, 50) + '...', tags: e.tags.slice(0, 3) })))
-      
-      // Show ALL events (both top-level posts and replies)
-      console.log('[ProfileFeed] Showing all events (posts + replies):', allEvents.length)
-      console.log('[ProfileFeed] Events sample:', allEvents.slice(0, 2).map(e => ({ id: e.id, content: e.content.substring(0, 50) + '...' })))
       
       const eventsToShow = allEvents
       
@@ -102,7 +85,6 @@ const ProfileFeed = forwardRef<{ refresh: () => void }, ProfileFeedProps>(({ pub
       // If initial load returns 0 events but it's not a retry, wait and retry once
       // This handles cases where relays return "too many concurrent REQS" and return empty results
       if (!isRetry && !isRefresh && eventsToShow.length === 0 && retryCount === 0) {
-        console.log('[ProfileFeed] Got 0 events on initial load, retrying after delay...')
         setTimeout(() => {
           setRetryCount(prev => prev + 1)
           fetchPosts(true)
@@ -134,7 +116,6 @@ const ProfileFeed = forwardRef<{ refresh: () => void }, ProfileFeedProps>(({ pub
       
       // If this is not a retry and we haven't exceeded max retries, schedule a retry
       if (!isRetry && retryCount < maxRetries) {
-        console.log('[ProfileFeed] Scheduling retry', retryCount + 1, 'of', maxRetries)
         // Use shorter delays for initial retries, then exponential backoff
         const delay = retryCount === 0 ? 1000 : retryCount === 1 ? 2000 : 3000
         setTimeout(() => {

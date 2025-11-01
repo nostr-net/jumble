@@ -94,6 +94,16 @@ export function suppressExpectedErrors() {
       return
     }
     
+    // Suppress WebSocket connection errors
+    if (message.includes('WebSocket connection to') || message.includes('failed:') || message.includes('Close received after close')) {
+      return
+    }
+    
+    // Suppress Ping timeout errors
+    if (message.includes('Ping timeout')) {
+      return
+    }
+    
     // Call original console.error for unexpected errors
     originalConsoleError.apply(console, args)
   }
@@ -112,8 +122,37 @@ export function suppressExpectedErrors() {
       suppressedErrors.add('react-devtools')
     }
     
+    // Suppress Workbox warnings
+    if (message.includes('workbox') && (
+      message.includes('will not be cached') ||
+      message.includes('Network request for') ||
+      message.includes('returned a response with status')
+    )) {
+      return
+    }
+    
     // Call original console.warn for unexpected warnings
     originalConsoleWarn.apply(console, args)
+  }
+  
+  // Override console.log to filter out expected logs
+  const originalConsoleLog = console.log
+  
+  console.log = (...args: any[]) => {
+    const message = args.join(' ')
+    
+    // Suppress Workbox logs
+    if (message.includes('workbox') || message.includes('[NoteStats]')) {
+      return
+    }
+    
+    // Suppress nostr-tools notices (ping, etc.)
+    if (message.includes('NOTICE from')) {
+      return
+    }
+    
+    // Call original console.log for unexpected logs
+    originalConsoleLog.apply(console, args)
   }
 }
 

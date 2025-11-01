@@ -7,20 +7,16 @@ export function useFetchWebMetadata(url: string) {
 
   useEffect(() => {
     if (!url) {
-      console.log('[useFetchWebMetadata] No URL provided')
       return
     }
-    
-    console.log(`[useFetchWebMetadata] Fetching metadata for URL: ${url}`)
     
     // Pass original URL - web service will handle proxy conversion
     webService.fetchWebMetadata(url)
       .then((metadata) => {
-        console.log(`[useFetchWebMetadata] Received metadata for ${url}:`, metadata)
         setMetadata(metadata)
       })
-      .catch((error) => {
-        console.error(`[useFetchWebMetadata] Error fetching metadata for ${url}:`, error)
+      .catch(() => {
+        // Silent fail
       })
   }, [url])
 

@@ -17,7 +17,6 @@ interface ProfileArticlesProps {
 }
 
 const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event[] }, ProfileArticlesProps>(({ pubkey, topSpace, searchQuery = '', kindFilter = 'all', onEventsChange }, ref) => {
-  console.log('[ProfileArticles] Component rendered with pubkey:', pubkey)
   const [events, setEvents] = useState<Event[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [retryCount, setRetryCount] = useState(0)
@@ -47,14 +46,8 @@ const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event
       
       const uniqueRelays = Array.from(new Set(normalizedRelays))
       
-      console.log('[ProfileArticles] Comprehensive relay list:', uniqueRelays.length, 'relays')
-      console.log('[ProfileArticles] User relays (read):', userRelayList.read?.length || 0)
-      console.log('[ProfileArticles] User relays (write):', userRelayList.write?.length || 0)
-      console.log('[ProfileArticles] Favorite relays:', favoriteRelays?.length || 0)
-      
       return uniqueRelays
     } catch (error) {
-      console.warn('[ProfileArticles] Error building relay list, using fallback:', error)
       return FAST_READ_RELAY_URLS
     }
   }, [pubkey, favoriteRelays])
@@ -76,11 +69,8 @@ const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event
         setIsRefreshing(true)
       }
       
-      console.log('[ProfileArticles] Fetching events for pubkey:', pubkey, isRetry ? `(retry ${retryCount + 1}/${maxRetries})` : '')
-      
       // Build comprehensive relay list including user's personal relays
       const comprehensiveRelays = await buildComprehensiveRelayList()
-      console.log('[ProfileArticles] Using comprehensive relay list:', comprehensiveRelays.length, 'relays')
       
       // Fetch longform articles (kind 30023), wiki articles (kinds 30817, 30818), publications (kind 30040), and highlights (kind 9802)
       const allEvents = await client.fetchEvents(comprehensiveRelays, {
@@ -88,13 +78,6 @@ const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event
         kinds: [kinds.LongFormArticle, 30817, 30818, 30040, kinds.Highlights], // LongFormArticle, WikiArticle (markdown), WikiArticle (asciidoc), Publication, and Highlights
         limit: 100
       })
-      
-      console.log('[ProfileArticles] Fetched total events:', allEvents.length)
-      console.log('[ProfileArticles] Sample events:', allEvents.slice(0, 3).map(e => ({ id: e.id, kind: e.kind, content: e.content.substring(0, 50) + '...', tags: e.tags.slice(0, 3) })))
-      
-      // Show ALL events (longform articles, wiki articles, publications, and highlights)
-      console.log('[ProfileArticles] Showing all events (articles + publications + highlights):', allEvents.length)
-      console.log('[ProfileArticles] Events sample:', allEvents.slice(0, 2).map(e => ({ id: e.id, kind: e.kind, content: e.content.substring(0, 50) + '...' })))
       
       const eventsToShow = allEvents
       
@@ -104,7 +87,6 @@ const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event
       // If initial load returns 0 events but it's not a retry, wait and retry once
       // This handles cases where relays return "too many concurrent REQS" and return empty results
       if (!isRetry && !isRefresh && eventsToShow.length === 0 && retryCount === 0) {
-        console.log('[ProfileArticles] Got 0 events on initial load, retrying after delay...')
         setTimeout(() => {
           setRetryCount(prev => prev + 1)
           fetchArticles(true)
@@ -136,7 +118,6 @@ const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event
       
       // If this is not a retry and we haven't exceeded max retries, schedule a retry
       if (!isRetry && retryCount < maxRetries) {
-        console.log('[ProfileArticles] Scheduling retry', retryCount + 1, 'of', maxRetries)
         // Use shorter delays for initial retries, then exponential backoff
         const delay = retryCount === 0 ? 1000 : retryCount === 1 ? 2000 : 3000
         setTimeout(() => {

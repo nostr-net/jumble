@@ -553,8 +553,8 @@ class ClientService extends EventTarget {
             .then((sub) => {
               sub.close()
             })
-            .catch((err) => {
-              console.error(err)
+            .catch(() => {
+              // Silent fail
             })
         })
       }
@@ -895,7 +895,6 @@ class ClientService extends EventTarget {
       this.trendingNotesCache = events
       return this.trendingNotesCache
     } catch (error) {
-      console.error('fetchTrendingNotes error', error)
       return []
     }
   }
@@ -1020,7 +1019,6 @@ class ClientService extends EventTarget {
       
       return relays
     } catch (error) {
-      console.warn('[ClientService] Error fetching user favorite relays:', error)
       return []
     }
   }
@@ -1058,7 +1056,7 @@ class ClientService extends EventTarget {
           })
         }
       } catch (error) {
-        console.warn('[ClientService] Error fetching user relay list:', error)
+        // Silent fail
       }
     }
     
@@ -1473,7 +1471,7 @@ class ClientService extends EventTarget {
           }
         })
       } catch (error) {
-        console.warn('[ClientService] Error fetching cache relay events:', error)
+        // Silent fail
       }
     }
     

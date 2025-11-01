@@ -86,7 +86,6 @@ class NoteStatsService {
       this.batchTimeout = null
     }
     
-    console.log('[NoteStats] Processing batch of', eventsToProcess.length, 'events')
     
     // Process all events in the batch
     await Promise.all(eventsToProcess.map(eventId => this.processSingleEvent(eventId)))

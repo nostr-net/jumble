@@ -75,7 +75,8 @@ export default function Note({
     ExtendedKind.GROUP_METADATA,
     ExtendedKind.PUBLIC_MESSAGE,
     ExtendedKind.ZAP_REQUEST,
-    ExtendedKind.ZAP_RECEIPT
+    ExtendedKind.ZAP_RECEIPT,
+    ExtendedKind.PUBLICATION_CONTENT // Only for rendering embedded content, not in feeds
   ]
   
   
