@@ -111,14 +111,14 @@ export default function Tabs({
         deepBrowsing && lastScrollTop > threshold ? '-translate-y-[calc(100%+12rem)]' : ''
       )}
     >
-      <div className="flex-1 w-0 overflow-hidden">
-        <div className="flex w-fit relative">
+      <div className="flex-1 w-0 overflow-x-auto scrollbar-hide">
+        <div className="flex w-fit relative min-w-full">
           {tabs.map((tab, index) => (
             <div
               key={tab.value}
               ref={(el) => (tabRefs.current[index] = el)}
               className={cn(
-                `w-fit text-center py-2 px-6 my-1 font-semibold whitespace-nowrap clickable cursor-pointer rounded-lg`,
+                `w-fit text-center py-2 px-6 my-1 font-semibold whitespace-nowrap clickable cursor-pointer rounded-lg shrink-0`,
                 value === tab.value ? '' : 'text-muted-foreground'
               )}
               onClick={() => {

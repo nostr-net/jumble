@@ -1,11 +1,12 @@
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { MEDIA_AUTO_LOAD_POLICY, NOTIFICATION_LIST_STYLE } from '@/constants'
+import { FONT_SIZE, MEDIA_AUTO_LOAD_POLICY, NOTIFICATION_LIST_STYLE } from '@/constants'
 import { LocalizedLanguageNames, TLanguage } from '@/i18n'
 import SecondaryPageLayout from '@/layouts/SecondaryPageLayout'
 import { cn, isSupportCheckConnectionType } from '@/lib/utils'
 import { useContentPolicy } from '@/providers/ContentPolicyProvider'
+import { useFontSize } from '@/providers/FontSizeProvider'
 import { useTheme } from '@/providers/ThemeProvider'
 import { useUserPreferences } from '@/providers/UserPreferencesProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
@@ -19,6 +20,7 @@ const GeneralSettingsPage = forwardRef(({ index, hideTitlebar = false }: { index
   const { t, i18n } = useTranslation()
   const [language, setLanguage] = useState<TLanguage>(i18n.language as TLanguage)
   const { themeSetting, setThemeSetting } = useTheme()
+  const { fontSize, setFontSize } = useFontSize()
   const {
     autoplay,
     setAutoplay,
@@ -69,6 +71,21 @@ const GeneralSettingsPage = forwardRef(({ index, hideTitlebar = false }: { index
               <SelectItem value="system">{t('System')}</SelectItem>
               <SelectItem value="light">{t('Light')}</SelectItem>
               <SelectItem value="dark">{t('Dark')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingItem>
+        <SettingItem>
+          <Label htmlFor="font-size" className="text-base font-normal">
+            {t('Font size')}
+          </Label>
+          <Select defaultValue={FONT_SIZE.MEDIUM} value={fontSize} onValueChange={setFontSize}>
+            <SelectTrigger id="font-size" className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={FONT_SIZE.SMALL}>{t('Small')}</SelectItem>
+              <SelectItem value={FONT_SIZE.MEDIUM}>{t('Medium')}</SelectItem>
+              <SelectItem value={FONT_SIZE.LARGE}>{t('Large')}</SelectItem>
             </SelectContent>
           </Select>
         </SettingItem>

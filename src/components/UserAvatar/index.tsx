@@ -44,8 +44,12 @@ export default function UserAvatar({
 
   return (
     <Avatar 
+      data-user-avatar
       className={cn('shrink-0 cursor-pointer', UserAvatarSizeCnMap[size], className)}
-      onClick={() => navigateToProfile(toProfile(pubkey))}
+      onClick={(e) => {
+        e.stopPropagation()
+        navigateToProfile(toProfile(pubkey))
+      }}
     >
       <AvatarImage src={avatar} className="object-cover object-center" />
       <AvatarFallback>

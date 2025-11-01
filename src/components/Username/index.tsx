@@ -38,9 +38,13 @@ export default function Username({
 
   return (
     <span 
+      data-username
       className={cn('truncate hover:underline cursor-pointer', className)}
       style={{ verticalAlign: 'baseline', ...style }}
-      onClick={() => navigateToProfile(toProfile(pubkey))}
+      onClick={(e) => {
+        e.stopPropagation()
+        navigateToProfile(toProfile(pubkey))
+      }}
     >
       {showAt && '@'}
       {username}

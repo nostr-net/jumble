@@ -7,6 +7,7 @@ import { ContentPolicyProvider } from '@/providers/ContentPolicyProvider'
 import { DeletedEventProvider } from '@/providers/DeletedEventProvider'
 import { FavoriteRelaysProvider } from '@/providers/FavoriteRelaysProvider'
 import { FeedProvider } from '@/providers/FeedProvider'
+import { FontSizeProvider } from '@/providers/FontSizeProvider'
 import { FollowListProvider } from '@/providers/FollowListProvider'
 import { GroupListProvider } from '@/providers/GroupListProvider'
 import { InterestListProvider } from '@/providers/InterestListProvider'
@@ -26,8 +27,9 @@ import { PageManager } from './PageManager'
 export default function App(): JSX.Element {
   return (
     <ThemeProvider>
-      <ContentPolicyProvider>
-        <ScreenSizeProvider>
+      <FontSizeProvider>
+        <ContentPolicyProvider>
+          <ScreenSizeProvider>
           <DeletedEventProvider>
             <NostrProvider>
               <ZapProvider>
@@ -64,6 +66,7 @@ export default function App(): JSX.Element {
           </DeletedEventProvider>
         </ScreenSizeProvider>
       </ContentPolicyProvider>
+      </FontSizeProvider>
     </ThemeProvider>
   )
 }

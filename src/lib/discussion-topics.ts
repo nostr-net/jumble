@@ -276,19 +276,24 @@ export function buildGroupDisplayName(
   groupId: string,
   groupRelay: string | null
 ): string {
+  let displayName: string
+  
   if (!groupRelay) {
-    return groupId
+    displayName = groupId
+  } else {
+    // Extract hostname from relay URL for cleaner display
+    try {
+      const url = new URL(groupRelay)
+      const hostname = url.hostname
+      displayName = `${hostname}'${groupId}`
+    } catch {
+      // Fallback to full relay URL if parsing fails
+      displayName = `${groupRelay}'${groupId}`
+    }
   }
   
-  // Extract hostname from relay URL for cleaner display
-  try {
-    const url = new URL(groupRelay)
-    const hostname = url.hostname
-    return `${hostname}'${groupId}`
-  } catch {
-    // Fallback to full relay URL if parsing fails
-    return `${groupRelay}'${groupId}`
-  }
+  // Truncate to 20 characters
+  return displayName.length > 20 ? displayName.substring(0, 20) : displayName
 }
 
 /**

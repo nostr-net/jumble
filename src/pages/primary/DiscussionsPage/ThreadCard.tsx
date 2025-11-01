@@ -93,17 +93,11 @@ export default function ThreadCard({
                 <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 break-words">
                   {title}
                 </h3>
-                <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground mb-2">
                   <div className="flex items-center gap-1">
                     <topicInfo.icon className="w-4 h-4" />
                     <span className="text-xs">{topicInfo.id}</span>
                   </div>
-                  {groupInfo.isGroupDiscussion && groupInfo.groupDisplayName && (
-                    <Badge variant="outline" className="text-xs">
-                      <Users className="w-3 h-3 mr-1" />
-                      {groupInfo.groupDisplayName}
-                    </Badge>
-                  )}
                   {allTopics.slice(0, 3).map(topic => (
                     <Badge key={topic} variant="outline" className="text-xs">
                       <Hash className="w-3 h-3 mr-1" />
@@ -111,6 +105,14 @@ export default function ThreadCard({
                     </Badge>
                   ))}
                 </div>
+                {groupInfo.isGroupDiscussion && groupInfo.groupDisplayName && (
+                  <div className="mb-2">
+                    <Badge variant="outline" className="text-xs">
+                      <Users className="w-3 h-3 mr-1" />
+                      {groupInfo.groupDisplayName}
+                    </Badge>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -146,17 +148,11 @@ export default function ThreadCard({
                     {title}
                   </h3>
                 </div>
-                <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center flex-wrap gap-2 text-sm text-muted-foreground mb-2">
                   <Badge variant="secondary" className="text-xs">
                     <topicInfo.icon className="w-3 h-3 mr-1" />
                     {topicInfo.label}
                   </Badge>
-                  {groupInfo.isGroupDiscussion && groupInfo.groupDisplayName && (
-                    <Badge variant="outline" className="text-xs">
-                      <Users className="w-3 h-3 mr-1" />
-                      {groupInfo.groupDisplayName}
-                    </Badge>
-                  )}
                   {allTopics.slice(0, 3).map(topic => (
                     <Badge key={topic} variant="outline" className="text-xs">
                       <Hash className="w-3 h-3 mr-1" />
@@ -173,6 +169,14 @@ export default function ThreadCard({
                     {t('last updated')}: {lastCommentAgo || lastVoteAgo || timeAgo}
                   </div>
                 </div>
+                {groupInfo.isGroupDiscussion && groupInfo.groupDisplayName && (
+                  <div className="mb-2">
+                    <Badge variant="outline" className="text-xs">
+                      <Users className="w-3 h-3 mr-1" />
+                      {groupInfo.groupDisplayName}
+                    </Badge>
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground shrink-0">

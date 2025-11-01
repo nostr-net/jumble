@@ -24,7 +24,7 @@ import { simplifyUrl } from '@/lib/url'
 import relaySelectionService from '@/services/relay-selection.service'
 import dayjs from 'dayjs'
 import { extractHashtagsFromContent, normalizeTopic } from '@/lib/discussion-topics'
-import DiscussionContent from '@/components/Note/DiscussionContent'
+import MarkdownArticle from '@/components/Note/MarkdownArticle/MarkdownArticle'
 import RelayIcon from '@/components/RelayIcon'
 import logger from '@/lib/logger'
 
@@ -711,25 +711,24 @@ export default function CreateThreadDialog({
                           </div>
                         </div>
                         {/* Preview of the content */}
-                        <div className="prose prose-sm max-w-none dark:prose-invert">
-                          <DiscussionContent 
-                            event={{
-                              id: 'preview',
-                              pubkey: pubkey || '',
-                              created_at: Math.floor(Date.now() / 1000),
-                              kind: 11,
-                              tags: [
-                                ['title', title],
-                                ['t', selectedTopic],
-                                ...(isReadingGroup ? [['t', 'readings']] : []),
-                                ...(author ? [['author', author]] : []),
-                                ...(subject ? [['subject', subject]] : [])
-                              ],
-                              content: content,
-                              sig: ''
-                            }}
-                          />
-                        </div>
+                        <MarkdownArticle 
+                          event={{
+                            id: 'preview',
+                            pubkey: pubkey || '',
+                            created_at: Math.floor(Date.now() / 1000),
+                            kind: 11,
+                            tags: [
+                              ['title', title],
+                              ['t', selectedTopic],
+                              ...(isReadingGroup ? [['t', 'readings']] : []),
+                              ...(author ? [['author', author]] : []),
+                              ...(subject ? [['subject', subject]] : [])
+                            ],
+                            content: content,
+                            sig: ''
+                          }}
+                          hideMetadata={true}
+                        />
                       </div>
                     ) : (
                       <div className="text-center text-muted-foreground py-8">

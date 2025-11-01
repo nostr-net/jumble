@@ -73,6 +73,7 @@ export type TConfig = {
 
 export type TThemeSetting = 'light' | 'dark' | 'system'
 export type TTheme = 'light' | 'dark'
+export type TFontSize = 'small' | 'medium' | 'large'
 
 export type TDraftEvent = Pick<Event, 'content' | 'created_at' | 'kind' | 'tags'>
 

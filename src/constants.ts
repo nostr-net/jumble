@@ -19,6 +19,7 @@ export const RECOMMENDED_BLOSSOM_SERVERS = [
 export const StorageKey = {
   VERSION: 'version',
   THEME_SETTING: 'themeSetting',
+  FONT_SIZE: 'fontSize',
   RELAY_SETS: 'relaySets',
   ACCOUNTS: 'accounts',
   CURRENT_ACCOUNT: 'currentAccount',
@@ -62,6 +63,12 @@ export const StorageKey = {
   ACTIVE_RELAY_SET_ID: 'activeRelaySetId', // deprecated
   FEED_TYPE: 'feedType' // deprecated
 }
+
+export const FONT_SIZE = {
+  SMALL: 'small',
+  MEDIUM: 'medium',
+  LARGE: 'large'
+} as const
 
 export const ApplicationDataKey = {
   NOTIFICATIONS_SEEN_AT: 'seen_notifications_at'

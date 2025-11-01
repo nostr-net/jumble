@@ -13,6 +13,7 @@ import {
   TAccount,
   TAccountPointer,
   TFeedInfo,
+  TFontSize,
   TMediaAutoLoadPolicy,
   TMediaUploadServiceConfig,
   TNoteListMode,
@@ -27,6 +28,7 @@ class LocalStorageService {
 
   private relaySets: TRelaySet[] = []
   private themeSetting: TThemeSetting = 'system'
+  private fontSize: TFontSize = 'medium'
   private accounts: TAccount[] = []
   private currentAccount: TAccount | null = null
   private noteListMode: TNoteListMode = 'posts'
@@ -69,6 +71,8 @@ class LocalStorageService {
   init() {
     this.themeSetting =
       (window.localStorage.getItem(StorageKey.THEME_SETTING) as TThemeSetting) ?? 'system'
+    this.fontSize =
+      (window.localStorage.getItem(StorageKey.FONT_SIZE) as TFontSize) ?? 'medium'
     const accountsStr = window.localStorage.getItem(StorageKey.ACCOUNTS)
     this.accounts = accountsStr ? JSON.parse(accountsStr) : []
     const currentAccountStr = window.localStorage.getItem(StorageKey.CURRENT_ACCOUNT)
@@ -291,6 +295,15 @@ class LocalStorageService {
   setThemeSetting(themeSetting: TThemeSetting) {
     window.localStorage.setItem(StorageKey.THEME_SETTING, themeSetting)
     this.themeSetting = themeSetting
+  }
+
+  getFontSize() {
+    return this.fontSize
+  }
+
+  setFontSize(fontSize: TFontSize) {
+    window.localStorage.setItem(StorageKey.FONT_SIZE, fontSize)
+    this.fontSize = fontSize
   }
 
   getNoteListMode() {

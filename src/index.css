@@ -91,12 +91,12 @@
     --secondary: 240 4.8% 94%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 94%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --muted-foreground: 240 5% 35%;
     --accent: 240 4.8% 94%;
     --accent-foreground: 240 5.9% 10%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
+    --border: 240 5.9% 85%;
     --input: 240 5.9% 90%;
     --ring: 140 70% 28%;
     --chart-1: 12 76% 61%;
@@ -120,12 +120,12 @@
     --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
     --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
+    --muted-foreground: 240 5% 75%;
     --accent: 240 3.7% 15.9%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
+    --border: 240 3.7% 25%;
     --input: 240 3.7% 15.9%;
     --ring: 140 70% 40%;
     --chart-1: 220 70% 50%;
@@ -138,6 +138,46 @@
   .dark input[type='datetime-local']::-webkit-calendar-picker-indicator {
     filter: invert(1) brightness(1.5);
   }
+
+  /* Focus indicators for accessibility */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Ensure proper contrast for interactive elements */
+  button:not(:disabled),
+  a,
+  [role="button"] {
+    transition: opacity 0.2s;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* Font Size Adjustments */
+.font-size-small {
+  font-size: 87.5% !important; /* 14px base */
+}
+
+.font-size-medium {
+  font-size: 100% !important; /* 16px base */
+}
+
+.font-size-large {
+  font-size: 112.5% !important; /* 18px base */
+}
+
+/* Apply font size to content areas */
+.font-size-small .prose,
+.font-size-medium .prose,
+.font-size-large .prose {
+  font-size: var(--content-font-size, 1rem);
 }
 
 /* AsciiDoc Table of Contents Styling */

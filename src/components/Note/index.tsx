@@ -20,7 +20,6 @@ import UserAvatar from '../UserAvatar'
 import Username from '../Username'
 import { MessageSquare } from 'lucide-react'
 import CommunityDefinition from './CommunityDefinition'
-import DiscussionContent from './DiscussionContent'
 import GroupMetadata from './GroupMetadata'
 import Highlight from './Highlight'
 
@@ -142,7 +141,7 @@ export default function Note({
     content = (
       <>
         <h3 className="mt-2 text-lg font-semibold leading-tight break-words">{title}</h3>
-        <DiscussionContent className="mt-2" event={event} />
+        <MarkdownArticle className="mt-2" event={event} hideMetadata={true} />
       </>
     )
   } else if (event.kind === ExtendedKind.POLL) {
@@ -183,7 +182,7 @@ export default function Note({
       onClick={(e) => {
         // Don't navigate if clicking on interactive elements
         const target = e.target as HTMLElement
-        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a') || target.closest('[data-embedded-note]') || target.closest('[data-parent-note-preview]')) {
+        if (target.closest('button') || target.closest('[role="button"]') || target.closest('a') || target.closest('[data-embedded-note]') || target.closest('[data-parent-note-preview]') || target.closest('[data-user-avatar]') || target.closest('[data-username]')) {
           return
         }
         navigateToNote(toNote(event))
