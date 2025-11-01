@@ -56,6 +56,11 @@ class WebService {
             }
             
             const html = await res.text()
+            
+            // Debug: Log a snippet of the HTML to see what we're getting
+            const htmlSnippet = html.substring(0, 500)
+            console.log(`[WebService] Received HTML snippet for ${url} (via ${fetchUrl}):`, htmlSnippet)
+            
             const parser = new DOMParser()
             const doc = parser.parseFromString(html, 'text/html')
 

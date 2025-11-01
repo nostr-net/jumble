@@ -6,7 +6,7 @@ import WebPreview from '@/components/WebPreview'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNote, toNoteList, toProfile } from '@/lib/link'
 import { useMediaExtraction } from '@/hooks'
-import { cleanUrl, isImage, isMedia } from '@/lib/url'
+import { cleanUrl, isImage, isMedia, isVideo, isAudio } from '@/lib/url'
 import { ExternalLink } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
 import { ExtendedKind } from '@/constants'
@@ -22,6 +22,7 @@ import NostrNode from './NostrNode'
 import { remarkNostr } from './remarkNostr'
 import { remarkHashtags } from './remarkHashtags'
 import { remarkUnwrapImages } from './remarkUnwrapImages'
+import { preprocessMediaLinks } from './preprocessMediaLinks'
 import { Components } from './types'
 
 export default function MarkdownArticle({
@@ -40,6 +41,11 @@ export default function MarkdownArticle({
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   const contentRef = useRef<HTMLDivElement>(null)
   
+  // Preprocess content to convert plain media URLs to markdown syntax
+  const processedContent = useMemo(() => {
+    return preprocessMediaLinks(event.content)
+  }, [event.content])
+  
   // Use unified media extraction service
   const extractedMedia = useMediaExtraction(event, event.content)
   
@@ -53,6 +59,17 @@ export default function MarkdownArticle({
       hashtags.add(match[1].toLowerCase())
     }
     return hashtags
+  }, [event.content])
+  
+  // Extract media URLs that are in the content (so we don't render them twice)
+  const mediaUrlsInContent = useMemo(() => {
+    const urls = new Set<string>()
+    const mediaUrlRegex = /(https?:\/\/[^\s<>"']+\.(jpg|jpeg|png|gif|webp|svg|heic|mp4|webm|ogg|mov|avi|wmv|flv|mkv|m4v|mp3|wav|flac|aac|m4a|opus|wma)(\?[^\s<>"']*)?)/gi
+    let match
+    while ((match = mediaUrlRegex.exec(event.content)) !== null) {
+      urls.add(cleanUrl(match[0]))
+    }
+    return urls
   }, [event.content])
   
   // All images from useMediaExtraction are already cleaned and deduplicated
@@ -205,9 +222,22 @@ export default function MarkdownArticle({
             child => React.isValidElement(child) && child.type === Image
           )
           
-          // If link contains an image, let the image handle the click for lightbox
-          // Just wrap it in an anchor that won't interfere with image clicks
+          // If link contains only an image, render just the image without the link wrapper
+          // This prevents the image from opening as a file - clicking opens lightbox instead
           if (hasImage) {
+            // Check if this is just an image with no other content
+            const childrenArray = React.Children.toArray(children)
+            const onlyImage = childrenArray.length === 1 && 
+                             React.isValidElement(childrenArray[0]) && 
+                             childrenArray[0].type === Image
+            
+            if (onlyImage) {
+              // Just render the image directly, no link wrapper
+              return <>{children}</>
+            }
+            
+            // If there's text along with the image, keep the link wrapper
+            // but prevent navigation when clicking the image itself
             return (
               <a
                 {...props}
@@ -239,13 +269,9 @@ export default function MarkdownArticle({
           const isRegularUrl = href.startsWith('http://') || href.startsWith('https://')
           const shouldShowPreview = isRegularUrl && !isImage(cleanedHref) && !isMedia(cleanedHref)
           
-          // For regular URLs, wrap in a component that shows WebPreview
+          // For regular URLs, show WebPreview directly (no wrapper)
           if (shouldShowPreview) {
-            return (
-              <span className="inline-block mt-2">
-                <WebPreview url={cleanedHref} className="w-full max-w-md" />
-              </span>
-            )
+            return <WebPreview url={cleanedHref} className="mt-2" />
           }
           
           return (
@@ -381,8 +407,20 @@ export default function MarkdownArticle({
         img: ({ src }) => {
           if (!src) return null
           
-          // Find the index of this image in allImages (includes content and tags, already deduplicated)
           const cleanedSrc = cleanUrl(src)
+          
+          // Check if this is actually a video or audio URL (converted by remarkMedia)
+          if (cleanedSrc && (isVideo(cleanedSrc) || isAudio(cleanedSrc))) {
+            return (
+              <MediaPlayer
+                src={cleanedSrc}
+                className="max-w-[400px] my-2"
+                mustLoad={false}
+              />
+            )
+          }
+          
+          // Find the index of this image in allImages (includes content and tags, already deduplicated)
           const imageIndex = cleanedSrc 
             ? allImages.findIndex(img => cleanUrl(img.url) === cleanedSrc)
             : -1
@@ -394,7 +432,7 @@ export default function MarkdownArticle({
               image={{ url: src, pubkey: event.pubkey }}
               className="max-w-[400px] rounded-lg my-2 cursor-zoom-in"
               classNames={{
-                wrapper: 'rounded-lg',
+                wrapper: 'rounded-lg inline-block',
                 errorPlaceholder: 'aspect-square h-[30vh]'
               }}
               data-markdown-image="true"
@@ -565,6 +603,16 @@ export default function MarkdownArticle({
           color: #86efac !important; /* Tailwind green-300 */
           text-decoration: underline !important;
         }
+        /* Make images display inline-block so they can wrap horizontally */
+        .prose span[data-markdown-image] {
+          display: inline-block !important;
+          margin: 0.5rem !important;
+        }
+        /* When images are in paragraphs, make those paragraphs inline or flex */
+        .prose p:has(span[data-markdown-image]:only-child) {
+          display: inline-block;
+          width: 100%;
+        }
       `}</style>
               <div
                 ref={contentRef}
@@ -608,20 +656,21 @@ export default function MarkdownArticle({
         )
       })()}
       <Markdown remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapImages, remarkNostr, remarkHashtags]} components={components}>
-        {event.content}
+        {processedContent}
       </Markdown>
       
       {/* Inline Media - Show for non-article content (kinds 1, 11, 1111) */}
-      {!showImageGallery && extractedMedia.videos.length > 0 && (
+      {/* Only render media that's not already in the content (from tags, imeta, etc.) */}
+      {!showImageGallery && extractedMedia.videos.filter(v => !mediaUrlsInContent.has(v.url)).length > 0 && (
         <div className="space-y-4 mt-4">
-          {extractedMedia.videos.map((video) => (
+          {extractedMedia.videos.filter(v => !mediaUrlsInContent.has(v.url)).map((video) => (
             <MediaPlayer key={video.url} src={video.url} mustLoad={true} className="w-full" />
           ))}
         </div>
       )}
-      {!showImageGallery && extractedMedia.audio.length > 0 && (
+      {!showImageGallery && extractedMedia.audio.filter(a => !mediaUrlsInContent.has(a.url)).length > 0 && (
         <div className="space-y-4 mt-4">
-          {extractedMedia.audio.map((audio) => (
+          {extractedMedia.audio.filter(a => !mediaUrlsInContent.has(a.url)).map((audio) => (
             <MediaPlayer key={audio.url} src={audio.url} mustLoad={true} className="w-full" />
           ))}
         </div>
