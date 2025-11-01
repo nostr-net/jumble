@@ -1,7 +1,6 @@
 import { getUsingClient } from '@/lib/event'
 import { NostrEvent } from 'nostr-tools'
 import { useMemo } from 'react'
-import { Badge } from '@/components/ui/badge'
 
 export default function ClientTag({ event }: { event: NostrEvent }) {
   const usingClient = useMemo(() => getUsingClient(event), [event])
@@ -9,8 +8,8 @@ export default function ClientTag({ event }: { event: NostrEvent }) {
   if (!usingClient) return null
 
   return (
-    <Badge variant="outline" className="text-xs px-2 py-1 h-auto">
+    <span className="text-xs text-muted-foreground/70 px-1.5">
       {usingClient}
-    </Badge>
+    </span>
   )
 }
