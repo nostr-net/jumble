@@ -25,31 +25,43 @@ export default function Tabs({
   const { deepBrowsing, lastScrollTop } = useDeepBrowsing()
   const tabRefs = useRef<(HTMLDivElement | null)[]>([])
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [indicatorStyle, setIndicatorStyle] = useState({ width: 0, left: 0 })
+  const tabsContainerRef = useRef<HTMLDivElement | null>(null)
+  const [indicatorStyle, setIndicatorStyle] = useState({ width: 0, left: 0, top: 0 })
   const isUpdatingRef = useRef(false)
-  const lastStyleRef = useRef({ width: 0, left: 0 })
+  const lastStyleRef = useRef({ width: 0, left: 0, top: 0 })
 
   const updateIndicatorPosition = useCallback(() => {
     // Prevent multiple simultaneous updates
     if (isUpdatingRef.current) return
     
     const activeIndex = tabs.findIndex((tab) => tab.value === value)
-    if (activeIndex >= 0 && tabRefs.current[activeIndex]) {
+    if (activeIndex >= 0 && tabRefs.current[activeIndex] && tabsContainerRef.current) {
       const activeTab = tabRefs.current[activeIndex]
-      const { offsetWidth, offsetLeft } = activeTab
+      const tabsContainer = tabsContainerRef.current
+      const { offsetWidth, offsetLeft, offsetHeight } = activeTab
       const padding = 24 // 12px padding on each side
+      
+      // Get the container's top position relative to the viewport
+      const containerTop = tabsContainer.getBoundingClientRect().top
+      const tabTop = activeTab.getBoundingClientRect().top
+      
+      // Calculate the indicator's top position relative to the container
+      // Position it at the bottom of the active tab's row
+      const relativeTop = tabTop - containerTop + offsetHeight
       const newWidth = offsetWidth - padding
       const newLeft = offsetLeft + padding / 2
+      const newTop = relativeTop - 4 // 4px for the indicator height (1px) + spacing
       
       // Only update if values actually changed
       if (
         lastStyleRef.current.width !== newWidth ||
-        lastStyleRef.current.left !== newLeft
+        lastStyleRef.current.left !== newLeft ||
+        lastStyleRef.current.top !== newTop
       ) {
         isUpdatingRef.current = true
-        lastStyleRef.current = { width: newWidth, left: newLeft }
+        lastStyleRef.current = { width: newWidth, left: newLeft, top: newTop }
         
-        setIndicatorStyle({ width: newWidth, left: newLeft })
+        setIndicatorStyle({ width: newWidth, left: newLeft, top: newTop })
         
         // Reset flag after state update completes
         requestAnimationFrame(() => {
@@ -70,7 +82,7 @@ export default function Tabs({
   }, [updateIndicatorPosition])
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current || !tabsContainerRef.current) return
 
     const resizeObserver = new ResizeObserver(() => {
       requestAnimationFrame(() => {
@@ -96,6 +108,10 @@ export default function Tabs({
     tabRefs.current.forEach((tab) => {
       if (tab) resizeObserver.observe(tab)
     })
+    
+    if (tabsContainerRef.current) {
+      resizeObserver.observe(tabsContainerRef.current)
+    }
 
     return () => {
       resizeObserver.disconnect()
@@ -112,7 +128,7 @@ export default function Tabs({
       )}
     >
       <div className="flex-1 w-0">
-        <div className="flex flex-wrap relative gap-1">
+        <div ref={tabsContainerRef} className="flex flex-wrap relative gap-1">
           {tabs.map((tab, index) => (
             <div
               key={tab.value}
@@ -129,10 +145,11 @@ export default function Tabs({
             </div>
           ))}
           <div
-            className="absolute bottom-0 h-1 bg-primary rounded-full transition-all duration-500"
+            className="absolute h-1 bg-primary rounded-full transition-all duration-500"
             style={{
               width: `${indicatorStyle.width}px`,
-              left: `${indicatorStyle.left}px`
+              left: `${indicatorStyle.left}px`,
+              top: `${indicatorStyle.top}px`
             }}
           />
         </div>
