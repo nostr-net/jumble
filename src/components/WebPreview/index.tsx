@@ -10,7 +10,6 @@ import { ExternalLink } from 'lucide-react'
 import { nip19, kinds } from 'nostr-tools'
 import { useMemo } from 'react'
 import Image from '../Image'
-import { SimpleUserAvatar } from '../UserAvatar'
 import Username from '../Username'
 
 // Helper function to get event type name
@@ -168,7 +167,6 @@ export default function WebPreview({ url, className }: { url: string; className?
             <div className="flex items-center gap-2 mb-1">
               {fetchedEvent ? (
                 <>
-                  <SimpleUserAvatar userId={fetchedEvent.pubkey} size="xSmall" />
                   <Username userId={fetchedEvent.pubkey} className="text-xs" />
                   <span className="text-xs text-muted-foreground">•</span>
                   <span className="text-xs text-muted-foreground">{eventTypeName}</span>
@@ -211,11 +209,6 @@ export default function WebPreview({ url, className }: { url: string; className?
             window.open(url, '_blank')
           }}
         >
-          {fetchedProfile ? (
-            <SimpleUserAvatar userId={fetchedProfile.pubkey} size="small" />
-          ) : (
-            <div className="w-7 h-7 rounded-full bg-muted flex-shrink-0" />
-          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               {fetchedProfile ? (

@@ -59,12 +59,17 @@ export function isValidPubkey(pubkey: string) {
 }
 
 const pubkeyImageCache = new LRUCache<string, string>({ max: 1000 })
+
+// Version identifier to force cache invalidation when algorithm changes
+const CACHE_VERSION = 'v2'
+
 export function generateImageByPubkey(pubkey: string): string {
-  if (pubkeyImageCache.has(pubkey)) {
-    return pubkeyImageCache.get(pubkey)!
+  const cacheKey = `${CACHE_VERSION}:${pubkey}`
+  if (pubkeyImageCache.has(cacheKey)) {
+    return pubkeyImageCache.get(cacheKey)!
   }
 
-  const paddedPubkey = pubkey.padEnd(2, '0')
+  const paddedPubkey = pubkey.padEnd(66, '0')
 
   // Split into 3 parts for colors and the rest for control points
   const colors: string[] = []
@@ -104,7 +109,7 @@ export function generateImageByPubkey(pubkey: string): string {
   `
   const imageData = `data:image/svg+xml;base64,${btoa(image)}`
 
-  pubkeyImageCache.set(pubkey, imageData)
+  pubkeyImageCache.set(cacheKey, imageData)
 
   return imageData
 }
