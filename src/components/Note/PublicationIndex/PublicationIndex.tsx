@@ -1225,7 +1225,7 @@ export default function PublicationIndex({
                       ToC
                     </Button>
                   )}
-                  <MarkdownArticle event={ref.event} showImageGallery={false} hideMetadata={true} />
+                  <MarkdownArticle event={ref.event} hideMetadata={true} />
                 </div>
               )
             } else {

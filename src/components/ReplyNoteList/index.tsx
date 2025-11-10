@@ -21,6 +21,7 @@ import { useReply } from '@/providers/ReplyProvider'
 import { useUserTrust } from '@/providers/UserTrustProvider'
 import client from '@/services/client.service'
 import noteStatsService from '@/services/note-stats.service'
+import discussionFeedCache from '@/services/discussion-feed-cache.service'
 import { Filter, Event as NEvent, kinds } from 'nostr-tools'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -255,81 +256,145 @@ function ReplyNoteList({ index, event, sort = 'oldest' }: { index?: number; even
     if (!rootInfo || currentIndex !== index) return
 
     const init = async () => {
-      setLoading(true)
-      logger.debug('[ReplyNoteList] Fetching replies for root:', rootInfo)
+      // Check cache first - get cached data even if stale (for instant display)
+      const cachedData = discussionFeedCache.getCachedReplies(rootInfo)
+      const hasFreshCache = discussionFeedCache.hasFreshCache(rootInfo)
+      const hasCache = cachedData !== null
+      
+      if (hasCache) {
+        logger.debug('[ReplyNoteList] Found cached replies:', cachedData.length, 'replies', hasFreshCache ? '(fresh)' : '(stale)')
+        // Display cached data immediately (even if stale) for instant switching
+        addReplies(cachedData)
+        setLoading(false)
+      } else {
+        // No cache at all, show loading while fetching
+        logger.debug('[ReplyNoteList] No cache found, fetching from relays')
+        setLoading(true)
+      }
+      
+      // Always fetch fresh data from relays to update cache
+      // If we have fresh cache, we can skip fetching (but still do it in background after a delay)
+      // If we have stale cache or no cache, fetch immediately
+      if (hasFreshCache) {
+        // Fresh cache: fetch in background after a short delay to avoid unnecessary requests
+        setTimeout(() => {
+          fetchFromRelays()
+        }, 2000) // Wait 2 seconds before background refresh
+      } else {
+        // Stale or no cache: fetch immediately
+        fetchFromRelays()
+      }
+      
+      async function fetchFromRelays() {
+        if (!rootInfo) return // Type guard
+        
+        try {
+          // Privacy: Only use user's own relays + defaults, never connect to other users' relays
+          const userReadRelays = userRelayList?.read || []
+          const userWriteRelays = userRelayList?.write || []
+          const finalRelayUrls = Array.from(new Set([
+            ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
+            ...userReadRelays.map(url => normalizeUrl(url) || url), // User's read relays
+            ...userWriteRelays.map(url => normalizeUrl(url) || url) // User's write relays
+          ]))
 
-      try {
-        // Privacy: Only use user's own relays + defaults, never connect to other users' relays
-        const userReadRelays = userRelayList?.read || []
-        const userWriteRelays = userRelayList?.write || []
-        const finalRelayUrls = Array.from(new Set([
-          ...FAST_READ_RELAY_URLS.map(url => normalizeUrl(url) || url), // Fast, well-connected relays
-          ...userReadRelays.map(url => normalizeUrl(url) || url), // User's read relays
-          ...userWriteRelays.map(url => normalizeUrl(url) || url) // User's write relays
-        ]))
-
-        const filters: Filter[] = []
-        if (rootInfo.type === 'E') {
-          // Fetch all reply types for event-based replies
-          filters.push({
-            '#e': [rootInfo.id],
-            kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-            limit: LIMIT
-          })
-          // Also fetch with uppercase E tag for replaceable events
-          filters.push({
-            '#E': [rootInfo.id],
-            kinds: [ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
-            limit: LIMIT
-          })
-          // For public messages (kind 24), also look for replies using 'q' tags
-          if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
+          const filters: Filter[] = []
+          if (rootInfo.type === 'E') {
+            // Fetch all reply types for event-based replies
             filters.push({
-              '#q': [rootInfo.id],
-              kinds: [ExtendedKind.PUBLIC_MESSAGE],
-              limit: LIMIT
-            })
-          }
-        } else if (rootInfo.type === 'A') {
-          // Fetch all reply types for replaceable event-based replies
-          filters.push(
-            {
-              '#a': [rootInfo.id],
+              '#e': [rootInfo.id],
               kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
               limit: LIMIT
-            },
-            {
-              '#A': [rootInfo.id],
+            })
+            // Also fetch with uppercase E tag for replaceable events
+            filters.push({
+              '#E': [rootInfo.id],
               kinds: [ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
               limit: LIMIT
+            })
+            // For public messages (kind 24), also look for replies using 'q' tags
+            if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
+              filters.push({
+                '#q': [rootInfo.id],
+                kinds: [ExtendedKind.PUBLIC_MESSAGE],
+                limit: LIMIT
+              })
             }
-          )
-          if (rootInfo.relay) {
-            finalRelayUrls.push(rootInfo.relay)
+          } else if (rootInfo.type === 'A') {
+            // Fetch all reply types for replaceable event-based replies
+            filters.push(
+              {
+                '#a': [rootInfo.id],
+                kinds: [kinds.ShortTextNote, ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
+                limit: LIMIT
+              },
+              {
+                '#A': [rootInfo.id],
+                kinds: [ExtendedKind.COMMENT, ExtendedKind.VOICE_COMMENT],
+                limit: LIMIT
+              }
+            )
+            if (rootInfo.relay) {
+              finalRelayUrls.push(rootInfo.relay)
+            }
+          }
+
+          logger.debug('[ReplyNoteList] Using filters:', filters)
+          logger.debug('[ReplyNoteList] Using relays:', finalRelayUrls.length)
+
+          // Use fetchEvents instead of subscribeTimeline for one-time fetching
+          const allReplies = await client.fetchEvents(finalRelayUrls, filters)
+          
+          logger.debug('[ReplyNoteList] Fetched', allReplies.length, 'replies')
+          
+          // Filter and add replies
+          const regularReplies = allReplies.filter((evt) => isReplyNoteEvent(evt))
+          
+          // Store in cache (this merges with existing cached replies)
+          // After this call, the cache contains ALL replies we've ever seen for this thread
+          discussionFeedCache.setCachedReplies(rootInfo, regularReplies)
+          
+          // Get the merged cache (which includes all replies we've ever seen, including new ones)
+          const mergedCachedReplies = discussionFeedCache.getCachedReplies(rootInfo)
+          
+          // Always add all merged cached replies to UI
+          // This ensures we keep all previously seen replies and add any new ones
+          // addReplies will deduplicate, so it's safe to call even if some replies are already displayed
+          if (mergedCachedReplies) {
+            logger.debug('[ReplyNoteList] Adding merged cached replies to UI:', mergedCachedReplies.length, 'total replies')
+            addReplies(mergedCachedReplies)
+          } else {
+            // Fallback: if cache somehow failed, at least add the fetched replies
+            logger.warn('[ReplyNoteList] Cache returned null after store, using fetched replies only')
+            addReplies(regularReplies)
+          }
+          
+          if (!hasCache) {
+            // No cache: stop loading after adding replies
+            setLoading(false)
+          } else {
+            // Background refresh: check if we got new replies
+            const cachedReplyIds = new Set(cachedData!.map(r => r.id))
+            const hasNewReplies = regularReplies.some(r => !cachedReplyIds.has(r.id))
+            
+            if (hasNewReplies) {
+              logger.debug('[ReplyNoteList] Background refresh found new replies, UI updated')
+            } else {
+              logger.debug('[ReplyNoteList] Background refresh: no new replies, existing replies preserved')
+            }
+          }
+        } catch (error) {
+          logger.error('[ReplyNoteList] Error fetching replies:', error)
+          if (!hasCache) {
+            // Only set loading to false if we don't have cache to fall back on
+            setLoading(false)
           }
         }
-
-        logger.debug('[ReplyNoteList] Using filters:', filters)
-        logger.debug('[ReplyNoteList] Using relays:', finalRelayUrls.length)
-
-        // Use fetchEvents instead of subscribeTimeline for one-time fetching
-        const allReplies = await client.fetchEvents(finalRelayUrls, filters)
-        
-        logger.debug('[ReplyNoteList] Fetched', allReplies.length, 'replies')
-        
-        // Filter and add replies
-        const regularReplies = allReplies.filter((evt) => isReplyNoteEvent(evt))
-        addReplies(regularReplies)
-        
-        setLoading(false)
-      } catch (error) {
-        logger.error('[ReplyNoteList] Error fetching replies:', error)
-        setLoading(false)
       }
     }
 
     init()
-  }, [rootInfo, currentIndex, index])
+  }, [rootInfo, currentIndex, index, userRelayList, event.kind, addReplies])
 
   useEffect(() => {
     if (replies.length === 0 && !loading && timelineKey) {

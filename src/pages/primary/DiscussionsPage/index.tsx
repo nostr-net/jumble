@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useState, useMemo, useCallback } from 'react'
+import { forwardRef, useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, Search } from 'lucide-react'
 import { useNostr } from '@/providers/NostrProvider'
@@ -11,6 +11,7 @@ import { kinds } from 'nostr-tools'
 import { normalizeUrl } from '@/lib/url'
 import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
+import discussionFeedCache from '@/services/discussion-feed-cache.service'
 import { DISCUSSION_TOPICS } from './CreateThreadDialog'
 import ThreadCard from './ThreadCard'
 import CreateThreadDialog from './CreateThreadDialog'
@@ -352,6 +353,10 @@ const DiscussionsPage = forwardRef((_, ref) => {
     allTopics: DynamicTopic[]
   }>({ mainTopics: [], subtopics: [], allTopics: [] })
   
+  // Track if we've initialized to prevent re-fetching on re-renders
+  const hasInitializedRef = useRef(false)
+  const isFetchingRef = useRef(false)
+  
   // Build comprehensive relay list (same as pins)
   const buildComprehensiveRelayList = useCallback(async () => {
     const myRelayList = pubkey ? await client.fetchRelayList(pubkey) : { write: [], read: [] }
@@ -379,13 +384,32 @@ const DiscussionsPage = forwardRef((_, ref) => {
   }, []) // No dependencies - will be called fresh each time from fetchAllEvents
   
   // Fetch all events
-  const fetchAllEvents = useCallback(async () => {
-    if (loading) return
-    setLoading(true)
-    setIsRefreshing(true)
+  const fetchAllEvents = useCallback(async (forceRefresh = false) => {
+    if (isFetchingRef.current && !forceRefresh) return
+    isFetchingRef.current = true
+    
+    // Check cache first (unless forcing refresh)
+    let hasCachedData = false
+    if (!forceRefresh) {
+      const cachedData = discussionFeedCache.getCachedDiscussionsList()
+      if (cachedData) {
+        logger.debug('[DiscussionsPage] Using cached discussions list:', cachedData.eventMap.size, 'threads')
+        setAllEventMap(cachedData.eventMap)
+        setDynamicTopics(cachedData.dynamicTopics)
+        setLoading(false) // Display cached data immediately
+        hasCachedData = true
+        // Still fetch in background to update cache (but don't show loading or refreshing)
+      } else {
+        setLoading(true)
+        setIsRefreshing(true)
+      }
+    } else {
+      setLoading(true)
+      setIsRefreshing(true)
+    }
     
     try {
-      logger.debug('[DiscussionsPage] Fetching all discussion threads...')
+      logger.debug('[DiscussionsPage] Fetching all discussion threads...', forceRefresh ? '(forced refresh)' : '')
       
       // Get comprehensive relay list
       const allRelays = await buildComprehensiveRelayList()
@@ -409,27 +433,41 @@ const DiscussionsPage = forwardRef((_, ref) => {
         })))
       }
       
-      // Step 2: Get thread IDs and fetch related comments and reactions
+      // Step 2: Get thread IDs for comment/reaction fetching
+      // Get cached data first to include cached thread IDs in the fetch
+      // We ALWAYS include cached thread IDs to get updated counts for all threads we know about
+      const cachedDataBeforeFetch = discussionFeedCache.getCachedDiscussionsList()
       const threadIds = discussionThreads.map((thread: NostrEvent) => thread.id)
+      const allThreadIds = new Set(threadIds)
+      
+      // Add cached thread IDs to fetch comments/reactions for all threads we know about
+      // This ensures we get updated counts for cached threads too, regardless of whether we're refreshing
+      if (cachedDataBeforeFetch) {
+        cachedDataBeforeFetch.eventMap.forEach((_entry, threadId) => {
+          allThreadIds.add(threadId)
+        })
+      }
+      
+      const allThreadIdsArray = Array.from(allThreadIds)
       
       const [comments, reactions] = await Promise.all([
-        threadIds.length > 0 ? client.fetchEvents(allRelays, [
+        allThreadIdsArray.length > 0 ? client.fetchEvents(allRelays, [
           {
             kinds: [1111], // ExtendedKind.COMMENT
-            '#e': threadIds,
+            '#e': allThreadIdsArray,
             limit: 100
           }
         ]) : Promise.resolve([]),
-        threadIds.length > 0 ? client.fetchEvents(allRelays, [
+        allThreadIdsArray.length > 0 ? client.fetchEvents(allRelays, [
           {
             kinds: [kinds.Reaction],
-            '#e': threadIds,
+            '#e': allThreadIdsArray,
               limit: 100
             }
         ]) : Promise.resolve([])
       ])
       
-      logger.debug('[DiscussionsPage] Fetched', comments.length, 'comments and', reactions.length, 'reactions')
+      logger.debug('[DiscussionsPage] Fetched', comments.length, 'comments and', reactions.length, 'reactions for', allThreadIdsArray.length, 'threads (', threadIds.length, 'new,', (cachedDataBeforeFetch?.eventMap.size || 0), 'cached)')
       
       // Debug: Log some reaction details
       if (reactions.length > 0) {
@@ -441,14 +479,14 @@ const DiscussionsPage = forwardRef((_, ref) => {
         })))
       }
       
-      // Step 3: Build event map with vote and comment counts
+      // Step 3: Build event map with vote and comment counts for newly fetched threads
       const newEventMap = new Map<string, EventMapEntry>()
       
       discussionThreads.forEach((thread: NostrEvent) => {
         const threadId = thread.id
         const threadAuthor = thread.pubkey
         
-        // Count votes and comments
+        // Count votes and comments for this thread
         const voteStats = countVotesForThread(threadId, reactions, threadAuthor)
         const commentStats = countCommentsForThread(threadId, comments, threadAuthor)
         
@@ -498,7 +536,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
         })
       })
       
-      logger.debug('[DiscussionsPage] Built event map with', newEventMap.size, 'threads')
+      logger.debug('[DiscussionsPage] Built event map with', newEventMap.size, 'new threads')
       
       // Log vote counts for debugging
       newEventMap.forEach((entry, threadId) => {
@@ -507,34 +545,112 @@ const DiscussionsPage = forwardRef((_, ref) => {
         }
       })
       
-      // Analyze dynamic topics only if we have new data
-      let dynamicTopicsAnalysis: { mainTopics: DynamicTopic[]; subtopics: DynamicTopic[]; allTopics: DynamicTopic[] } = { mainTopics: [], subtopics: [], allTopics: [] }
-      if (newEventMap.size > 0) {
-        dynamicTopicsAnalysis = analyzeDynamicTopics(Array.from(newEventMap.values()))
-        setDynamicTopics(dynamicTopicsAnalysis)
+      // Start with cached threads (if any) to preserve all threads we've ever seen
+      // This ensures thread counts and topic counts don't go down when different relays return different subsets
+      const allThreadsMap = new Map<string, EventMapEntry>()
+      
+      // First, add all cached threads to preserve them
+      // CRITICAL: Always preserve cached threads, even if they're not in the new fetch
+      if (cachedDataBeforeFetch) {
+        logger.debug('[DiscussionsPage] Preserving', cachedDataBeforeFetch.eventMap.size, 'cached threads')
+        cachedDataBeforeFetch.eventMap.forEach((entry, threadId) => {
+          allThreadsMap.set(threadId, { ...entry }) // Create a copy to avoid mutations
+        })
       }
       
-      // Update event map with enhanced topic categorization
-      const updatedEventMap = new Map<string, EventMapEntry>()
+      // Then, add or update with newly fetched threads
+      // New threads will be added, existing threads will be updated with fresh data
       newEventMap.forEach((entry, threadId) => {
+        allThreadsMap.set(threadId, { ...entry }) // Always use the fresh data from new fetch
+      })
+      
+      const threadsBeforeCountUpdate = allThreadsMap.size
+      logger.debug('[DiscussionsPage] Total threads after merge:', threadsBeforeCountUpdate, '(cached:', cachedDataBeforeFetch?.eventMap.size || 0, '+ new:', newEventMap.size, ', overlaps:', (cachedDataBeforeFetch?.eventMap.size || 0) + newEventMap.size - threadsBeforeCountUpdate, ')')
+      
+      // Now update comment/vote counts for ALL threads using fresh comments/reactions
+      // This ensures cached threads get updated counts from the latest fetch
+      const finalEventMap = new Map<string, EventMapEntry>()
+      allThreadsMap.forEach((entry, threadId) => {
+        const thread = entry.event
+        const threadAuthor = thread.pubkey
+        
+        // Count votes and comments for this thread (using all fetched comments/reactions)
+        const voteStats = countVotesForThread(threadId, reactions, threadAuthor)
+        const commentStats = countCommentsForThread(threadId, comments, threadAuthor)
+        
+        // Update the entry with latest counts, but preserve all other data
+        finalEventMap.set(threadId, {
+          ...entry,
+          commentCount: commentStats.commentCount,
+          lastCommentTime: commentStats.lastCommentTime,
+          lastVoteTime: voteStats.lastVoteTime,
+          upVotes: voteStats.upVotes,
+          downVotes: voteStats.downVotes
+        })
+      })
+      
+      logger.debug('[DiscussionsPage] Final event map has', finalEventMap.size, 'threads after count update')
+      
+      // Analyze dynamic topics from ALL threads (cached + new)
+      const dynamicTopicsAnalysis = analyzeDynamicTopics(Array.from(finalEventMap.values()))
+      
+      // Update event map with enhanced topic categorization for all threads
+      const categorizedEventMap = new Map<string, EventMapEntry>()
+      finalEventMap.forEach((entry, threadId) => {
         const predefinedTopicIds = DISCUSSION_TOPICS.map((t: any) => t.id)
         const enhancedTopic = getEnhancedTopicFromTags(entry.allTopics, predefinedTopicIds, dynamicTopicsAnalysis.allTopics, entry.isGroupDiscussion)
         
-        updatedEventMap.set(threadId, {
+        categorizedEventMap.set(threadId, {
           ...entry,
           categorizedTopic: enhancedTopic
         })
       })
       
-      setAllEventMap(updatedEventMap)
+      logger.debug('[DiscussionsPage] Categorized event map has', categorizedEventMap.size, 'threads')
+      
+      // Store final merged and categorized event map in cache
+      // IMPORTANT: We've already manually merged all cached + new threads above
+      // So categorizedEventMap contains ALL threads we want to preserve
+      // We store with merge=false because we've already done the merge manually
+      // This ensures we don't lose threads due to the cache service's merge logic
+      const expectedThreadCount = categorizedEventMap.size
+      discussionFeedCache.setCachedDiscussionsList(categorizedEventMap, dynamicTopicsAnalysis, false)
+      
+      // Verify the cache has all our threads (immediately after storing)
+      const cachedAfterStore = discussionFeedCache.getCachedDiscussionsList()
+      if (cachedAfterStore) {
+        const actualThreadCount = cachedAfterStore.eventMap.size
+        logger.debug('[DiscussionsPage] Cache verification - stored:', expectedThreadCount, 'threads, cache has:', actualThreadCount, 'threads')
+        if (actualThreadCount !== expectedThreadCount) {
+          logger.error('[DiscussionsPage] ERROR: Thread count mismatch! Expected', expectedThreadCount, 'but cache has', actualThreadCount)
+          // If we lost threads, try to recover by storing again with the categorized map
+          // This shouldn't happen, but if it does, at least log it
+        }
+      } else {
+        logger.error('[DiscussionsPage] ERROR: Cache returned null after storing!')
+      }
+      
+      // Always update state with the merged and categorized event map
+      // This ensures we show all threads we've ever seen, with updated counts
+      setAllEventMap(categorizedEventMap)
+      setDynamicTopics(dynamicTopicsAnalysis)
+      
+      logger.debug('[DiscussionsPage] Updated UI with', categorizedEventMap.size, 'threads (merged from cache and new fetch)')
       
     } catch (error) {
       logger.error('[DiscussionsPage] Error fetching events:', error)
+      // If we had cached data and fetch failed, at least we have something to show
+      if (!hasCachedData) {
+        setLoading(false)
+      }
     } finally {
-      setLoading(false)
+      if (!hasCachedData || forceRefresh) {
+        setLoading(false)
+      }
       setIsRefreshing(false)
+      isFetchingRef.current = false
     }
-  }, []) // Only run when explicitly called (mount or refresh button)
+  }, [buildComprehensiveRelayList]) // Only depend on buildComprehensiveRelayList
   
   // Calculate time span counts
   const calculateTimeSpanCounts = useCallback(() => {
@@ -619,8 +735,15 @@ const DiscussionsPage = forwardRef((_, ref) => {
   
   // Effects
   useEffect(() => {
-    fetchAllEvents()
-  }, []) // Only run once on mount
+    // Only initialize once
+    if (hasInitializedRef.current) {
+      logger.debug('[DiscussionsPage] Already initialized, skipping fetch')
+      return
+    }
+    
+    hasInitializedRef.current = true
+    fetchAllEvents(false) // Don't force refresh on mount - use cache if available
+  }, [fetchAllEvents])
   
   useEffect(() => {
     if (allEventMap.size > 0) {
@@ -635,10 +758,37 @@ const DiscussionsPage = forwardRef((_, ref) => {
   }, [allEventMap, timeSpan, selectedTopic]) // Run when allEventMap, timeSpan, or selectedTopic changes
   
   // Get available topics sorted by most recent activity (including dynamic topics)
+  // Topic counts are calculated based on the current time span filter
   const availableTopics = useMemo(() => {
     const topicMap = new Map<string, { count: number, lastActivity: number, isDynamic: boolean, isMainTopic: boolean, isSubtopic: boolean }>()
     
+    // Calculate time span filter
+    const now = Date.now()
+    const timeSpanAgo = timeSpan === '30days' ? now - (30 * 24 * 60 * 60 * 1000) : 
+                       timeSpan === '90days' ? now - (90 * 24 * 60 * 60 * 1000) : 0
+    
     allEventMap.forEach((entry) => {
+      // Filter by time span - only count topics for threads that match the time filter
+      let passesTimeFilter = false
+      if (timeSpan === 'all') {
+        passesTimeFilter = true
+      } else {
+        const threadTime = entry.event.created_at * 1000
+        const lastCommentTime = entry.lastCommentTime > 0 ? entry.lastCommentTime * 1000 : 0
+        const lastVoteTime = entry.lastVoteTime > 0 ? entry.lastVoteTime * 1000 : 0
+        
+        const mostRecentActivity = Math.max(
+          threadTime,
+          lastCommentTime,
+          lastVoteTime
+        )
+        
+        passesTimeFilter = mostRecentActivity > timeSpanAgo
+      }
+      
+      // Only count topics for threads that pass the time filter
+      if (!passesTimeFilter) return
+      
       const topic = entry.categorizedTopic
       const lastActivity = Math.max(
         entry.event.created_at * 1000,
@@ -666,7 +816,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
     return Array.from(topicMap.entries())
       .map(([topic, data]) => ({ topic, ...data }))
       .sort((a, b) => b.lastActivity - a.lastActivity)
-  }, [allEventMap, dynamicTopics])
+  }, [allEventMap, dynamicTopics, timeSpan]) // Include timeSpan in dependencies
   
   // State for search results
   const [searchedEntries, setSearchedEntries] = useState<EventMapEntry[]>([])
@@ -804,7 +954,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
   
   // Handle refresh
   const handleRefresh = () => {
-    fetchAllEvents()
+    fetchAllEvents(true) // Force refresh when user clicks refresh button
   }
   
   // Handle create thread
@@ -903,7 +1053,7 @@ const DiscussionsPage = forwardRef((_, ref) => {
             onChange={(e) => setSelectedTopic(e.target.value)}
             className="w-full sm:w-auto px-3 py-2 bg-white dark:bg-gray-800 text-black dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="all">All Topics ({allEventMap.size})</option>
+            <option value="all">All Topics ({timeSpanCounts[timeSpan]})</option>
             {availableTopics.map(({ topic, count, isDynamic, isMainTopic, isSubtopic }) => {
               const isGroupsTopic = topic === 'groups'
               return (
