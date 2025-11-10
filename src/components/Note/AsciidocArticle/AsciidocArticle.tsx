@@ -75,7 +75,7 @@ export default function AsciidocArticle({
   // Extract media from tags only (for display at top)
   const tagMedia = useMemo(() => {
     const seenUrls = new Set<string>()
-    const media: Array<{ url: string; type: 'image' | 'video' | 'audio' }> = []
+    const media: Array<{ url: string; type: 'image' | 'video' | 'audio'; poster?: string }> = []
     
     // Extract from imeta tags
     const imetaInfos = getImetaInfosFromEvent(event)
@@ -88,7 +88,7 @@ export default function AsciidocArticle({
       if (info.m?.startsWith('image/') || isImage(cleaned)) {
         media.push({ url: info.url, type: 'image' })
       } else if (info.m?.startsWith('video/') || isVideo(cleaned)) {
-        media.push({ url: info.url, type: 'video' })
+        media.push({ url: info.url, type: 'video', poster: info.image })
       } else if (info.m?.startsWith('audio/') || isAudio(cleaned)) {
         media.push({ url: info.url, type: 'audio' })
       }
@@ -877,6 +877,7 @@ export default function AsciidocArticle({
                       src={media.url}
                       className="max-w-[400px]"
                       mustLoad={true}
+                      poster={media.poster}
                     />
                   </div>
                 )

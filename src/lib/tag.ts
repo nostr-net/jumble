@@ -180,6 +180,25 @@ export function getImetaInfoFromImetaTag(tag: string[], pubkey?: string): TImeta
     imeta.fallback = fallbackUrls
   }
   
+  // Parse image/poster URL (for videos)
+  let imageUrl: string | undefined
+  
+  // First try the space-separated format
+  const imageItem = tag.find((item) => item.startsWith('image '))
+  if (imageItem) {
+    imageUrl = imageItem.slice(6)
+  } else {
+    // Try the separate element format
+    const imageIndex = tag.findIndex((item) => item === 'image')
+    if (imageIndex !== -1 && imageIndex + 1 < tag.length) {
+      imageUrl = tag[imageIndex + 1]
+    }
+  }
+  
+  if (imageUrl) {
+    imeta.image = cleanUrl(imageUrl)
+  }
+  
   return imeta
 }
 

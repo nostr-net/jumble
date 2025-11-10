@@ -148,14 +148,16 @@ export default function Content({
   const imageMap = new Map<string, TImetaInfo>()
   const mediaMap = new Map<string, TImetaInfo>()
   extractedMedia.all.forEach((img: TImetaInfo) => {
+    const cleaned = cleanUrl(img.url)
+    if (!cleaned) return
     if (img.m?.startsWith('image/')) {
-      imageMap.set(img.url, img)
+      imageMap.set(cleaned, img)
     } else if (img.m?.startsWith('video/') || img.m?.startsWith('audio/') || img.m === 'media/*') {
-      mediaMap.set(img.url, img)
-    } else if (isImage(img.url)) {
-      imageMap.set(img.url, img)
-    } else if (isMedia(img.url)) {
-      mediaMap.set(img.url, img)
+      mediaMap.set(cleaned, img)
+    } else if (isImage(cleaned)) {
+      imageMap.set(cleaned, img)
+    } else if (isMedia(cleaned)) {
+      mediaMap.set(cleaned, img)
     }
   })
 
@@ -335,12 +337,15 @@ export default function Content({
           // Check video/audio first - never put them in ImageGallery
           if (isVideoUrl || isAudioUrl || mediaMap.has(cleanedUrl)) {
             renderedUrls.add(cleanedUrl)
+            const mediaInfo = mediaMap.get(cleanedUrl)
+            const poster = mediaInfo?.image
             return (
               <MediaPlayer 
                 className="mt-2" 
                 key={`url-media-${index}`} 
                 src={cleanedUrl} 
-                mustLoad={mustLoadMedia} 
+                mustLoad={mustLoadMedia}
+                poster={poster}
               />
             )
           }

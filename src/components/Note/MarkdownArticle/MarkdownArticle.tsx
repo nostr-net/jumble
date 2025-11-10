@@ -55,9 +55,10 @@ function parseMarkdownContent(
     openLightbox: (index: number) => void
     navigateToHashtag: (href: string) => void
     navigateToRelay: (url: string) => void
+    videoPosterMap?: Map<string, string>
   }
 ): { nodes: React.ReactNode[]; hashtagsInContent: Set<string>; footnotes: Map<string, string> } {
-  const { eventPubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay } = options
+  const { eventPubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay, videoPosterMap } = options
   const parts: React.ReactNode[] = []
   const hashtagsInContent = new Set<string>()
   const footnotes = new Map<string, string>()
@@ -484,12 +485,14 @@ function parseMarkdownContent(
           </div>
         )
       } else if (isVideo(cleaned) || isAudio(cleaned)) {
+        const poster = videoPosterMap?.get(cleaned)
         parts.push(
           <div key={`media-${patternIdx}`} className="my-2">
             <MediaPlayer
               src={cleaned}
               className="max-w-[400px]"
               mustLoad={false}
+              poster={poster}
             />
           </div>
         )
@@ -1127,7 +1130,7 @@ export default function MarkdownArticle({
   // Extract media from tags only (for display at top)
   const tagMedia = useMemo(() => {
     const seenUrls = new Set<string>()
-    const media: Array<{ url: string; type: 'image' | 'video' | 'audio' }> = []
+    const media: Array<{ url: string; type: 'image' | 'video' | 'audio'; poster?: string }> = []
     
     // Extract from imeta tags
     const imetaInfos = getImetaInfosFromEvent(event)
@@ -1140,7 +1143,7 @@ export default function MarkdownArticle({
       if (info.m?.startsWith('image/') || isImage(cleaned)) {
         media.push({ url: info.url, type: 'image' })
       } else if (info.m?.startsWith('video/') || isVideo(cleaned)) {
-        media.push({ url: info.url, type: 'video' })
+        media.push({ url: info.url, type: 'video', poster: info.image })
       } else if (info.m?.startsWith('audio/') || isAudio(cleaned)) {
         media.push({ url: info.url, type: 'audio' })
       }
@@ -1349,6 +1352,21 @@ export default function MarkdownArticle({
     return preprocessMarkdownMediaLinks(event.content)
   }, [event.content])
   
+  // Create video poster map from imeta tags
+  const videoPosterMap = useMemo(() => {
+    const map = new Map<string, string>()
+    const imetaInfos = getImetaInfosFromEvent(event)
+    imetaInfos.forEach((info) => {
+      if (info.image && (info.m?.startsWith('video/') || isVideo(info.url))) {
+        const cleaned = cleanUrl(info.url)
+        if (cleaned) {
+          map.set(cleaned, info.image)
+        }
+      }
+    })
+    return map
+  }, [event.id, JSON.stringify(event.tags)])
+  
   // Parse markdown content with post-processing for nostr: links and hashtags
   const { nodes: parsedContent, hashtagsInContent } = useMemo(() => {
     const result = parseMarkdownContent(preprocessedContent, {
@@ -1356,11 +1374,12 @@ export default function MarkdownArticle({
       imageIndexMap,
       openLightbox,
       navigateToHashtag,
-      navigateToRelay
+      navigateToRelay,
+      videoPosterMap
     })
     // Return nodes and hashtags (footnotes are already included in nodes)
     return { nodes: result.nodes, hashtagsInContent: result.hashtagsInContent }
-  }, [preprocessedContent, event.pubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay])
+  }, [preprocessedContent, event.pubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay, videoPosterMap])
   
   // Filter metadata tags to only show what's not already in content
   const leftoverMetadataTags = useMemo(() => {
@@ -1453,6 +1472,7 @@ export default function MarkdownArticle({
                       src={media.url}
                       className="max-w-[400px]"
                       mustLoad={true}
+                      poster={media.poster}
                     />
                   </div>
                 )

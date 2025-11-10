@@ -6,7 +6,7 @@ import ExternalLink from '../ExternalLink'
 import { MediaErrorBoundary } from '../MediaErrorBoundary'
 import logger from '@/lib/logger'
 
-export default function VideoPlayer({ src, className }: { src: string; className?: string }) {
+export default function VideoPlayer({ src, className, poster }: { src: string; className?: string; poster?: string }) {
   const { autoplay } = useContentPolicy()
   const [error, setError] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -64,6 +64,7 @@ export default function VideoPlayer({ src, className }: { src: string; className
           playsInline
           className={cn('rounded-lg max-h-[80vh] sm:max-h-[60vh] border', className)}
           src={src}
+          poster={poster}
           onClick={(e) => e.stopPropagation()}
           onPlay={(event) => {
             mediaManager.play(event.currentTarget)
