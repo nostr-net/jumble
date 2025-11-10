@@ -1,4 +1,4 @@
-import { simplifyUrl } from '@/lib/url'
+import { simplifyUrl, isLocalNetworkUrl } from '@/lib/url'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
@@ -101,7 +101,10 @@ export default function PostRelaySelector({
         // 1. User hasn't manually modified them, OR
         // 2. Selectable relays changed
         if (!hasManualSelection || selectableRelaysChanged) {
-          setSelectedRelayUrls(result.selectedRelays)
+          // Ensure cache relays are included by default (but user can uncheck them)
+          const cacheRelays = result.selectableRelays.filter(url => isLocalNetworkUrl(url))
+          const selectedWithCache = Array.from(new Set([...result.selectedRelays, ...cacheRelays]))
+          setSelectedRelayUrls(selectedWithCache)
           setDescription(result.description)
           // Reset manual selection flag if relays changed
           if (selectableRelaysChanged && hasManualSelection) {
@@ -160,7 +163,10 @@ export default function PostRelaySelector({
           // 1. User hasn't manually modified them, OR
           // 2. Selectable relays changed
           if (!hasManualSelection || selectableRelaysChanged) {
-            setSelectedRelayUrls(result.selectedRelays)
+            // Ensure cache relays are included by default (but user can uncheck them)
+            const cacheRelays = result.selectableRelays.filter(url => isLocalNetworkUrl(url))
+            const selectedWithCache = Array.from(new Set([...result.selectedRelays, ...cacheRelays]))
+            setSelectedRelayUrls(selectedWithCache)
             setDescription(result.description)
             // Reset manual selection flag if relays changed
             if (selectableRelaysChanged && hasManualSelection) {
