@@ -47,12 +47,10 @@ export default function UserAvatar({
   // All hooks must be called before any early returns
   const [imgError, setImgError] = useState(false)
   const [currentSrc, setCurrentSrc] = useState(avatarSrc)
-  const [imageLoaded, setImageLoaded] = useState(false)
 
   // Reset error state when src changes
   useEffect(() => {
     setImgError(false)
-    setImageLoaded(false)
     setCurrentSrc(avatarSrc)
   }, [avatarSrc])
 
@@ -62,14 +60,12 @@ export default function UserAvatar({
       setCurrentSrc(defaultAvatar)
       setImgError(false)
     } else {
-      // Both failed, show placeholder
+      // Both failed
       setImgError(true)
-      setImageLoaded(true)
     }
   }
 
   const handleImageLoad = () => {
-    setImageLoaded(true)
     setImgError(false)
   }
 
@@ -88,29 +84,23 @@ export default function UserAvatar({
   return (
     <div 
       data-user-avatar
-      className={cn('shrink-0 cursor-pointer relative overflow-hidden rounded-full bg-muted', UserAvatarSizeCnMap[size], className)}
+      className={cn('shrink-0 cursor-pointer block overflow-hidden rounded-full bg-muted', UserAvatarSizeCnMap[size], className)}
+      style={{ position: 'relative', zIndex: 10, isolation: 'isolate', display: 'block' }}
       onClick={(e) => {
         e.stopPropagation()
         navigateToProfile(toProfile(displayPubkey))
       }}
     >
       {!imgError && currentSrc ? (
-        <>
-          {!imageLoaded && (
-            <div className="absolute inset-0 bg-muted animate-pulse" />
-          )}
-          <img 
-            src={currentSrc}
-            alt={displayPubkey}
-            className={cn(
-              'h-full w-full object-cover object-center transition-opacity duration-200',
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            )}
-            onError={handleImageError}
-            onLoad={handleImageLoad}
-            loading="lazy"
-          />
-        </>
+        <img 
+          src={currentSrc}
+          alt={displayPubkey}
+          className="block w-full h-full object-cover object-center"
+          style={{ display: 'block', position: 'static', margin: 0, padding: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+          onError={handleImageError}
+          onLoad={handleImageLoad}
+          loading="lazy"
+        />
       ) : (
         // Show initials or placeholder when image fails
         <div className="h-full w-full flex items-center justify-center text-xs font-medium text-muted-foreground">
@@ -149,12 +139,10 @@ export function SimpleUserAvatar({
   // All hooks must be called before any early returns
   const [imgError, setImgError] = useState(false)
   const [currentSrc, setCurrentSrc] = useState(avatarSrc)
-  const [imageLoaded, setImageLoaded] = useState(false)
 
   // Reset error state when src changes
   useEffect(() => {
     setImgError(false)
-    setImageLoaded(false)
     setCurrentSrc(avatarSrc)
   }, [avatarSrc])
 
@@ -164,14 +152,12 @@ export function SimpleUserAvatar({
       setCurrentSrc(defaultAvatar)
       setImgError(false)
     } else {
-      // Both failed, show placeholder
+      // Both failed
       setImgError(true)
-      setImageLoaded(true)
     }
   }
 
   const handleImageLoad = () => {
-    setImageLoaded(true)
     setImgError(false)
   }
 
@@ -192,22 +178,15 @@ export function SimpleUserAvatar({
       className={cn('shrink-0 relative overflow-hidden rounded-full bg-muted', UserAvatarSizeCnMap[size], className)}
     >
       {!imgError && currentSrc ? (
-        <>
-          {!imageLoaded && (
-            <div className="absolute inset-0 bg-muted animate-pulse" />
-          )}
-          <img 
-            src={currentSrc}
-            alt={displayPubkey}
-            className={cn(
-              'h-full w-full object-cover object-center transition-opacity duration-200',
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            )}
-            onError={handleImageError}
-            onLoad={handleImageLoad}
-            loading="lazy"
-          />
-        </>
+        <img 
+          src={currentSrc}
+          alt={displayPubkey}
+          className="block w-full h-full object-cover object-center"
+          style={{ display: 'block', position: 'static', margin: 0, padding: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+          onError={handleImageError}
+          onLoad={handleImageLoad}
+          loading="lazy"
+        />
       ) : (
         // Show initials or placeholder when image fails
         <div className="h-full w-full flex items-center justify-center text-xs font-medium text-muted-foreground">

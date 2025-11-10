@@ -48,11 +48,12 @@ export default function Collapsible({
 
   return (
     <div
-      className={cn('relative text-left overflow-hidden', className)}
+      className={cn('relative text-left', className)}
       ref={containerRef}
       {...props}
       style={{
-        maxHeight: !shouldCollapse || expanded ? 'none' : `${collapsedHeight}px`
+        maxHeight: !shouldCollapse || expanded ? 'none' : `${collapsedHeight}px`,
+        overflow: !shouldCollapse || expanded ? 'visible' : 'hidden'
       }}
     >
       {children}

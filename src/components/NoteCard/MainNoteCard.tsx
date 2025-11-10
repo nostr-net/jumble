@@ -42,7 +42,7 @@ export default function MainNoteCard({
         navigateToNote(noteUrl)
       }}
     >
-      <div className={`clickable ${embedded ? 'p-2 sm:p-3 border rounded-lg' : 'py-3'}`}>
+      <div className={`clickable ${embedded ? 'p-2 sm:p-3 border rounded-lg' : 'py-3'}`} style={embedded ? { position: 'relative', isolation: 'isolate', overflow: 'visible' } : undefined}>
         <Collapsible alwaysExpand={embedded}>
           <RepostDescription className={embedded ? '' : 'px-4'} reposter={reposter} />
           <Note

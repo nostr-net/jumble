@@ -1,9 +1,10 @@
 import react from '@vitejs/plugin-react'
 import { execSync } from 'child_process'
 import path from 'path'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import { VitePWA } from 'vite-plugin-pwa'
 import packageJson from './package.json'
+/// <reference types="vitest" />
 
 const getGitHash = () => {
   try {
@@ -33,6 +34,11 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src')
     }
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts'
   },
   plugins: [
     react(),
