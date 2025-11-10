@@ -6,6 +6,7 @@ import { TMailboxRelay } from '@/types'
 import { CloudUpload, Loader } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 
 export default function SaveButton({
   mailboxRelays,
@@ -49,7 +50,7 @@ export default function SaveButton({
         showSimplePublishSuccess(t('Mailbox relays saved'))
       }
     } catch (error) {
-      console.error('Failed to save relay list:', error)
+      logger.error('Failed to save relay list', { error })
       // Show error feedback with relay statuses if available
       if (error instanceof Error && (error as any).relayStatuses) {
         const errorRelayStatuses = (error as any).relayStatuses

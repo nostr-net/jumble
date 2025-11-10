@@ -4,6 +4,7 @@ import mediaManager from '@/services/media-manager.service'
 import { useEffect, useRef, useState } from 'react'
 import ExternalLink from '../ExternalLink'
 import { MediaErrorBoundary } from '../MediaErrorBoundary'
+import logger from '@/lib/logger'
 
 export default function VideoPlayer({ src, className }: { src: string; className?: string }) {
   const { autoplay } = useContentPolicy()
@@ -51,7 +52,7 @@ export default function VideoPlayer({ src, className }: { src: string; className
       onError={(error) => {
         // Don't log expected media errors
         if (error.name !== 'AbortError' && !error.message.includes('play() request was interrupted')) {
-          console.warn('Video player error:', error)
+          logger.warn('Video player error', error)
         }
         setError(true)
       }}

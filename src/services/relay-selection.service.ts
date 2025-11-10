@@ -4,6 +4,7 @@ import { FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
 import { normalizeUrl, isLocalNetworkUrl } from '@/lib/url'
 import { TRelaySet } from '@/types'
+import logger from '@/lib/logger'
 
 export interface RelaySelectionContext {
   // User's own relays
@@ -87,7 +88,7 @@ class RelaySelectionService {
         selectableRelays.add(normalized)
       } else {
         // If normalization fails or returns empty (invalid URL), skip it
-        console.warn('Skipping invalid relay URL:', url)
+        logger.warn('Skipping invalid relay URL', { url })
       }
     }
 
@@ -174,7 +175,7 @@ class RelaySelectionService {
                   // Filter out local relays from other users
                   return this.filterLocalRelaysFromOthers(userRelays)
                 } catch (error) {
-                  console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
+                  logger.warn('Failed to fetch relay list', { pubkey, error })
                   return []
                 }
               })
@@ -184,7 +185,7 @@ class RelaySelectionService {
         }
       }
     } catch (error) {
-      console.error('Failed to get contextual relays:', error)
+      logger.error('Failed to get contextual relays', { error, relaySets })
     }
 
     return Array.from(contextualRelays)
@@ -258,7 +259,7 @@ class RelaySelectionService {
                 // Filter out local relays from other users
                 return this.filterLocalRelaysFromOthers(userRelays)
               } catch (error) {
-                console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
+                logger.warn('Failed to fetch relay list', { pubkey, error })
                 return []
               }
             })
@@ -325,7 +326,7 @@ class RelaySelectionService {
                 // Filter out local relays from other users
                 return this.filterLocalRelaysFromOthers(userRelays)
               } catch (error) {
-                console.warn(`Failed to fetch relay list for ${pubkey}:`, error)
+                logger.warn('Failed to fetch relay list', { pubkey, error })
                 return []
               }
             })
@@ -355,11 +356,11 @@ class RelaySelectionService {
             })
           }
         } catch (error) {
-          console.warn(`Failed to fetch relay list for ${parentEvent.pubkey}:`, error)
+          logger.warn('Failed to fetch relay list for parent event', { parentPubkey: parentEvent.pubkey, error })
         }
       }
     } catch (error) {
-      console.error('Failed to get public message relays:', error)
+      logger.error('Failed to get public message relays', { error, parentEvent: context.parentEvent?.id })
     }
 
     return Array.from(relays)
@@ -439,7 +440,7 @@ class RelaySelectionService {
             }
           }
         } catch (error) {
-          console.error('Failed to decode nostr address:', error)
+          logger.error('Failed to decode nostr address', { error, tag })
         }
       }
     }

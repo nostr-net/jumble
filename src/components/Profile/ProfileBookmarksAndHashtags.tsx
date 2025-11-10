@@ -182,7 +182,10 @@ const ProfileBookmarksAndHashtags = forwardRef<{ refresh: () => void }, {
       
       // If this is not a retry and we haven't exceeded max retries, schedule a retry
       if (!isRetry && retryCountBookmarks < maxRetries) {
-        console.log('[ProfileBookmarksAndHashtags] Scheduling bookmark retry', retryCountBookmarks + 1, 'of', maxRetries)
+        logger.debug('[ProfileBookmarksAndHashtags] Scheduling bookmark retry', {
+          attempt: retryCountBookmarks + 1,
+          maxRetries
+        })
         // Use shorter delays for initial retries, then exponential backoff
         const delay = retryCountBookmarks === 0 ? 1000 : retryCountBookmarks === 1 ? 2000 : 3000
         setTimeout(() => {
@@ -280,7 +283,10 @@ const ProfileBookmarksAndHashtags = forwardRef<{ refresh: () => void }, {
       
       // If this is not a retry and we haven't exceeded max retries, schedule a retry
       if (!isRetry && retryCountHashtags < maxRetries) {
-        console.log('[ProfileBookmarksAndHashtags] Scheduling hashtag retry', retryCountHashtags + 1, 'of', maxRetries)
+        logger.debug('[ProfileBookmarksAndHashtags] Scheduling hashtag retry', {
+          attempt: retryCountHashtags + 1,
+          maxRetries
+        })
         // Use shorter delays for initial retries, then exponential backoff
         const delay = retryCountHashtags === 0 ? 1000 : retryCountHashtags === 1 ? 2000 : 3000
         setTimeout(() => {
@@ -421,7 +427,10 @@ const ProfileBookmarksAndHashtags = forwardRef<{ refresh: () => void }, {
       
       // If this is not a retry and we haven't exceeded max retries, schedule a retry
       if (!isRetry && retryCountPins < maxRetries) {
-        console.log('[ProfileBookmarksAndHashtags] Scheduling pin retry', retryCountPins + 1, 'of', maxRetries)
+        logger.debug('[ProfileBookmarksAndHashtags] Scheduling pin retry', {
+          attempt: retryCountPins + 1,
+          maxRetries
+        })
         // Use shorter delays for initial retries, then exponential backoff
         const delay = retryCountPins === 0 ? 1000 : retryCountPins === 1 ? 2000 : 3000
         setTimeout(() => {

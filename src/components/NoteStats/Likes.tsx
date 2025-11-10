@@ -10,6 +10,7 @@ import { Loader } from 'lucide-react'
 import { Event } from 'nostr-tools'
 import { useMemo, useRef, useState } from 'react'
 import Emoji from '../Emoji'
+import logger from '@/lib/logger'
 
 export default function Likes({ event }: { event: Event }) {
   const inQuietMode = shouldHideInteractions(event)
@@ -58,7 +59,7 @@ export default function Likes({ event }: { event: Event }) {
         const evt = await publish(reaction)
         noteStatsService.updateNoteStatsByEvents([evt])
       } catch (error) {
-        console.error('like failed', error)
+        logger.error('Like failed', { error, eventId: event.id })
       } finally {
         setLiking(null)
         clearTimeout(timer)

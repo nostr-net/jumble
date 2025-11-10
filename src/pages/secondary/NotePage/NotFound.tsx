@@ -7,6 +7,7 @@ import { AlertCircle, Search } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 
 export default function NotFound({ 
   bech32Id, 
@@ -55,7 +56,7 @@ export default function NotFound({
           externalRelays = externalRelays.map(url => normalizeUrl(url) || url)
           externalRelays = Array.from(new Set(externalRelays))
         } catch (err) {
-          console.error('Failed to parse external relays:', err)
+        logger.error('Failed to parse external relays', { error: err, bech32Id })
         }
       } else {
         extractedHexEventId = bech32Id
@@ -100,7 +101,7 @@ export default function NotFound({
         onEventFound(event)
       }
     } catch (error) {
-      console.error('External relay fetch failed:', error)
+      logger.error('External relay fetch failed', { error, bech32Id, hexEventId })
     } finally {
       setIsSearchingExternal(false)
       setTriedExternal(true)

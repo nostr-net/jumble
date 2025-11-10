@@ -1,5 +1,6 @@
 import React, { Component, ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import logger from '@/lib/logger'
 
 interface MediaErrorBoundaryProps {
   children: ReactNode
@@ -31,7 +32,7 @@ export class MediaErrorBoundary extends Component<MediaErrorBoundaryProps, Media
     }
     
     // Log unexpected errors
-    console.warn('Media error boundary caught error:', error, errorInfo)
+    logger.warn('Media error boundary caught error', { error, errorInfo })
     this.props.onError?.(error)
   }
 

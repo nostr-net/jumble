@@ -8,6 +8,7 @@ import { CircleX } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import RelayIcon from '../RelayIcon'
+import logger from '@/lib/logger'
 
 export default function RelayUrls({ relaySetId }: { relaySetId: string }) {
   const { t } = useTranslation()
@@ -29,7 +30,7 @@ export default function RelayUrls({ relaySetId }: { relaySetId: string }) {
         relayUrls: relaySet.relayUrls.filter((u) => u !== url)
       })
     } catch (error) {
-      console.error('Failed to remove relay from set:', error)
+      logger.error('Failed to remove relay from set', { error, relaySetId, url })
     }
   }
 
@@ -54,7 +55,7 @@ export default function RelayUrls({ relaySetId }: { relaySetId: string }) {
       await updateRelaySet({ ...relaySet, relayUrls: newRelayUrls })
       setNewRelayUrl('')
     } catch (error) {
-      console.error('Failed to update relay set:', error)
+      logger.error('Failed to update relay set', { error, relaySetId, url: normalizedUrl })
       setNewRelayUrlError(t('Failed to add relay. Please try again.'))
     } finally {
       setIsLoading(false)

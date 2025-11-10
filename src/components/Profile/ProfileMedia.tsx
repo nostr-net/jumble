@@ -1,11 +1,11 @@
-import { ExtendedKind } from '@/constants'
 import NoteCard from '@/components/NoteCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useProfileTimeline } from '@/hooks/useProfileTimeline'
-import { Event, kinds } from 'nostr-tools'
+import { Event } from 'nostr-tools'
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
+import { ExtendedKind } from '@/constants'
 
-interface ProfileArticlesProps {
+interface ProfileMediaProps {
   pubkey: string
   topSpace?: number
   searchQuery?: string
@@ -13,24 +13,24 @@ interface ProfileArticlesProps {
   onEventsChange?: (events: Event[]) => void
 }
 
-const ARTICLE_KINDS = [
-  kinds.LongFormArticle,
-  ExtendedKind.WIKI_ARTICLE_MARKDOWN,
-  ExtendedKind.WIKI_ARTICLE,
-  ExtendedKind.PUBLICATION,
-  kinds.Highlights
+const MEDIA_KIND_LIST = [
+  ExtendedKind.PICTURE,
+  ExtendedKind.VIDEO,
+  ExtendedKind.SHORT_VIDEO,
+  ExtendedKind.VOICE,
+  ExtendedKind.VOICE_COMMENT
 ]
 
-const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event[] }, ProfileArticlesProps>(
+const ProfileMedia = forwardRef<{ refresh: () => void; getEvents: () => Event[] }, ProfileMediaProps>(
   ({ pubkey, topSpace, searchQuery = '', kindFilter = 'all', onEventsChange }, ref) => {
     const [isRefreshing, setIsRefreshing] = useState(false)
 
-    const cacheKey = useMemo(() => `${pubkey}-articles`, [pubkey])
+    const cacheKey = useMemo(() => `${pubkey}-media`, [pubkey])
 
     const { events: timelineEvents, isLoading, refresh } = useProfileTimeline({
       pubkey,
       cacheKey,
-      kinds: ARTICLE_KINDS,
+      kinds: MEDIA_KIND_LIST,
       limit: 200
     })
 
@@ -80,14 +80,14 @@ const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event
     }, [eventsFilteredByKind, searchQuery])
 
     const getKindLabel = (kindValue: string) => {
-      if (!kindValue || kindValue === 'all') return 'articles, publications, or highlights'
+      if (!kindValue || kindValue === 'all') return 'media items'
       const kindNum = parseInt(kindValue, 10)
-      if (kindNum === kinds.LongFormArticle) return 'long form articles'
-      if (kindNum === ExtendedKind.WIKI_ARTICLE_MARKDOWN) return 'wiki articles (markdown)'
-      if (kindNum === ExtendedKind.WIKI_ARTICLE) return 'wiki articles (asciidoc)'
-      if (kindNum === ExtendedKind.PUBLICATION) return 'publications'
-      if (kindNum === kinds.Highlights) return 'highlights'
-      return 'items'
+      if (kindNum === ExtendedKind.PICTURE) return 'photos'
+      if (kindNum === ExtendedKind.VIDEO) return 'videos'
+      if (kindNum === ExtendedKind.SHORT_VIDEO) return 'short videos'
+      if (kindNum === ExtendedKind.VOICE) return 'voice posts'
+      if (kindNum === ExtendedKind.VOICE_COMMENT) return 'voice comments'
+      return 'media'
     }
 
     if (!pubkey) {
@@ -123,7 +123,7 @@ const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event
     return (
       <div style={{ marginTop: topSpace || 0 }}>
         {isRefreshing && (
-          <div className="px-4 py-2 text-sm text-green-500 text-center">🔄 Refreshing articles...</div>
+          <div className="px-4 py-2 text-sm text-green-500 text-center">🔄 Refreshing media...</div>
         )}
         {(searchQuery.trim() || (kindFilter && kindFilter !== 'all')) && (
           <div className="px-4 py-2 text-sm text-muted-foreground">
@@ -140,6 +140,7 @@ const ProfileArticles = forwardRef<{ refresh: () => void; getEvents: () => Event
   }
 )
 
-ProfileArticles.displayName = 'ProfileArticles'
+ProfileMedia.displayName = 'ProfileMedia'
 
-export default ProfileArticles
+export default ProfileMedia
+

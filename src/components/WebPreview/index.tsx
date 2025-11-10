@@ -11,6 +11,7 @@ import { nip19, kinds } from 'nostr-tools'
 import { useMemo } from 'react'
 import Image from '../Image'
 import Username from '../Username'
+import { cleanUrl } from '@/lib/url'
 
 // Helper function to get event type name
 function getEventTypeName(kind: number): string {
@@ -78,27 +79,30 @@ function stripMarkdown(content: string): string {
 export default function WebPreview({ url, className }: { url: string; className?: string }) {
   const { autoLoadMedia } = useContentPolicy()
   const { isSmallScreen } = useScreenSize()
-  
-  const { title, description, image } = useFetchWebMetadata(url)
+
+  const cleanedUrl = useMemo(() => cleanUrl(url), [url])
+  const { title, description, image } = useFetchWebMetadata(cleanedUrl)
 
   const hostname = useMemo(() => {
     try {
-      return new URL(url).hostname
+      return new URL(cleanedUrl).hostname
     } catch {
       return ''
     }
-  }, [url])
+  }, [cleanedUrl])
+
+  const isInternalJumbleLink = useMemo(() => hostname === 'jumble.imwald.eu', [hostname])
 
   // Extract nostr identifier from URL
   const nostrIdentifier = useMemo(() => {
-    const naddrMatch = url.match(/(naddr1[a-z0-9]+)/i)
-    const neventMatch = url.match(/(nevent1[a-z0-9]+)/i)
-    const noteMatch = url.match(/(note1[a-z0-9]{58})/i)
-    const npubMatch = url.match(/(npub1[a-z0-9]{58})/i)
-    const nprofileMatch = url.match(/(nprofile1[a-z0-9]+)/i)
+    const naddrMatch = cleanedUrl.match(/(naddr1[a-z0-9]+)/i)
+    const neventMatch = cleanedUrl.match(/(nevent1[a-z0-9]+)/i)
+    const noteMatch = cleanedUrl.match(/(note1[a-z0-9]{58})/i)
+    const npubMatch = cleanedUrl.match(/(npub1[a-z0-9]{58})/i)
+    const nprofileMatch = cleanedUrl.match(/(nprofile1[a-z0-9]+)/i)
     
     return naddrMatch?.[1] || neventMatch?.[1] || noteMatch?.[1] || npubMatch?.[1] || nprofileMatch?.[1] || null
-  }, [url])
+  }, [cleanedUrl])
 
   // Determine nostr type
   const nostrType = useMemo(() => {
@@ -132,7 +136,7 @@ export default function WebPreview({ url, className }: { url: string; className?
   }
 
   // Check if we have any opengraph data (title, description, or image)
-  const hasOpengraphData = title || description || image
+  const hasOpengraphData = !isInternalJumbleLink && (title || description || image)
 
   // If no opengraph metadata available, show enhanced fallback link card
   if (!hasOpengraphData) {
@@ -149,7 +153,7 @@ export default function WebPreview({ url, className }: { url: string; className?
           className={cn('p-3 clickable flex w-full border rounded-lg overflow-hidden gap-3', className)}
           onClick={(e) => {
             e.stopPropagation()
-            window.open(url, '_blank')
+            window.open(cleanedUrl, '_blank')
           }}
         >
           {eventImage && fetchedEvent && (
@@ -202,7 +206,7 @@ export default function WebPreview({ url, className }: { url: string; className?
           className={cn('p-3 clickable flex w-full border rounded-lg overflow-hidden gap-3', className)}
           onClick={(e) => {
             e.stopPropagation()
-            window.open(url, '_blank')
+            window.open(cleanedUrl, '_blank')
           }}
         >
           <div className="flex-1 min-w-0">
@@ -229,7 +233,7 @@ export default function WebPreview({ url, className }: { url: string; className?
         className={cn('p-2 clickable flex w-full border rounded-lg overflow-hidden', className)}
         onClick={(e) => {
           e.stopPropagation()
-          window.open(url, '_blank')
+          window.open(cleanedUrl, '_blank')
         }}
       >
         <div className="flex-1 w-0 flex items-center gap-2">
@@ -249,7 +253,7 @@ export default function WebPreview({ url, className }: { url: string; className?
         className="rounded-lg border mt-2 overflow-hidden"
         onClick={(e) => {
           e.stopPropagation()
-          window.open(url, '_blank')
+          window.open(cleanedUrl, '_blank')
         }}
       >
         <Image image={{ url: image }} className="w-full max-w-[400px] h-44 rounded-none" hideIfError />
@@ -271,7 +275,7 @@ export default function WebPreview({ url, className }: { url: string; className?
       className={cn('p-2 clickable flex w-full border rounded-lg overflow-hidden gap-2', className)}
       onClick={(e) => {
         e.stopPropagation()
-        window.open(url, '_blank')
+        window.open(cleanedUrl, '_blank')
       }}
     >
       {image && (

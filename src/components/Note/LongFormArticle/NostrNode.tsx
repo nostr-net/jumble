@@ -1,6 +1,7 @@
 import { EmbeddedMention, EmbeddedNote } from '@/components/Embedded'
 import { nip19 } from 'nostr-tools'
 import { useMemo } from 'react'
+import logger from '@/lib/logger'
 
 interface NostrNodeProps {
   rawText: string
@@ -19,7 +20,7 @@ export default function NostrNode({ rawText, bech32Id }: NostrNodeProps) {
         return { type: 'note', id: bech32Id }
       }
     } catch (error) {
-      console.error('Invalid bech32 ID:', bech32Id, error)
+      logger.error('Invalid bech32 ID', { bech32Id, error })
     }
     return { type: 'invalid', id: '' }
   }, [bech32Id])

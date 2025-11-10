@@ -9,6 +9,7 @@ import { TRelayInfo } from '@/types'
 import { ArrowRight, Server } from 'lucide-react'
 import { forwardRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 
 const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
   const { t } = useTranslation()
@@ -23,7 +24,7 @@ const HomePage = forwardRef(({ index }: { index?: number }, ref) => {
         const relays = await relayInfoService.getRelayInfos(RECOMMENDED_RELAYS)
         setRecommendedRelayInfos(relays.filter(Boolean) as TRelayInfo[])
       } catch (error) {
-        console.error('Failed to fetch recommended relays:', error)
+        logger.error('Failed to fetch recommended relays', { error })
       }
     }
     init()

@@ -425,7 +425,7 @@ export default function AsciidocArticle({
       )}
 
       {/* Collapsible Article Info - only for article-type events */}
-      {!hideImagesAndInfo && isArticleType && (parsedContent?.nostrLinks?.length > 0 || parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
+      {!hideImagesAndInfo && isArticleType && (parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
         <Collapsible open={isInfoOpen} onOpenChange={setIsInfoOpen} className="mt-4">
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="w-full justify-between">
@@ -434,21 +434,6 @@ export default function AsciidocArticle({
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-4 mt-2">
-
-            {/* Nostr links summary */}
-            {parsedContent?.nostrLinks?.length > 0 && (
-              <div className="p-4 bg-muted rounded-lg">
-                <h4 className="text-sm font-semibold mb-2">Nostr references:</h4>
-                <div className="space-y-1">
-                  {parsedContent?.nostrLinks?.map((link, index) => (
-                    <div key={index} className="text-sm">
-                      <span className="font-mono text-blue-600">{link.type}:</span>{' '}
-                      <span className="font-mono">{link.id}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Highlight sources */}
             {parsedContent?.highlightSources?.length > 0 && (

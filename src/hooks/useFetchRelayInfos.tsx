@@ -2,6 +2,7 @@ import { checkAlgoRelay } from '@/lib/relay'
 import relayInfoService from '@/services/relay-info.service'
 import { TRelayInfo } from '@/types'
 import { useEffect, useState } from 'react'
+import logger from '@/lib/logger'
 
 export function useFetchRelayInfos(urls: string[]) {
   const [isFetching, setIsFetching] = useState(true)
@@ -33,7 +34,7 @@ export function useFetchRelayInfos(urls: string[]) {
             .map((relayInfo) => relayInfo.url)
         )
       } catch (err) {
-        console.error(err)
+        logger.error('Failed to fetch relay infos', { error: err, urls })
       } finally {
         clearTimeout(timer)
         setIsFetching(false)

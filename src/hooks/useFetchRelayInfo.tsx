@@ -1,6 +1,7 @@
 import relayInfoService from '@/services/relay-info.service'
 import { TRelayInfo } from '@/types'
 import { useEffect, useState } from 'react'
+import logger from '@/lib/logger'
 
 export function useFetchRelayInfo(url?: string) {
   const [isFetching, setIsFetching] = useState(true)
@@ -17,7 +18,7 @@ export function useFetchRelayInfo(url?: string) {
         const relayInfo = await relayInfoService.getRelayInfo(url)
         setRelayInfo(relayInfo)
       } catch (err) {
-        console.error(err)
+        logger.error('Failed to fetch relay info', { error: err, url })
       } finally {
         clearTimeout(timer)
         setIsFetching(false)

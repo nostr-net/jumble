@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { normalizeUrl, isLocalNetworkUrl } from '@/lib/url'
+import logger from '@/lib/logger'
 import { useNostr } from '@/providers/NostrProvider'
 import { TMailboxRelay, TMailboxRelayScope } from '@/types'
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
@@ -187,7 +188,7 @@ export default function CacheRelaysSetting() {
       const info = await indexedDb.getStoreInfo()
       setCacheInfo(info)
     } catch (error) {
-      console.error('Failed to load cache info:', error)
+      logger.error('Failed to load cache info', { error })
     }
   }
 
@@ -209,7 +210,7 @@ export default function CacheRelaysSetting() {
         try {
           window.localStorage.removeItem(key)
         } catch (e) {
-          console.warn(`Failed to remove ${key} from localStorage:`, e)
+          logger.warn(`Failed to remove ${key} from localStorage`, e as Error)
         }
       })
 
@@ -231,7 +232,7 @@ export default function CacheRelaysSetting() {
       
       toast.success(t('Cache cleared successfully'))
     } catch (error) {
-      console.error('Failed to clear cache:', error)
+      logger.error('Failed to clear cache', { error })
       toast.error(t('Failed to clear cache'))
     }
   }
@@ -246,7 +247,7 @@ export default function CacheRelaysSetting() {
       
       toast.success(t('Cache refreshed successfully'))
     } catch (error) {
-      console.error('Failed to refresh cache:', error)
+      logger.error('Failed to refresh cache', { error })
       toast.error(t('Failed to refresh cache'))
     }
   }
@@ -270,7 +271,7 @@ export default function CacheRelaysSetting() {
         : await indexedDb.getStoreItems(storeName)
       setStoreItems(items)
     } catch (error) {
-      console.error('Failed to load store items:', error)
+      logger.error('Failed to load store items', { error })
       toast.error(t('Failed to load store items'))
       setStoreItems([])
     } finally {
@@ -335,7 +336,7 @@ export default function CacheRelaysSetting() {
       // Update cache info
       loadCacheInfo()
     } catch (error) {
-      console.error('Failed to delete item:', error)
+      logger.error('Failed to delete item', { error })
       toast.error(t('Failed to delete item'))
     }
   }
@@ -354,7 +355,7 @@ export default function CacheRelaysSetting() {
       loadCacheInfo()
       toast.success(t('All items deleted successfully'))
     } catch (error) {
-      console.error('Failed to delete all items:', error)
+      logger.error('Failed to delete all items', { error })
       toast.error(t('Failed to delete all items'))
     }
   }
@@ -391,7 +392,7 @@ export default function CacheRelaysSetting() {
         toast.success(t('Cleaned up {{deleted}} duplicate entries, kept {{kept}}', { deleted: result.deleted, kept: result.kept }))
       }
     } catch (error) {
-      console.error('Failed to cleanup duplicates:', error)
+      logger.error('Failed to cleanup duplicates', { error })
       if (error instanceof Error && error.message === 'Not a replaceable event store') {
         toast.error(t('This store does not contain replaceable events'))
       } else {
@@ -476,7 +477,7 @@ export default function CacheRelaysSetting() {
     } catch (error) {
       // Reset flag on error
       justSavedRef.current = false
-      console.error('Failed to save cache relays:', error)
+      logger.error('Failed to save cache relays', { error })
       // Show error feedback
       if (error instanceof Error && (error as any).relayStatuses) {
         showPublishingFeedback({

@@ -4,6 +4,7 @@ import customEmojiService from '@/services/custom-emoji.service'
 import mediaUpload from '@/services/media-upload.service'
 import { prefixNostrAddresses } from '@/lib/nostr-address'
 import { normalizeHashtag } from '@/lib/discussion-topics'
+import logger from '@/lib/logger'
 import {
   TDraftEvent,
   TEmoji,
@@ -731,7 +732,7 @@ async function extractRelatedEventIds(content: string, parentEvent?: Event) {
         )
       }
     } catch (e) {
-      console.error(e)
+      logger.error('Failed to decode quoted nostr reference', { error: e, reference: m })
     }
   }
 
@@ -798,7 +799,7 @@ async function extractCommentMentions(content: string, parentEvent: Event) {
         )
       }
     } catch (e) {
-      console.error(e)
+      logger.error('Failed to decode quoted nostr reference', { error: e, reference: m })
     }
   }
 
@@ -1033,7 +1034,7 @@ export async function createHighlightDraftEvent(
           }
         }
       } catch (err) {
-        console.error('Failed to decode naddr:', err)
+        logger.error('Failed to decode naddr', { error: err, reference: tag })
       }
     } else if (sourceValue.startsWith('nevent')) {
       // Handle nevent
@@ -1055,7 +1056,7 @@ export async function createHighlightDraftEvent(
           }
         }
       } catch (err) {
-        console.error('Failed to decode nevent:', err)
+        logger.error('Failed to decode nevent', { error: err, reference: tag })
       }
     } else if (sourceValue.startsWith('note')) {
       // Handle note1... (bech32 encoded event ID)
@@ -1072,7 +1073,7 @@ export async function createHighlightDraftEvent(
           }
         }
       } catch (err) {
-        console.error('Failed to decode note:', err)
+        logger.error('Failed to decode note', { error: err, reference: tag })
       }
     } else {
       // Regular hex event ID
@@ -1089,8 +1090,8 @@ export async function createHighlightDraftEvent(
   }
 
   // Add context tag if provided (the full text/quote that the highlight is from)
-  if (context && context.trim()) {
-    tags.push(['context', context.trim()])
+  if (context && context.length) {
+    tags.push(['context', context])
   }
 
   // Add description tag if provided (user's explanation/comment)

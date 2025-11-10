@@ -4,6 +4,7 @@ import { normalizeUrl } from '@/lib/url'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 
 export default function AddNewRelay() {
   const { t } = useTranslation()
@@ -31,7 +32,7 @@ export default function AddNewRelay() {
       await addFavoriteRelays([normalizedUrl])
       setInput('')
     } catch (error) {
-      console.error('Failed to add favorite relay:', error)
+      logger.error('Failed to add favorite relay', { error, relay: normalizedUrl })
       setErrorMsg(t('Failed to add relay. Please try again.'))
     } finally {
       setIsLoading(false)

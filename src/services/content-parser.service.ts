@@ -8,6 +8,7 @@ import { Event, kinds, nip19 } from 'nostr-tools'
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { URL_REGEX, ExtendedKind } from '@/constants'
 import { TImetaInfo } from '@/types'
+import logger from '@/lib/logger'
 
 export interface ParsedContent {
   html: string
@@ -45,7 +46,7 @@ class ContentParserService {
       this.isAsciidoctorLoaded = true
       return this.asciidoctor
     } catch (error) {
-      console.warn('Failed to load AsciiDoctor:', error)
+      logger.warn('Failed to load AsciiDoctor', error as Error)
       return null
     }
   }
@@ -91,7 +92,7 @@ class ContentParserService {
       const asciidocContent = this.convertToAsciidoc(content, markupType)
       html = await this.parseAsciidoc(asciidocContent, { enableMath, enableSyntaxHighlighting })
     } catch (error) {
-      console.error('Content parsing error:', error)
+      logger.error('Content parsing error', { error })
       // Fallback to plain text
       html = this.parsePlainText(content)
     }
@@ -178,7 +179,7 @@ class ContentParserService {
       
       // Debug: log the AsciiDoc HTML output for troubleshooting
       if (process.env.NODE_ENV === 'development') {
-        console.log('AsciiDoc HTML output:', htmlString.substring(0, 1000) + '...')
+        logger.debug('AsciiDoc HTML output preview', { preview: htmlString.substring(0, 1000) + '...' })
       }
       
       // Process wikilinks in the HTML output
@@ -196,7 +197,7 @@ class ContentParserService {
       // Hide any raw AsciiDoc ToC text that might appear in the content
       return this.hideRawTocText(styledHtml)
     } catch (error) {
-      console.error('AsciiDoc parsing error:', error)
+      logger.error('AsciiDoc parsing error', { error })
       return this.parsePlainText(content)
     }
   }
@@ -244,7 +245,7 @@ class ContentParserService {
     
     // Debug: log the converted AsciiDoc for troubleshooting
     if (process.env.NODE_ENV === 'development') {
-      console.log('Converted AsciiDoc:', result)
+      logger.debug('Converted AsciiDoc', result)
     }
     
     return result

@@ -13,6 +13,7 @@ import { Event } from 'nostr-tools'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import logger from '@/lib/logger'
 
 export default function Poll({ event, className }: { event: Event; className?: string }) {
   const { t } = useTranslation()
@@ -80,7 +81,7 @@ export default function Poll({ event, className }: { event: Event; className?: s
         poll.endsAt
       )
     } catch (error) {
-      console.error('Failed to fetch poll results:', error)
+      logger.error('Failed to fetch poll results', { error, eventId: event.id })
       toast.error('Failed to fetch poll results: ' + (error as Error).message)
     } finally {
       setIsLoadingResults(false)
@@ -125,7 +126,7 @@ export default function Poll({ event, className }: { event: Event; className?: s
       setSelectedOptionIds([])
       pollResultsService.addPollResponse(event.id, pubkey, selectedOptionIds)
     } catch (error) {
-      console.error('Failed to vote:', error)
+      logger.error('Failed to vote', { error, eventId: event.id })
       toast.error('Failed to vote: ' + (error as Error).message)
     } finally {
       setIsVoting(false)

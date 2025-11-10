@@ -10,6 +10,7 @@ import { cleanUrl, isImage, isMedia } from '@/lib/url'
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { TImetaInfo } from '@/types'
 import { Event } from 'nostr-tools'
+import logger from '@/lib/logger'
 
 export interface ParsedNostrContent {
   elements: Array<{
@@ -373,7 +374,7 @@ function getNostrType(bech32Id: string): 'npub' | 'nprofile' | 'nevent' | 'naddr
       return type as 'npub' | 'nprofile' | 'nevent' | 'naddr' | 'note'
     }
   } catch (error) {
-    console.error('Invalid bech32 ID:', bech32Id, error)
+    logger.error('Invalid bech32 ID', { bech32Id, error })
   }
   return null
 }

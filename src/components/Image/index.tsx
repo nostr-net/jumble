@@ -6,6 +6,7 @@ import { getHashFromURL } from 'blossom-client-sdk'
 import { decode } from 'blurhash'
 import { ImageOff } from 'lucide-react'
 import { HTMLAttributes, useEffect, useMemo, useRef, useState } from 'react'
+import logger from '@/lib/logger'
 
 export default function Image({
   image: { url, blurHash, pubkey, dim, alt: imetaAlt, fallback },
@@ -62,7 +63,7 @@ export default function Image({
       oldImageUrl = new URL(imageUrl)
       hash = getHashFromURL(oldImageUrl)
     } catch (error) {
-      console.error('Invalid image URL:', error)
+      logger.error('Invalid image URL', { error, imageUrl })
     }
     if (!pubkey || !hash || !oldImageUrl) {
       setIsLoading(false)
@@ -79,7 +80,7 @@ export default function Image({
         try {
           return new URL(server)
         } catch (error) {
-          console.error('Invalid Blossom server URL:', server, error)
+          logger.error('Invalid Blossom server URL', { server, error })
           return undefined
         }
       })
@@ -167,7 +168,7 @@ function BlurHashCanvas({ blurHash, className = '' }: { blurHash: string; classN
     try {
       return decode(blurHash, blurHashWidth, blurHashHeight)
     } catch (error) {
-      console.warn('Failed to decode blurhash:', error)
+      logger.warn('Failed to decode blurhash', error as Error)
       return null
     }
   }, [blurHash])

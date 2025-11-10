@@ -10,6 +10,7 @@ import QrScanner from 'qr-scanner'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import QrCode from '../QrCode'
+import logger from '@/lib/logger'
 
 export default function NostrConnectLogin({
   back,
@@ -95,7 +96,7 @@ export default function NostrConnectLogin({
     nostrConnectionLogin(loginDetails.privKey, loginDetails.connectionString)
       .then(() => onLoginSuccess())
       .catch((err) => {
-        console.error('NostrConnectionLogin Error:', err)
+        logger.error('NostrConnectionLogin error', { error: err })
         setNostrConnectionErrMsg(
           err.message ? `${err.message}. Please reload.` : 'Connection failed. Please reload.'
         )

@@ -7,6 +7,7 @@ import { NostrEvent } from 'nostr-tools'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import logger from '@/lib/logger'
 
 export default function ReviewEditor({
   relayUrl,
@@ -37,7 +38,7 @@ export default function ReviewEditor({
       } else if (error instanceof Error) {
         toast.error(`${t('Failed to review')}: ${error.message}`)
       }
-      console.error(error)
+      logger.error('Failed to submit relay review', { error, relayUrl })
       return
     } finally {
       setSubmitting(false)

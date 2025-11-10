@@ -30,7 +30,7 @@ import { toNoteList } from '@/lib/link'
 import { parseAdvancedSearch } from '@/lib/search-parser'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
-import { FileText, Link, Zap } from 'lucide-react'
+import { FileText, Link, Zap, Film } from 'lucide-react'
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import logger from '@/lib/logger'
@@ -42,8 +42,9 @@ import ProfileBookmarksAndHashtags from './ProfileBookmarksAndHashtags'
 import SmartFollowings from './SmartFollowings'
 import SmartMuteLink from './SmartMuteLink'
 import SmartRelays from './SmartRelays'
+import ProfileMedia from './ProfileMedia'
 
-type ProfileTabValue = 'posts' | 'pins' | 'bookmarks' | 'interests' | 'articles'
+type ProfileTabValue = 'posts' | 'pins' | 'bookmarks' | 'interests' | 'articles' | 'media'
 
 export default function Profile({ id }: { id?: string }) {
   const { t } = useTranslation()
@@ -53,6 +54,8 @@ export default function Profile({ id }: { id?: string }) {
   const [activeTab, setActiveTab] = useState<ProfileTabValue>('posts')
   const [searchQuery, setSearchQuery] = useState('')
   const [articleKindFilter, setArticleKindFilter] = useState<string>('all')
+  const [postKindFilter, setPostKindFilter] = useState<string>('all')
+  const [mediaKindFilter, setMediaKindFilter] = useState<string>('all')
 
   // Handle search in articles tab - parse advanced search parameters
   const handleArticleSearch = (query: string) => {
@@ -140,7 +143,10 @@ export default function Profile({ id }: { id?: string }) {
   const profileFeedRef = useRef<{ refresh: () => void }>(null)
   const profileBookmarksRef = useRef<{ refresh: () => void }>(null)
   const profileArticlesRef = useRef<{ refresh: () => void; getEvents: () => Event[] }>(null)
+  const profileMediaRef = useRef<{ refresh: () => void; getEvents: () => Event[] }>(null)
   const [articleEvents, setArticleEvents] = useState<Event[]>([])
+  const [postEvents, setPostEvents] = useState<Event[]>([])
+  const [mediaEvents, setMediaEvents] = useState<Event[]>([])
   
   const isFollowingYou = useMemo(() => {
     // This will be handled by the FollowedBy component
@@ -158,6 +164,8 @@ export default function Profile({ id }: { id?: string }) {
       profileFeedRef.current?.refresh()
     } else if (activeTab === 'articles') {
       profileArticlesRef.current?.refresh()
+    } else if (activeTab === 'media') {
+      profileMediaRef.current?.refresh()
     } else {
       profileBookmarksRef.current?.refresh()
     }
@@ -172,6 +180,10 @@ export default function Profile({ id }: { id?: string }) {
     {
       value: 'articles',
       label: 'Articles'
+    },
+    {
+      value: 'media',
+      label: 'Media'
     },
     {
       value: 'pins',
@@ -317,23 +329,51 @@ export default function Profile({ id }: { id?: string }) {
           <div className="flex items-center gap-2 pr-2 px-1">
             <ProfileSearchBar
               onSearch={activeTab === 'articles' ? handleArticleSearch : setSearchQuery}
-              placeholder={`Search ${activeTab}...`}
+              placeholder={`Search ${
+                activeTab === 'posts' ? 'posts' : activeTab === 'media' ? 'media' : activeTab
+              }...`}
               className="w-64"
             />
+            {activeTab === 'posts' && (() => {
+              const allCount = postEvents.length
+              const noteCount = postEvents.filter((event) => event.kind === kinds.ShortTextNote).length
+              const repostCount = postEvents.filter((event) => event.kind === kinds.Repost).length
+              const commentCount = postEvents.filter((event) => event.kind === ExtendedKind.COMMENT).length
+              const discussionCount = postEvents.filter((event) => event.kind === ExtendedKind.DISCUSSION).length
+              const pollCount = postEvents.filter((event) => event.kind === ExtendedKind.POLL).length
+              const superzapCount = postEvents.filter((event) => event.kind === ExtendedKind.ZAP_RECEIPT).length
+
+              return (
+                <Select value={postKindFilter} onValueChange={setPostKindFilter}>
+                  <SelectTrigger className="w-48">
+                    <FileText className="h-4 w-4 mr-2 shrink-0" />
+                    <SelectValue placeholder="Filter posts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Posts ({allCount})</SelectItem>
+                    <SelectItem value={String(kinds.ShortTextNote)}>Notes ({noteCount})</SelectItem>
+                    <SelectItem value={String(kinds.Repost)}>Reposts ({repostCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.COMMENT)}>Comments ({commentCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.DISCUSSION)}>Discussions ({discussionCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.POLL)}>Polls ({pollCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.ZAP_RECEIPT)}>Superzaps ({superzapCount})</SelectItem>
+                  </SelectContent>
+                </Select>
+              )
+            })()}
             {activeTab === 'articles' && (() => {
-              // Calculate counts for each kind
               const allCount = articleEvents.length
-              const longFormCount = articleEvents.filter(e => e.kind === kinds.LongFormArticle).length
-              const wikiMarkdownCount = articleEvents.filter(e => e.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN).length
-              const wikiAsciiDocCount = articleEvents.filter(e => e.kind === ExtendedKind.WIKI_ARTICLE).length
-              const publicationCount = articleEvents.filter(e => e.kind === ExtendedKind.PUBLICATION).length
-              const highlightsCount = articleEvents.filter(e => e.kind === kinds.Highlights).length
-              
+              const longFormCount = articleEvents.filter((e) => e.kind === kinds.LongFormArticle).length
+              const wikiMarkdownCount = articleEvents.filter((e) => e.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN).length
+              const wikiAsciiDocCount = articleEvents.filter((e) => e.kind === ExtendedKind.WIKI_ARTICLE).length
+              const publicationCount = articleEvents.filter((e) => e.kind === ExtendedKind.PUBLICATION).length
+              const highlightsCount = articleEvents.filter((e) => e.kind === kinds.Highlights).length
+
               return (
                 <Select value={articleKindFilter} onValueChange={setArticleKindFilter}>
                   <SelectTrigger className="w-48">
                     <FileText className="h-4 w-4 mr-2 shrink-0" />
-                    <SelectValue placeholder="Filter by type" />
+                    <SelectValue placeholder="Filter articles" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Types ({allCount})</SelectItem>
@@ -346,29 +386,62 @@ export default function Profile({ id }: { id?: string }) {
                 </Select>
               )
             })()}
-            <RetroRefreshButton
-              onClick={handleRefresh}
-              size="sm"
-              className="flex-shrink-0"
-            />
+            {activeTab === 'media' && (() => {
+              const allCount = mediaEvents.length
+              const pictureCount = mediaEvents.filter((event) => event.kind === ExtendedKind.PICTURE).length
+              const videoCount = mediaEvents.filter((event) => event.kind === ExtendedKind.VIDEO).length
+              const shortVideoCount = mediaEvents.filter((event) => event.kind === ExtendedKind.SHORT_VIDEO).length
+              const voiceCount = mediaEvents.filter((event) => event.kind === ExtendedKind.VOICE).length
+              const voiceCommentCount = mediaEvents.filter((event) => event.kind === ExtendedKind.VOICE_COMMENT).length
+
+              return (
+                <Select value={mediaKindFilter} onValueChange={setMediaKindFilter}>
+                  <SelectTrigger className="w-52">
+                    <Film className="h-4 w-4 mr-2 shrink-0" />
+                    <SelectValue placeholder="Filter media" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Media ({allCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.PICTURE)}>Photos ({pictureCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.VIDEO)}>Videos ({videoCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.SHORT_VIDEO)}>Short Videos ({shortVideoCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.VOICE)}>Voice Posts ({voiceCount})</SelectItem>
+                    <SelectItem value={String(ExtendedKind.VOICE_COMMENT)}>Voice Comments ({voiceCommentCount})</SelectItem>
+                  </SelectContent>
+                </Select>
+              )
+            })()}
+            <RetroRefreshButton onClick={handleRefresh} size="sm" className="flex-shrink-0" />
           </div>
         </div>
         {activeTab === 'posts' && (
-          <ProfileFeed 
-            ref={profileFeedRef} 
-            pubkey={pubkey} 
-            topSpace={0} 
+          <ProfileFeed
+            ref={profileFeedRef}
+            pubkey={pubkey}
+            topSpace={0}
             searchQuery={searchQuery}
+            kindFilter={postKindFilter}
+            onEventsChange={setPostEvents}
           />
         )}
         {activeTab === 'articles' && (
-          <ProfileArticles 
-            ref={profileArticlesRef} 
-            pubkey={pubkey} 
-            topSpace={0} 
+          <ProfileArticles
+            ref={profileArticlesRef}
+            pubkey={pubkey}
+            topSpace={0}
             searchQuery={searchQuery}
             kindFilter={articleKindFilter}
             onEventsChange={setArticleEvents}
+          />
+        )}
+        {activeTab === 'media' && (
+          <ProfileMedia
+            ref={profileMediaRef}
+            pubkey={pubkey}
+            topSpace={0}
+            searchQuery={searchQuery}
+            kindFilter={mediaKindFilter}
+            onEventsChange={setMediaEvents}
           />
         )}
         {(activeTab === 'pins' || activeTab === 'bookmarks' || activeTab === 'interests') && (

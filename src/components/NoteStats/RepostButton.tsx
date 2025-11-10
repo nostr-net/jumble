@@ -18,6 +18,7 @@ import { Loader, PencilLine, Repeat } from 'lucide-react'
 import { Event } from 'nostr-tools'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 import PostEditor from '../PostEditor'
 import { formatCount } from './utils'
 
@@ -60,7 +61,7 @@ export default function RepostButton({ event, hideCount = false }: { event: Even
         const evt = await publish(repost)
         noteStatsService.updateNoteStatsByEvents([evt])
       } catch (error) {
-        console.error('repost failed', error)
+        logger.error('Repost failed', { error, eventId: event.id })
       } finally {
         setReposting(false)
         clearTimeout(timer)

@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 
 export default function AddNewRelaySet() {
   const { t } = useTranslation()
@@ -21,7 +22,7 @@ export default function AddNewRelaySet() {
       await createRelaySet(newRelaySetName)
       setNewRelaySetName('')
     } catch (error) {
-      console.error('Failed to create relay set:', error)
+      logger.error('Failed to create relay set', { error, name: newRelaySetName })
       setErrorMsg(t('Failed to create relay set. Please try again.'))
     } finally {
       setIsLoading(false)

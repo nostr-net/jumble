@@ -8,6 +8,7 @@ import { formatPubkey, pubkeyToNpub } from './pubkey'
 import { generateBech32IdFromATag, generateBech32IdFromETag, tagNameEquals } from './tag'
 import { isWebsocketUrl, normalizeHttpUrl, normalizeUrl } from './url'
 import { isTorBrowser } from './utils'
+import logger from '@/lib/logger'
 
 export function getRelayListFromEvent(event?: Event | null, blockedRelays?: string[]) {
   if (!event) {
@@ -77,7 +78,7 @@ export function getProfileFromEvent(event: Event) {
       created_at: event.created_at
     }
   } catch (err) {
-    console.error(event.content, err)
+    logger.error('Failed to parse event metadata', { error: err, content: event.content })
     return {
       pubkey: event.pubkey,
       npub: pubkeyToNpub(event.pubkey) ?? '',

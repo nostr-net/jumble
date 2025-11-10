@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { useNostr } from './NostrProvider'
+import logger from '@/lib/logger'
 
 type TMuteListContext = {
   mutePubkeySet: Set<string>
@@ -68,7 +69,7 @@ export function MuteListProvider({ children }: { children: React.ReactNode }) {
         await indexedDb.putMuteDecryptedTags(muteListEvent.id, privateTags)
         return privateTags
       } catch (error) {
-        console.error('Failed to decrypt mute list content', error)
+        logger.error('Failed to decrypt mute list content', { error, eventId: muteListEvent.id })
         return []
       }
     }

@@ -5,6 +5,7 @@ import { YouTubePlayer } from '@/types/youtube'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ExternalLink from '../ExternalLink'
+import logger from '@/lib/logger'
 
 export default function YoutubeEmbeddedPlayer({
   url,
@@ -70,7 +71,7 @@ export default function YoutubeEmbeddedPlayer({
           }
         })
       } catch (error) {
-        console.error('Failed to initialize YouTube player:', error)
+        logger.error('Failed to initialize YouTube player', { error })
         setError(true)
         return
       }

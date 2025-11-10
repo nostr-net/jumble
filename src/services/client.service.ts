@@ -1023,6 +1023,27 @@ class ClientService extends EventTarget {
     }
   }
 
+  async fetchFavoriteRelays(pubkey: string): Promise<string[]> {
+    try {
+      const favoriteRelaysEvent = await this.fetchReplaceableEvent(pubkey, ExtendedKind.FAVORITE_RELAYS)
+      if (!favoriteRelaysEvent) return []
+
+      const relays: string[] = []
+      favoriteRelaysEvent.tags.forEach(([tagName, tagValue]) => {
+        if (tagName === 'relay' && tagValue) {
+          const normalized = normalizeUrl(tagValue)
+          if (normalized) {
+            relays.push(normalized)
+          }
+        }
+      })
+
+      return Array.from(new Set(relays))
+    } catch {
+      return []
+    }
+  }
+
   /**
    * Build initial relay list for fetching events
    * Priority: FAST_READ_RELAY_URLS, user's favorite relays (10012), user's relay list read relays (10002) including cache relays (10432)

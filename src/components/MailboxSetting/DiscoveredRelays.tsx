@@ -8,6 +8,7 @@ import { Loader2, Check, AlertCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import RelayIcon from '../RelayIcon'
+import logger from '@/lib/logger'
 
 interface DiscoveredRelay {
   url: string
@@ -53,7 +54,7 @@ export default function DiscoveredRelays({ onAdd, localOnly = false }: { onAdd: 
             })
           }
         } catch (error) {
-          console.log('Could not fetch relays from NIP-05:', error)
+        logger.warn('Could not fetch relays from NIP-05', error as Error)
         }
       }
 
@@ -72,7 +73,7 @@ export default function DiscoveredRelays({ onAdd, localOnly = false }: { onAdd: 
             }
           })
         } catch (error) {
-          console.log('Could not fetch relays from NIP-07 extension:', error)
+        logger.warn('Could not fetch relays from NIP-07 extension', error as Error)
         }
       }
 
@@ -87,7 +88,7 @@ export default function DiscoveredRelays({ onAdd, localOnly = false }: { onAdd: 
 
       setDiscoveredRelays(discoveredArray)
     } catch (error) {
-      console.error('Error discovering relays:', error)
+      logger.error('Error discovering relays', { error })
       setErrorMsg(t('Failed to discover relays'))
     } finally {
       setIsLoading(false)
@@ -131,7 +132,7 @@ export default function DiscoveredRelays({ onAdd, localOnly = false }: { onAdd: 
       // Clear discovered relays after adding
       setDiscoveredRelays([])
     } catch (error) {
-      console.error('Failed to add relays:', error)
+      logger.error('Failed to add relays', { error })
       setErrorMsg(t('Failed to add relays'))
     } finally {
       setIsAdding(false)

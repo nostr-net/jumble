@@ -3,6 +3,7 @@ import { tagNameEquals } from '@/lib/tag'
 import { TRelayInfo } from '@/types'
 import { Event, kinds } from 'nostr-tools'
 import { isReplaceableEvent } from '@/lib/event'
+import logger from '@/lib/logger'
 
 type TValue<T = any> = {
   key: string
@@ -193,7 +194,7 @@ class IndexedDbService {
       }
       // Check if the store exists before trying to access it
       if (!this.db.objectStoreNames.contains(storeName)) {
-        console.warn(`Store ${storeName} not found in database. Cannot save event.`)
+        logger.warn(`Store ${storeName} not found in database. Cannot save event.`)
         // Return the event anyway (don't reject) - caching is optional
         return resolve(cleanEvent)
       }
@@ -243,7 +244,7 @@ class IndexedDbService {
       }
       // Check if the store exists before trying to access it
       if (!this.db.objectStoreNames.contains(storeName)) {
-        console.warn(`Store ${storeName} not found in database. Returning null.`)
+        logger.warn(`Store ${storeName} not found in database. Returning null.`)
         return resolve(null)
       }
       const transaction = this.db.transaction(storeName, 'readonly')
@@ -569,7 +570,7 @@ class IndexedDbService {
         return reject('database not initialized')
       }
       if (!this.db.objectStoreNames.contains(storeName)) {
-        console.warn(`Store ${storeName} not found in database. Cannot save event.`)
+        logger.warn(`Store ${storeName} not found in database. Cannot save event.`)
         return resolve(cleanEvent)
       }
       const transaction = this.db.transaction(storeName, 'readwrite')
@@ -630,7 +631,7 @@ class IndexedDbService {
         return reject('database not initialized')
       }
       if (!this.db.objectStoreNames.contains(storeName)) {
-        console.warn(`Store ${storeName} not found in database. Cannot save event.`)
+        logger.warn(`Store ${storeName} not found in database. Cannot save event.`)
         return resolve(event)
       }
       const transaction = this.db.transaction(storeName, 'readwrite')
@@ -1002,7 +1003,7 @@ class IndexedDbService {
         }
       } catch (error) {
         // If we can't generate a replaceable key, skip this item
-        console.warn('Failed to get replaceable key for item:', item.key, error)
+        logger.warn('Failed to get replaceable key for item', { key: item.key, error })
         invalidItemsCount++
         continue
       }
@@ -1015,7 +1016,11 @@ class IndexedDbService {
     if (keysToDelete.length === 0) {
       // No duplicates found, but verify counts match
       if (totalProcessed + invalidItemsCount !== allItems.length) {
-        console.warn(`Count mismatch: total items=${allItems.length}, processed=${totalProcessed}, invalid=${invalidItemsCount}`)
+        logger.warn('Count mismatch while cleaning up replaceable events', {
+          totalItems: allItems.length,
+          processed: totalProcessed,
+          invalid: invalidItemsCount
+        })
       }
       return Promise.resolve({ deleted: 0, kept: actualKept })
     }
@@ -1037,7 +1042,12 @@ class IndexedDbService {
             const actualKept = eventMap.size
             const totalProcessed = actualKept + deletedCount
             if (totalProcessed + invalidItemsCount !== allItems.length) {
-              console.warn(`Count mismatch after deletion: total items=${allItems.length}, kept=${actualKept}, deleted=${deletedCount}, invalid=${invalidItemsCount}`)
+              logger.warn('Count mismatch after deletion', {
+                totalItems: allItems.length,
+                kept: actualKept,
+                deleted: deletedCount,
+                invalid: invalidItemsCount
+              })
             }
             resolve({ deleted: deletedCount, kept: actualKept })
           }

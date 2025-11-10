@@ -342,7 +342,7 @@ export function useMenuActions({
         relays: relays.length > 0 ? relays : undefined
       })
     } catch (error) {
-      console.error('Error generating naddr:', error)
+      logger.error('Error generating naddr', { error })
       return ''
     }
   }, [isArticleType, event, dTag])

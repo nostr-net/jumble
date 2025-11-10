@@ -28,6 +28,33 @@ import Emoji from '../Emoji'
 import ImageGallery from '../ImageGallery'
 import MediaPlayer from '../MediaPlayer'
 import YoutubeEmbeddedPlayer from '../YoutubeEmbeddedPlayer'
+import { toNote } from '@/lib/link'
+
+const REDIRECT_REGEX = /Read (naddr1[a-z0-9]+) instead\./i
+
+function renderRedirectText(text: string, key: number) {
+  const match = text.match(REDIRECT_REGEX)
+  if (!match) {
+    return text
+  }
+  const [fullMatch, naddr] = match
+  const [prefix, suffix] = text.split(fullMatch)
+  const href = toNote(naddr)
+  return (
+    <span key={`redirect-${key}`}>
+      {prefix}
+      Read{' '}
+      <a
+        className="text-primary hover:underline"
+        href={href}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {naddr}
+      </a>{' '}
+      instead.{suffix}
+    </span>
+  )
+}
 
 export default function Content({
   event,
@@ -168,7 +195,7 @@ export default function Content({
       
       {nodes.map((node, index) => {
         if (node.type === 'text') {
-          return node.data
+          return renderRedirectText(node.data, index)
         }
         // Skip image nodes - they're rendered in the carousel at the top
         if (node.type === 'image' || node.type === 'images') {

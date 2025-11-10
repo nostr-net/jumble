@@ -24,6 +24,7 @@ import { Ban, Check, FolderPlus, Loader2, Plus, Star } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import DrawerMenuItem from '../DrawerMenuItem'
+import logger from '@/lib/logger'
 
 export default function SaveRelayDropdownMenu({
   urls,
@@ -130,7 +131,7 @@ function RelayItem({ urls }: { urls: string[] }) {
         await addFavoriteRelays(urls)
       }
     } catch (error) {
-      console.error('Failed to toggle favorite relay:', error)
+      logger.error('Failed to toggle favorite relay', { error, url })
     } finally {
       setIsLoading(false)
     }
@@ -255,7 +256,7 @@ function BlockRelayItem({ urls }: { urls: string[] }) {
         await addBlockedRelays(urls)
       }
     } catch (error) {
-      console.error('Failed to toggle blocked relay:', error)
+      logger.error('Failed to toggle blocked relay', { error, url })
     } finally {
       setIsLoading(false)
     }

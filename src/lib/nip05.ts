@@ -1,5 +1,6 @@
 import { LRUCache } from 'lru-cache'
 import { isValidPubkey } from './pubkey'
+import logger from '@/lib/logger'
 
 type TVerifyNip05Result = {
   isVerified: boolean
@@ -68,7 +69,7 @@ export async function fetchPubkeysFromDomain(domain: string): Promise<string[]> 
       return true
     }) as string[]
   } catch (error) {
-    console.error('Error fetching pubkeys from domain:', error)
+    logger.error('Error fetching pubkeys from domain', { error, nip05Domain })
     return []
   }
 }
@@ -85,7 +86,7 @@ export async function getRelaysFromNip07Extension(): Promise<string[]> {
       return Object.keys(relaysObj || {})
     }
   } catch (error) {
-    console.log('NIP-07 extension does not support getRelays():', error)
+    logger.warn('NIP-07 extension does not support getRelays()', error as Error)
   }
   return []
 }

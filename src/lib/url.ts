@@ -1,3 +1,5 @@
+import logger from '@/lib/logger'
+
 export function isWebsocketUrl(url: string): boolean {
   return /^wss?:\/\/.+$/.test(url)
 }
@@ -23,7 +25,7 @@ export function normalizeUrl(url: string): string {
     
     // Block URLs with query params or hash fragments (these are likely not relays)
     if (hasQueryParams || hasHashFragment) {
-      console.warn('Skipping URL with query/hash (not a relay):', url)
+      logger.warn('Skipping URL with query/hash (not a relay)', { url })
       return ''
     }
     
@@ -37,7 +39,7 @@ export function normalizeUrl(url: string): string {
     
     // After protocol normalization, validate it's actually a websocket URL
     if (!isWebsocketUrl(p.toString())) {
-      console.warn('Skipping non-websocket URL:', url)
+      logger.warn('Skipping non-websocket URL', { url })
       return ''
     }
     
@@ -56,13 +58,13 @@ export function normalizeUrl(url: string): string {
     // Final validation: ensure we have a proper websocket URL
     const finalUrl = p.toString()
     if (!isWebsocketUrl(finalUrl)) {
-      console.warn('Normalization resulted in invalid websocket URL:', finalUrl)
+      logger.warn('Normalization resulted in invalid websocket URL', { url: finalUrl })
       return ''
     }
     
     return finalUrl
-  } catch {
-    console.error('Invalid URL:', url)
+  } catch (error) {
+    logger.error('Invalid URL', { error, url })
     return ''
   }
 }
@@ -87,8 +89,8 @@ export function normalizeHttpUrl(url: string): string {
     p.searchParams.sort()
     p.hash = ''
     return p.toString()
-  } catch {
-    console.error('Invalid URL:', url)
+  } catch (error) {
+    logger.error('Invalid URL', { error, url })
     return ''
   }
 }

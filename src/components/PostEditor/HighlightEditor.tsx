@@ -148,12 +148,11 @@ export default function HighlightEditor({
           id="highlight-context"
           value={context}
           onChange={(e) => setContext(e.target.value)}
-          placeholder={t('Enter the full text that you are highlighting from...')}
-          rows={2}
-          maxLength={500}
+          placeholder={t('Paste the entire original passage that contains your highlight')}
+          rows={3}
         />
         <p className="text-xs text-muted-foreground">
-          {context.length}/500 {t('characters')}
+          {t('The main editor above should contain only the text you want to highlight. This field should contain the full quote or paragraph for context.')}
         </p>
       </div>
 

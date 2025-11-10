@@ -144,7 +144,7 @@ function NoteListPageTitlebar({
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              console.log('Im Wald clicked, clearing overlay')
+              logger.debug('Im Wald button clicked, clearing overlay')
               setPrimaryNoteView(null)
             }}
           >

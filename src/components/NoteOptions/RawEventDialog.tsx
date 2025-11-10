@@ -11,6 +11,7 @@ import { Event } from 'nostr-tools'
 import { WrapText, Copy, Check } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 
 export default function RawEventDialog({
   event,
@@ -31,7 +32,7 @@ export default function RawEventDialog({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('Failed to copy:', err)
+      logger.error('Failed to copy raw event', { error: err, eventId: event.id })
     }
   }
 

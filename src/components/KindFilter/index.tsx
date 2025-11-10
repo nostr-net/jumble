@@ -17,7 +17,7 @@ const KIND_FILTER_OPTIONS = [
   { kindGroup: [kinds.Repost], label: 'Reposts' },
   { kindGroup: [kinds.LongFormArticle], label: 'Articles' },
   { kindGroup: [ExtendedKind.PUBLICATION], label: 'Publications' },
-  { kindGroup: [ExtendedKind.WIKI_ARTICLE], label: 'Wiki Articles' },
+  { kindGroup: [ExtendedKind.WIKI_ARTICLE, ExtendedKind.WIKI_ARTICLE_MARKDOWN], label: 'Wiki Articles' },
   { kindGroup: [kinds.Highlights], label: 'Highlights' },
   { kindGroup: [ExtendedKind.POLL], label: 'Polls' },
   { kindGroup: [ExtendedKind.VOICE, ExtendedKind.VOICE_COMMENT], label: 'Voice Posts' },
@@ -109,7 +109,6 @@ export default function KindFilter({
                 checked ? 'border-primary/60 bg-primary/5' : 'clickable'
               )}
               onClick={() => {
-                console.log(checked)
                 if (!checked) {
                   // add all kinds in this group
                   setTemporaryShowKinds((prev) => Array.from(new Set([...prev, ...kindGroup])))

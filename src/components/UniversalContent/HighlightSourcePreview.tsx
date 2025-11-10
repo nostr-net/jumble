@@ -4,6 +4,7 @@
 
 import { useMemo } from 'react'
 import { nip19 } from 'nostr-tools'
+import logger from '@/lib/logger'
 import WebPreview from '../WebPreview'
 import { EmbeddedNote } from '../Embedded/EmbeddedNote'
 import { ExternalLink } from 'lucide-react'
@@ -39,7 +40,7 @@ export default function HighlightSourcePreview({ source, className }: HighlightS
         )
       }
     } catch (error) {
-      console.warn('Failed to decode nostr event:', error)
+      logger.warn('Failed to decode nostr event', error as Error)
     }
     
     // If decoding failed, show as Alexandria link
@@ -70,7 +71,7 @@ export default function HighlightSourcePreview({ source, className }: HighlightS
         )
       }
     } catch (error) {
-      console.warn('Failed to decode nostr addressable event:', error)
+      logger.warn('Failed to decode nostr addressable event', error as Error)
     }
     
     // If decoding failed, show as Alexandria link

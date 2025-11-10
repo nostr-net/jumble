@@ -6,6 +6,7 @@ import { Event } from 'nostr-tools'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNoteStatsById } from '@/hooks/useNoteStatsById'
+import logger from '@/lib/logger'
 
 export default function VoteButtons({ event }: { event: Event }) {
   const { pubkey, publish, checkLogin } = useNostr()
@@ -76,7 +77,7 @@ export default function VoteButtons({ event }: { event: Event }) {
           noteStatsService.updateNoteStatsByEvents([evt])
         }
       } catch (error) {
-        console.error('vote failed', error)
+        logger.error('Vote failed', { error, eventId: event.id })
       } finally {
         setVoting(null)
         clearTimeout(timer)

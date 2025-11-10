@@ -27,7 +27,7 @@ let cachedCustomEvents: {
 // Flag to prevent concurrent initialization
 let isInitializing = false
 
-type TrendingTab = 'relays' | 'hashtags'
+type TrendingTab = 'nostr' | 'relays' | 'hashtags'
 type SortOrder = 'newest' | 'oldest' | 'most-popular' | 'least-popular'
 type HashtagFilter = 'popular'
 
@@ -38,10 +38,10 @@ export default function TrendingNotes() {
   const { pubkey, relayList } = useNostr()
   const { favoriteRelays } = useFavoriteRelays()
   const { zapReplyThreshold } = useZap()
-  const [trendingNotes] = useState<NostrEvent[]>([])
+  const [nostrEvents, setNostrEvents] = useState<NostrEvent[]>([])
+  const [nostrLoading, setNostrLoading] = useState(false)
   const [showCount, setShowCount] = useState(10)
-  const [loading] = useState(true)
-  const [activeTab, setActiveTab] = useState<TrendingTab>('relays')
+  const [activeTab, setActiveTab] = useState<TrendingTab>('nostr')
   const [sortOrder, setSortOrder] = useState<SortOrder>('most-popular')
   const [hashtagFilter] = useState<HashtagFilter>('popular')
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null)
@@ -49,6 +49,25 @@ export default function TrendingNotes() {
   const [cacheEvents, setCacheEvents] = useState<NostrEvent[]>([])
   const [cacheLoading, setCacheLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Load Nostr.band trending feed when tab is active
+  useEffect(() => {
+    const loadTrending = async () => {
+      try {
+        setNostrLoading(true)
+        const events = await client.fetchTrendingNotes()
+        setNostrEvents(events)
+      } catch (error) {
+        logger.warn('Failed to load nostr.band trending notes', error as Error)
+      } finally {
+        setNostrLoading(false)
+      }
+    }
+
+    if (activeTab === 'nostr' && nostrEvents.length === 0 && !nostrLoading) {
+      loadTrending()
+    }
+  }, [activeTab, nostrEvents.length, nostrLoading])
 
   // Debug: Track cacheEvents changes
   useEffect(() => {
@@ -65,10 +84,10 @@ export default function TrendingNotes() {
 
   // Calculate popular hashtags from cache events (all events from relays)
   const calculatePopularHashtags = useMemo(() => {
-    logger.debug('[TrendingNotes] calculatePopularHashtags - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
+    logger.debug('[TrendingNotes] calculatePopularHashtags - cacheEvents.length:', cacheEvents.length, 'nostrEvents.length:', nostrEvents.length)
     
     // Use cache events if available, otherwise fallback to trending notes
-    const eventsToAnalyze = cacheEvents.length > 0 ? cacheEvents : trendingNotes
+    const eventsToAnalyze = cacheEvents.length > 0 ? cacheEvents : nostrEvents
     
     if (eventsToAnalyze.length === 0) {
       return []
@@ -112,7 +131,7 @@ export default function TrendingNotes() {
     logger.debug('[TrendingNotes] calculatePopularHashtags - eventsWithHashtags:', eventsWithHashtags)
     
     return result
-  }, [cacheEvents, trendingNotes, activeTab, hashtagFilter, pubkey]) // Use cacheEvents and trendingNotes as dependencies
+  }, [cacheEvents, nostrEvents, activeTab, hashtagFilter, pubkey])
 
   // Get relays based on user login status
   const getRelays = useMemo(() => {
@@ -148,13 +167,13 @@ export default function TrendingNotes() {
     setPopularHashtags(calculatePopularHashtags)
   }, [calculatePopularHashtags])
 
-  // Fallback: populate cacheEvents from trendingNotes if cache is empty
+  // Fallback: populate cacheEvents from nostrEvents if cache is empty
   useEffect(() => {
-    if (activeTab === 'hashtags' && cacheEvents.length === 0 && trendingNotes.length > 0) {
-      logger.debug('[TrendingNotes] Fallback: populating cacheEvents from trendingNotes')
-      setCacheEvents(trendingNotes)
+    if (activeTab === 'hashtags' && cacheEvents.length === 0 && nostrEvents.length > 0) {
+      logger.debug('[TrendingNotes] Fallback: populating cacheEvents from nostrEvents')
+      setCacheEvents(nostrEvents)
     }
-  }, [activeTab, cacheEvents.length, trendingNotes])
+  }, [activeTab, cacheEvents.length, nostrEvents])
 
 
   // Initialize cache only once on mount
@@ -367,24 +386,10 @@ export default function TrendingNotes() {
      
   }, []) // Only run once on mount to prevent infinite loop
 
-  const filteredEvents = useMemo(() => {
+  const relaysFilteredEvents = useMemo(() => {
     const idSet = new Set<string>()
-    
-    // Use appropriate data source based on tab and filter
-    let sourceEvents: NostrEvent[] = []
-    
-    if (activeTab === 'relays') {
-      // "on your relays" tab: use cache events from user's relays
-      sourceEvents = cacheEvents
-      logger.debug('[TrendingNotes] Relays tab - cacheEvents.length:', cacheEvents.length, 'cacheLoading:', cacheLoading)
-    } else if (activeTab === 'hashtags') {
-      // Hashtags tab: use cache events for hashtag analysis
-      sourceEvents = cacheEvents.length > 0 ? cacheEvents : trendingNotes
-      logger.debug('[TrendingNotes] Hashtags tab - using ALL events from cache')
-      logger.debug('[TrendingNotes] Hashtags tab - cacheEvents.length:', cacheEvents.length, 'trendingNotes.length:', trendingNotes.length)
-    }
-    
-    
+    const sourceEvents = cacheEvents.length > 0 ? cacheEvents : nostrEvents
+
     const filtered = sourceEvents.filter((evt) => {
       if (isEventDeleted(evt)) return false
       if (hideUntrustedNotes && !isUserTrusted(evt.pubkey)) return false
@@ -407,11 +412,6 @@ export default function TrendingNotes() {
             if (!allHashtags.includes(selectedHashtag.toLowerCase())) return false
           }
         }
-      } else if (activeTab === 'relays') {
-        // For "on your relays" tab, we'll show all events (they're already from user's relays)
-        // This is the default behavior, so no additional filtering needed
-      }
-
       const id = isReplaceableEvent(evt.kind) ? getReplaceableCoordinateFromEvent(evt) : evt.id
       if (idSet.has(id)) {
         return false
@@ -466,7 +466,26 @@ export default function TrendingNotes() {
     })
 
     return filtered.slice(0, showCount)
-  }, [trendingNotes, hideUntrustedNotes, showCount, isEventDeleted, isUserTrusted, activeTab, hashtagFilter, selectedHashtag, sortOrder, zapReplyThreshold, cacheEvents])
+  }, [
+    cacheEvents,
+    nostrEvents,
+    hideUntrustedNotes,
+    showCount,
+    isEventDeleted,
+    isUserTrusted,
+    activeTab,
+    hashtagFilter,
+    selectedHashtag,
+    sortOrder,
+    zapReplyThreshold
+  ])
+
+  const filteredEvents = useMemo(() => {
+    if (activeTab === 'nostr') {
+      return nostrEvents.slice(0, showCount)
+    }
+    return relaysFilteredEvents
+  }, [activeTab, nostrEvents, showCount, relaysFilteredEvents])
 
 
 
@@ -491,7 +510,12 @@ export default function TrendingNotes() {
 
 
   useEffect(() => {
-    if (showCount >= trendingNotes.length) return
+    const totalLength =
+      activeTab === 'nostr'
+        ? nostrEvents.length
+        : cacheEvents.length
+
+    if (showCount >= totalLength) return
 
     const options = {
       root: null,
@@ -516,7 +540,7 @@ export default function TrendingNotes() {
         observerInstance.unobserve(currentBottomRef)
       }
     }
-  }, [loading, trendingNotes, showCount])
+  }, [activeTab, cacheEvents.length, nostrEvents.length, showCount, cacheLoading, nostrLoading])
 
   return (
     <div className="min-h-screen">
@@ -527,6 +551,16 @@ export default function TrendingNotes() {
         <div className="flex items-center gap-2 px-4 pb-2">
           <span className="text-sm font-medium text-muted-foreground">Trending:</span>
           <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('nostr')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                activeTab === 'nostr'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+              }`}
+            >
+              on Nostr
+            </button>
             <button
               onClick={() => setActiveTab('relays')}
               className={`px-3 py-1 text-sm rounded-md transition-colors ${
@@ -631,6 +665,12 @@ export default function TrendingNotes() {
         )}
       </div>
       
+      {/* Show loading message for nostr tab */}
+      {activeTab === 'nostr' && nostrLoading && nostrEvents.length === 0 && (
+        <div className="text-center text-sm text-muted-foreground mt-8">
+          Loading trending notes from nostr.band...
+        </div>
+      )}
       {/* Show loading message for relays tab when cache is loading */}
       {activeTab === 'relays' && cacheLoading && cacheEvents.length === 0 && (
         <div className="text-center text-sm text-muted-foreground mt-8">
@@ -642,19 +682,16 @@ export default function TrendingNotes() {
         <NoteCard key={event.id} className="w-full" event={event} />
       ))}
       {(() => {
-        // Determine the current data source length based on active tab
-        const currentDataLength = activeTab === 'relays' || activeTab === 'hashtags' ? cacheEvents.length : 
-                                   trendingNotes.length
-        
-        // Show loading if:
-        // 1. General loading state is true
-        // 2. For relays/hashtags tabs, if cache is loading
-        // 3. If we haven't reached the end of available data
-        const shouldShowLoading = loading || 
-                                 (activeTab === 'relays' && cacheLoading) ||
-                                 (activeTab === 'hashtags' && cacheLoading) ||
-                                 showCount < currentDataLength
-        
+        const currentDataLength =
+          activeTab === 'nostr'
+            ? nostrEvents.length
+            : cacheEvents.length
+
+        const shouldShowLoading =
+          (activeTab === 'nostr' && nostrLoading) ||
+          ((activeTab === 'relays' || activeTab === 'hashtags') && cacheLoading) ||
+          showCount < currentDataLength
+
         if (shouldShowLoading) {
           return (
             <div ref={bottomRef}>

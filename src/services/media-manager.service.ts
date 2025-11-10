@@ -1,4 +1,5 @@
 import { YouTubePlayer } from '@/types/youtube'
+import logger from '@/lib/logger'
 
 type Media = HTMLMediaElement | YouTubePlayer
 
@@ -59,7 +60,7 @@ class MediaManagerService {
         return
       }
       // Log other unexpected errors
-      console.error('Error playing media:', error)
+      logger.error('Error playing media', { error })
       this.currentMedia = null
     })
   }

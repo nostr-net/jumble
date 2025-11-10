@@ -18,6 +18,7 @@ import { TEmoji } from '@/types'
 import { Loader, SmilePlus } from 'lucide-react'
 import { Event } from 'nostr-tools'
 import { useMemo, useState } from 'react'
+import logger from '@/lib/logger'
 import { useTranslation } from 'react-i18next'
 import Emoji from '../Emoji'
 import EmojiPicker from '../EmojiPicker'
@@ -88,7 +89,13 @@ export default function LikeButton({ event, hideCount = false }: { event: Event;
         const myLastEmojiString = typeof myLastEmoji === 'string' ? myLastEmoji : typeof myLastEmoji === 'object' ? myLastEmoji.shortcode : undefined
         const isTogglingOff = myLastEmojiString === emojiString
 
-        console.log('Toggle check:', { myLastEmoji, myLastEmojiString, emojiString, isTogglingOff, myLikes: noteStats?.likes?.filter(l => l.pubkey === pubkey) })
+        logger.debug('Like toggle check', {
+          myLastEmoji,
+          myLastEmojiString,
+          emojiString,
+          isTogglingOff,
+          myLikes: noteStats?.likes?.filter(like => like.pubkey === pubkey)
+        })
 
         if (isTogglingOff) {
           // User wants to toggle off - find their previous reaction and delete it
@@ -117,7 +124,7 @@ export default function LikeButton({ event, hideCount = false }: { event: Event;
           noteStatsService.updateNoteStatsByEvents([evt])
         }
       } catch (error) {
-        console.error('like failed', error)
+        logger.error('Like failed', { error, eventId: event.id })
       } finally {
         setLiking(false)
         clearTimeout(timer)

@@ -5,6 +5,7 @@ import { X, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import RelayIcon from '../RelayIcon'
 import { Button } from '../ui/button'
+import logger from '@/lib/logger'
 
 export default function BlockedRelayItem({ relay }: { relay: string }) {
   const { push } = useSecondaryPage()
@@ -19,7 +20,7 @@ export default function BlockedRelayItem({ relay }: { relay: string }) {
     try {
       await deleteBlockedRelays([relay])
     } catch (error) {
-      console.error('Failed to unblock relay:', error)
+      logger.error('Failed to unblock relay', { error, relay })
     } finally {
       setIsLoading(false)
     }

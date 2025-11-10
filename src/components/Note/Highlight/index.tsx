@@ -1,6 +1,7 @@
 import { Event } from 'nostr-tools'
 import { Highlighter } from 'lucide-react'
 import { nip19 } from 'nostr-tools'
+import logger from '@/lib/logger'
 import HighlightSourcePreview from '@/components/UniversalContent/HighlightSourcePreview'
 
 export default function Highlight({
@@ -123,7 +124,7 @@ export default function Highlight({
         </div>
     )
   } catch (error) {
-    console.error('Highlight component error:', error)
+    logger.error('Highlight component error', { error, eventId: event.id })
     return (
       <div className={`relative border-l-4 border-red-500 bg-red-50/50 dark:bg-red-950/20 rounded-r-lg p-4 ${className || ''}`}>
         <div className="flex items-start gap-3">

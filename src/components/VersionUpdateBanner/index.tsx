@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { RefreshCw, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 
 export default function VersionUpdateBanner() {
   const { t } = useTranslation()
@@ -64,7 +65,7 @@ export default function VersionUpdateBanner() {
           }
         }
       } catch (error) {
-        console.error('Error checking for updates:', error)
+        logger.error('Error checking for updates', { error })
       }
     }
 

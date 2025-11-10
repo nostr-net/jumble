@@ -3,6 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import client from '@/services/client.service'
+import logger from '@/lib/logger'
 import { Check } from 'lucide-react'
 import { Event, nip19 } from 'nostr-tools'
 import { HTMLAttributes, useEffect, useState } from 'react'
@@ -166,7 +167,7 @@ export async function extractMentions(content: string, parentEvent?: Event) {
         }
       }
     } catch (e) {
-      console.error(e)
+      logger.error('Failed to decode mention', { error: e, match: m })
     }
   }
 

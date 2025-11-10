@@ -13,6 +13,7 @@ import { AlertCircle, ArrowUpToLine, Loader, X } from 'lucide-react'
 import { Event } from 'nostr-tools'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import logger from '@/lib/logger'
 
 export default function BlossomServerListSetting() {
   const { t } = useTranslation()
@@ -48,7 +49,7 @@ export default function BlossomServerListSetting() {
       setBlossomServerListEvent(newEvent)
       setUrl('')
     } catch (error) {
-      console.error('Failed to add Blossom URL:', error)
+      logger.error('Failed to add Blossom URL', { error, url })
     } finally {
       setAdding(false)
     }
@@ -72,7 +73,7 @@ export default function BlossomServerListSetting() {
       await client.updateBlossomServerListEventCache(newEvent)
       setBlossomServerListEvent(newEvent)
     } catch (error) {
-      console.error('Failed to remove Blossom URL:', error)
+      logger.error('Failed to remove Blossom URL', { error, url: serverUrls[idx] })
     } finally {
       setRemovingIndex(-1)
     }
@@ -88,7 +89,7 @@ export default function BlossomServerListSetting() {
       await client.updateBlossomServerListEventCache(newEvent)
       setBlossomServerListEvent(newEvent)
     } catch (error) {
-      console.error('Failed to move Blossom URL to top:', error)
+      logger.error('Failed to move Blossom URL to top', { error, url: serverUrls[idx] })
     } finally {
       setMovingIndex(-1)
     }

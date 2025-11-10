@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Event, nip19 } from 'nostr-tools'
 import ContentPreview from '../ContentPreview'
 import UserAvatar from '../UserAvatar'
+import logger from '@/lib/logger'
 
 export default function ParentNotePreview({
   eventId,
@@ -55,7 +56,7 @@ export default function ParentNotePreview({
         setFallbackEvent(foundEvent)
       }
     } catch (error) {
-      console.warn('Fallback fetch from searchable relays failed:', error)
+      logger.warn('Fallback fetch from searchable relays failed', error as Error)
     } finally {
       setIsFetchingFallback(false)
     }

@@ -1,5 +1,6 @@
 import { LRUCache } from 'lru-cache'
 import { nip19 } from 'nostr-tools'
+import logger from '@/lib/logger'
 
 export function formatPubkey(pubkey: string) {
   const npub = pubkeyToNpub(pubkey)
@@ -48,7 +49,7 @@ export function userIdToPubkey(userId: string) {
         return data.pubkey
       }
     } catch (error) {
-      console.error('Error decoding userId:', userId, 'error:', error)
+      logger.error('Error decoding userId', { userId, error })
     }
   }
   return userId

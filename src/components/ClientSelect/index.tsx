@@ -10,6 +10,7 @@ import clientService from '@/services/client.service'
 import { ExternalLink } from 'lucide-react'
 import { Event, kinds, nip19 } from 'nostr-tools'
 import { Dispatch, SetStateAction, useMemo, useState } from 'react'
+import logger from '@/lib/logger'
 import { useTranslation } from 'react-i18next'
 
 const clients: Record<string, { name: string; getUrl: (id: string) => string }> = {
@@ -94,7 +95,7 @@ export default function ClientSelect({
           kind = pointer.data.kind
         }
       } catch (error) {
-        console.error('Failed to decode NIP-19 pointer:', error)
+        logger.error('Failed to decode NIP-19 pointer', { error, originalNoteId })
         return ['njump']
       }
     }

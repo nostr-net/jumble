@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Loader2, Check } from 'lucide-react'
+import logger from '@/lib/logger'
 
 export default function AddBlockedRelay() {
   const { t } = useTranslation()
@@ -38,7 +39,7 @@ export default function AddBlockedRelay() {
       setSuccessMsg(t('Relay blocked successfully'))
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (error) {
-      console.error('Failed to block relay:', error)
+      logger.error('Failed to block relay', { error, relay: normalizedUrl })
       setErrorMsg(t('Failed to block relay. Please try again.'))
     } finally {
       setIsLoading(false)

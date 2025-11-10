@@ -16,6 +16,7 @@ import { useNostr } from '@/providers/NostrProvider'
 import { useFeed } from '@/providers/FeedProvider'
 import { useReply } from '@/providers/ReplyProvider'
 import { normalizeUrl, cleanUrl } from '@/lib/url'
+import logger from '@/lib/logger'
 import postEditorCache from '@/services/post-editor-cache.service'
 import storage from '@/services/local-storage.service'
 import { TPollCreateData } from '@/types'
@@ -148,7 +149,7 @@ export default function PostContent({
       // In a real implementation, you'd also resolve @ mentions to pubkeys
       setExtractedMentions(nostrPubkeys)
     } catch (error) {
-      console.error('Error extracting mentions:', error)
+      logger.error('Error extracting mentions', { error })
       setExtractedMentions([])
     }
   }, [])
@@ -173,7 +174,7 @@ export default function PostContent({
     e?.stopPropagation()
     checkLogin(async () => {
       if (!canPost) {
-        console.log('❌ Cannot post - canPost is false')
+        logger.warn('Attempted to post while canPost is false')
         return
       }
 
@@ -326,8 +327,8 @@ export default function PostContent({
         addReplies([cleanEvent])
         close()
       } catch (error) {
-        console.error('Publishing error:', error)
-        console.error('Error details:', {
+        logger.error('Publishing error', { error })
+        logger.error('Publishing error details', {
           name: error instanceof Error ? error.name : 'Unknown',
           message: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined

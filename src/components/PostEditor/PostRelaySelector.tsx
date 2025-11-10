@@ -12,6 +12,7 @@ import relaySelectionService from '@/services/relay-selection.service'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import logger from '@/lib/logger'
 
 export default function PostRelaySelector({
   parentEvent: _parentEvent,
@@ -108,8 +109,8 @@ export default function PostRelaySelector({
           }
         }
         
-      } catch (error) {
-        console.error('Failed to update relay selection:', error)
+    } catch (error) {
+      logger.error('Failed to update relay selection', { error })
         setSelectableRelays([])
         if (!hasManualSelection) {
           setSelectedRelayUrls([])
@@ -167,8 +168,8 @@ export default function PostRelaySelector({
             }
           }
           
-        } catch (error) {
-          console.error('Failed to update relay selection:', error)
+            } catch (error) {
+              logger.error('Failed to update relay selection', { error })
         } finally {
           setIsLoading(false)
         }

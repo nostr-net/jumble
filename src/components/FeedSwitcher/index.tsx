@@ -8,6 +8,7 @@ import { BookmarkIcon, UsersRound, Server } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import RelayIcon from '../RelayIcon'
 import RelaySetCard from '../RelaySetCard'
+import logger from '@/lib/logger'
 
 export default function FeedSwitcher({ close }: { close?: () => void }) {
   const { t } = useTranslation()
@@ -60,7 +61,7 @@ export default function FeedSwitcher({ close }: { close?: () => void }) {
         <FeedSwitcherItem
           isActive={feedInfo.feedType === 'all-favorites'}
           onClick={() => {
-            console.log('FeedSwitcher: Switching to all-favorites')
+            logger.debug('FeedSwitcher: Switching to all-favorites')
             switchFeed('all-favorites')
             close?.()
           }}

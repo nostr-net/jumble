@@ -11,6 +11,7 @@ import { SubCloser } from 'nostr-tools/abstract-pool'
 import { makeZapRequest } from 'nostr-tools/nip57'
 import { utf8Decoder } from 'nostr-tools/utils'
 import client from './client.service'
+import logger from '@/lib/logger'
 
 export type TRecentSupporter = { pubkey: string; amount: number; comment?: string }
 
@@ -232,7 +233,7 @@ class LightningService {
         }
       }
     } catch (err) {
-      console.error(err)
+      logger.error('Failed to resolve LNURL from profile', { error: err, profile })
     }
 
     return null

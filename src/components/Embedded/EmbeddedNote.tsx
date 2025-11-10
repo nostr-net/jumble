@@ -11,6 +11,7 @@ import ClientSelect from '../ClientSelect'
 import MainNoteCard from '../NoteCard/MainNoteCard'
 import { Button } from '../ui/button'
 import { Search } from 'lucide-react'
+import logger from '@/lib/logger'
 
 export function EmbeddedNote({ noteId, className }: { noteId: string; className?: string }) {
   const { event, isFetching } = useFetchEvent(noteId)
@@ -32,7 +33,12 @@ export function EmbeddedNote({ noteId, className }: { noteId: string; className?
           }
         })
         .catch((error: any) => {
-          console.warn(`Retry ${retryCount + 1}/${maxRetries} failed for event:`, noteId, error)
+          logger.warn('EmbeddedNote retry failed', {
+            attempt: retryCount + 1,
+            maxRetries,
+            noteId,
+            error
+          })
         })
         .finally(() => {
           setIsRetrying(false)
@@ -125,7 +131,7 @@ function EmbeddedNoteNotFound({
           relays = relays.map(url => normalizeUrl(url) || url)
           relays = Array.from(new Set(relays))
         } catch (err) {
-          console.error('Failed to parse external relays:', err)
+          logger.error('Failed to parse external relays', { error: err, noteId })
         }
       } else {
         extractedHexEventId = noteId
@@ -167,7 +173,7 @@ function EmbeddedNoteNotFound({
         onEventFound(event)
       }
     } catch (error) {
-      console.error('External relay fetch failed:', error)
+      logger.error('External relay fetch failed', { error, noteId })
     } finally {
       setIsSearchingExternal(false)
       setTriedExternal(true)

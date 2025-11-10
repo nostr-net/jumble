@@ -3,6 +3,7 @@ import indexDb from '@/services/indexed-db.service'
 import { TAwesomeRelayCollection, TRelayInfo } from '@/types'
 import DataLoader from 'dataloader'
 import FlexSearch from 'flexsearch'
+import logger from '@/lib/logger'
 
 class RelayInfoService {
   static instance: RelayInfoService
@@ -102,7 +103,7 @@ class RelayInfoService {
         const data = (await res.json()) as { collections: TAwesomeRelayCollection[] }
         return data.collections
       } catch (error) {
-        console.error('Error fetching awesome relay collections:', error)
+        logger.error('Error fetching awesome relay collections', { error })
         return []
       }
     })()
@@ -132,7 +133,7 @@ class RelayInfoService {
 
   private async fetchRelayNip11(url: string) {
     try {
-      console.log('Fetching NIP-11 for', url)
+      logger.debug('Fetching NIP-11 metadata', { url })
       const res = await fetch(url.replace('ws://', 'http://').replace('wss://', 'https://'), {
         headers: { Accept: 'application/nostr+json' }
       })

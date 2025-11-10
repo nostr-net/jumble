@@ -4,6 +4,7 @@ import { SILBERENGEL_PUBKEY } from '@/constants'
 import { MessageCircle, RotateCw } from 'lucide-react'
 import React, { Component, ReactNode } from 'react'
 import { toast } from 'sonner'
+import logger from '@/lib/logger'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -26,7 +27,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo)
+    logger.error('ErrorBoundary caught an error', { error, errorInfo })
   }
 
   render() {

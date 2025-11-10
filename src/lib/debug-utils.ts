@@ -22,17 +22,17 @@ interface DebugUtils {
 const debugUtils: DebugUtils = {
   enable: () => {
     logger.setDebugMode(true)
-    console.log('🔧 Jumble debug logging enabled')
+    logger.info('🔧 Jumble debug logging enabled')
   },
   
   disable: () => {
     logger.setDebugMode(false)
-    console.log('🔧 Jumble debug logging disabled')
+    logger.info('🔧 Jumble debug logging disabled')
   },
   
   status: () => {
     const enabled = logger.isDebugEnabled()
-    console.log(`🔧 Jumble debug status: ${enabled ? 'ENABLED' : 'DISABLED'}`)
+    logger.info(`🔧 Jumble debug status: ${enabled ? 'ENABLED' : 'DISABLED'}`)
     return { enabled, level: enabled ? 'debug' : 'info' }
   },
   

@@ -2,6 +2,7 @@ import mediaUpload from '@/services/media-upload.service'
 import { Extension } from '@tiptap/core'
 import { EditorView } from '@tiptap/pm/view'
 import { Plugin, TextSelection } from 'prosemirror-state'
+import logger from '@/lib/logger'
 
 const DRAGOVER_CLASS_LIST = [
   'outline-2',
@@ -177,7 +178,7 @@ async function uploadFiles(
         }
       })
       .catch((error) => {
-        console.error('Upload failed:', error)
+        logger.error('Clipboard/drop upload failed', { error, file: file.name })
         options.onUploadEnd?.(file)
 
         const tr = view.state.tr

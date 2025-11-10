@@ -231,7 +231,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               if (isMountedRef.current) {
                 setTimeout(() => {
                   if (isMountedRef.current) {
-                    console.log('[NotificationProvider] Reconnecting after close...')
+                    logger.info('[NotificationProvider] Reconnecting after close...')
                     subscribe()
                   }
                 }, 15_000) // Increased from 5s to 15s
@@ -243,7 +243,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         subCloserRef.current = subCloser
         return subCloser
       } catch (error) {
-        console.error('Subscription error:', error)
+        logger.error('Subscription error', { error })
 
         // Retry on error if still mounted
         if (isMountedRef.current) {
