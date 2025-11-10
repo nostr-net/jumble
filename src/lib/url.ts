@@ -148,7 +148,62 @@ export function isLocalNetworkUrl(urlString: string): boolean {
 export function isImage(url: string) {
   try {
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.svg']
-    return imageExtensions.some((ext) => new URL(url).pathname.toLowerCase().endsWith(ext))
+    const parsedUrl = new URL(url)
+    
+    // Check pathname for image extensions
+    if (imageExtensions.some((ext) => parsedUrl.pathname.toLowerCase().endsWith(ext))) {
+      return true
+    }
+    
+    // Check query parameters for image URLs (common in proxy services like wsrv.nl, images.weserv.nl)
+    // Look for 'url' parameter that might contain an image URL
+    // Note: searchParams.get() automatically decodes URL-encoded values
+    const urlParam = parsedUrl.searchParams.get('url')
+    if (urlParam) {
+      // Check if the URL parameter contains an image extension
+      const urlParamLower = urlParam.toLowerCase()
+      if (imageExtensions.some((ext) => urlParamLower.includes(ext))) {
+        // Verify it's actually part of a URL path, not just random text
+        // Check if extension appears after /, ?, =, or &, or at the end
+        for (const ext of imageExtensions) {
+          if (urlParamLower.includes(ext)) {
+            // Check if it's in a valid position (after path separator or query param)
+            const extPattern = new RegExp(`[/?=&]${ext.replace('.', '\\.')}(?:[?&#]|$)`, 'i')
+            if (extPattern.test(urlParam) || urlParamLower.endsWith(ext)) {
+              return true
+            }
+          }
+        }
+      }
+      // Also try to parse it as a URL and check the pathname
+      try {
+        const decodedParsed = new URL(urlParam)
+        if (imageExtensions.some((ext) => decodedParsed.pathname.toLowerCase().endsWith(ext))) {
+          return true
+        }
+      } catch {
+        // If it's not a valid URL, that's fine - we already checked for extensions above
+      }
+    }
+    
+    // Check for image-related query parameters (common in image proxy services)
+    // e.g., output=webp, format=webp, etc.
+    const outputParam = parsedUrl.searchParams.get('output') || parsedUrl.searchParams.get('format')
+    if (outputParam && ['webp', 'jpg', 'jpeg', 'png', 'gif'].includes(outputParam.toLowerCase())) {
+      return true
+    }
+    
+    // Check if the full URL string contains image extensions (fallback)
+    // This handles cases where the extension might be in query parameters or fragments
+    // Check if any image extension appears in the URL after a /, ?, =, or &
+    for (const ext of imageExtensions) {
+      const extensionPattern = new RegExp(`[/?=&]${ext.replace('.', '\\.')}(?:[?&#]|$)`, 'i')
+      if (extensionPattern.test(url)) {
+        return true
+      }
+    }
+    
+    return false
   } catch {
     return false
   }

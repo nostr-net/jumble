@@ -140,10 +140,6 @@ export default function Content({
     return links
   }, [event, contentLinks])
 
-  if (!nodes || nodes.length === 0) {
-    return null
-  }
-
   // Create maps for quick lookup of images/media by cleaned URL
   const imageMap = new Map<string, TImetaInfo>()
   const mediaMap = new Map<string, TImetaInfo>()
@@ -161,13 +157,24 @@ export default function Content({
     }
   })
 
+  // If no nodes but we have media from tags, still render the media
+  if (!nodes || nodes.length === 0) {
+    // Check if we have any media to display
+    if (extractedMedia.images.length === 0 && extractedMedia.videos.length === 0 && extractedMedia.audio.length === 0) {
+      return null
+    }
+    // If we have media, render it even without content nodes
+  }
+
   // First pass: find which media appears in content (will be rendered in carousels or inline)
   const mediaInContent = new Set<string>()
   const imagesInContent: TImetaInfo[] = []
   const videosInContent: TImetaInfo[] = []
   const audioInContent: TImetaInfo[] = []
   
-  nodes.forEach((node) => {
+  // Only process nodes if they exist and are not empty
+  if (nodes && nodes.length > 0) {
+    nodes.forEach((node) => {
     if (node.type === 'image') {
       const cleanedUrl = cleanUrl(node.data)
       mediaInContent.add(cleanedUrl)
@@ -224,28 +231,33 @@ export default function Content({
         mediaInContent.add(cleanedUrl)
       }
     }
-  })
+    })
+  }
   
   // Filter: only show media that DON'T appear in content (from tags)
+  // Use cleaned URLs for comparison to ensure consistency
   const carouselImages = extractedMedia.images.filter((img: TImetaInfo) => {
-    return !mediaInContent.has(img.url)
+    const cleaned = cleanUrl(img.url)
+    return cleaned && !mediaInContent.has(cleaned)
   })
   const videosFromTags = extractedMedia.videos.filter((video: TImetaInfo) => {
-    return !mediaInContent.has(video.url)
+    const cleaned = cleanUrl(video.url)
+    return cleaned && !mediaInContent.has(cleaned)
   })
   const audioFromTags = extractedMedia.audio.filter((audio: TImetaInfo) => {
-    return !mediaInContent.has(audio.url)
+    const cleaned = cleanUrl(audio.url)
+    return cleaned && !mediaInContent.has(cleaned)
   })
 
   logger.debug('[Content] Parsed content:', { 
-    nodeCount: nodes.length, 
+    nodeCount: nodes?.length || 0, 
     allMedia: extractedMedia.all.length,
     images: extractedMedia.images.length,
     videos: extractedMedia.videos.length,
     audio: extractedMedia.audio.length,
     imageMapSize: imageMap.size, 
     mediaMapSize: mediaMap.size,
-    nodes: nodes.map(n => ({ type: n.type, data: Array.isArray(n.data) ? n.data.length : n.data })) 
+    nodes: nodes?.map(n => ({ type: n.type, data: Array.isArray(n.data) ? n.data.length : n.data })) || [] 
   })
   
   // Track which images/media have been rendered individually to prevent duplicates
@@ -266,10 +278,11 @@ export default function Content({
       )}
       
       {/* Render images/media that aren't in content in a single carousel */}
+      {/* This includes images from imeta tags when content is empty */}
       {carouselImages.length > 0 && (
         <ImageGallery
           className="mt-2 mb-4"
-          key="all-images-gallery"
+          key="tag-images-gallery"
           images={carouselImages}
           start={0}
           end={carouselImages.length}
@@ -297,8 +310,12 @@ export default function Content({
         />
       ))}
       
-      {nodes.map((node, index) => {
+      {nodes && nodes.length > 0 && nodes.map((node, index) => {
         if (node.type === 'text') {
+          // Skip empty text nodes
+          if (!node.data || node.data.trim() === '') {
+            return null
+          }
           return renderRedirectText(node.data, index)
         }
         // Skip image nodes - they're rendered in the carousel at the top

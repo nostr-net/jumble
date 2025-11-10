@@ -18,6 +18,8 @@ import { EmbeddedNote, EmbeddedMention } from '@/components/Embedded'
 import Wikilink from '@/components/UniversalContent/Wikilink'
 import { preprocessAsciidocMediaLinks } from '../MarkdownArticle/preprocessMarkup'
 import logger from '@/lib/logger'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import { WS_URL_REGEX, YOUTUBE_URL_REGEX } from '@/constants'
 
 /**
@@ -41,6 +43,253 @@ function isYouTubeUrl(url: string): boolean {
   return regex.test(url)
 }
 
+/**
+ * Convert markdown syntax to AsciiDoc syntax
+ * This converts all markdown elements to their AsciiDoc equivalents before processing
+ */
+function convertMarkdownToAsciidoc(content: string): string {
+  let asciidoc = content
+  
+  // Note: We don't remove front matter here because the user's content uses --- as horizontal rules
+  // If there's actual YAML front matter, it should be handled separately
+  // For now, we'll convert --- to horizontal rules (except table separators)
+  
+  // Convert nostr addresses directly to AsciiDoc link format
+  // Do this early so they're protected from other markdown conversions
+  // naddr addresses can be 200+ characters, so we use + instead of specific length
+  asciidoc = asciidoc.replace(/nostr:(npub1[a-z0-9]{58,}|nprofile1[a-z0-9]+|note1[a-z0-9]{58,}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g, (_match, bech32Id) => {
+    // Convert directly to AsciiDoc link format
+    // This will be processed later in HTML post-processing to render as React components
+    return `link:nostr:${bech32Id}[${bech32Id}]`
+  })
+  
+  // Protect code blocks - we'll process them separately
+  const codeBlockPlaceholders: string[] = []
+  asciidoc = asciidoc.replace(/```(\w+)?\n([\s\S]*?)```/g, (_match, lang, code) => {
+    const placeholder = `__CODE_BLOCK_${codeBlockPlaceholders.length}__`
+    codeBlockPlaceholders.push(`[source${lang ? ',' + lang : ''}]\n----\n${code.trim()}\n----`)
+    return placeholder
+  })
+  
+  // Protect inline code - but handle LaTeX math separately
+  const inlineCodePlaceholders: string[] = []
+  
+  // Handle LaTeX math in inline code blocks like `$...$`
+  // The content may have escaped backslashes: `$\\frac{\\infty}{21,000,000} = \\infty$`
+  // We need to detect LaTeX math and convert it to AsciiDoc stem: syntax
+  asciidoc = asciidoc.replace(/`([^`\n]+)`/g, (_match, content) => {
+    // Check if this is LaTeX math - pattern: $...$ where ... contains LaTeX syntax
+    // Match the full pattern: $ followed by LaTeX expression and ending with $
+    const latexMatch = content.match(/^\$([^$]+)\$$/)
+    if (latexMatch) {
+      // This is pure LaTeX math - convert to AsciiDoc stem syntax
+      const latexExpr = latexMatch[1]
+      // The latexExpr contains the LaTeX code (backslashes are already in the string)
+      // AsciiDoc stem:[...] will process this with the stem processor
+      return `stem:[${latexExpr}]`
+    }
+    
+    // Check if content contains LaTeX math mixed with other text
+    if (content.includes('$') && content.match(/\$[^$]+\$/)) {
+      // Replace $...$ parts with stem:[...]
+      const processed = content.replace(/\$([^$]+)\$/g, 'stem:[$1]')
+      // If it's now just stem, return it directly, otherwise it needs to be in code
+      if (processed.startsWith('stem:[') && processed.endsWith(']') && !processed.includes('`')) {
+        return processed
+      }
+      // Mixed content - keep as code but with stem inside (won't work well, but preserve it)
+      const placeholder = `__INLINE_CODE_${inlineCodePlaceholders.length}__`
+      inlineCodePlaceholders.push(`\`${processed}\``)
+      return placeholder
+    }
+    
+    // Regular inline code - preserve it
+    const placeholder = `__INLINE_CODE_${inlineCodePlaceholders.length}__`
+    inlineCodePlaceholders.push(`\`${content}\``)
+    return placeholder
+  })
+  
+  // Convert headers (must be at start of line)
+  asciidoc = asciidoc.replace(/^#{6}\s+(.+)$/gm, '====== $1 ======')
+  asciidoc = asciidoc.replace(/^#{5}\s+(.+)$/gm, '===== $1 =====')
+  asciidoc = asciidoc.replace(/^#{4}\s+(.+)$/gm, '==== $1 ====')
+  asciidoc = asciidoc.replace(/^#{3}\s+(.+)$/gm, '=== $1 ===')
+  asciidoc = asciidoc.replace(/^#{2}\s+(.+)$/gm, '== $1 ==')
+  asciidoc = asciidoc.replace(/^#{1}\s+(.+)$/gm, '= $1 =')
+  
+  // Convert tables BEFORE horizontal rules (to avoid converting table separators)
+  // Markdown tables: | col1 | col2 |\n|------|------|\n| data1 | data2 |
+  // Use a simpler approach: match lines with pipes, separator row, and data rows
+  asciidoc = asciidoc.replace(/(\|[^\n]+\|\s*\n\|[\s\-\|:]+\|\s*\n(?:\|[^\n]+\|\s*\n?)+)/gm, (match) => {
+    const lines = match.trim().split('\n').map(line => line.trim()).filter(line => line)
+    if (lines.length < 2) return match
+    
+    // First line is header, second is separator, rest are data
+    const headerRow = lines[0]
+    const separatorRow = lines[1]
+    
+    // Verify it's a table separator (has dashes)
+    if (!separatorRow.match(/[\-:]/)) return match
+    
+    // Parse header cells - markdown format: | col1 | col2 | col3 |
+    // When split by |, we get: ['', ' col1 ', ' col2 ', ' col3 ', '']
+    // We need to extract all non-empty cells
+    const headerParts = headerRow.split('|')
+    const headerCells: string[] = []
+    for (let i = 0; i < headerParts.length; i++) {
+      const cell = headerParts[i].trim()
+      // Skip empty cells only at the very start and end
+      if (cell === '' && (i === 0 || i === headerParts.length - 1)) continue
+      headerCells.push(cell)
+    }
+    
+    if (headerCells.length < 2) return match
+    
+    const colCount = headerCells.length
+    const dataRows = lines.slice(2)
+    
+    // Build AsciiDoc table - use equal width columns
+    let tableAsciidoc = `[cols="${Array(colCount).fill('*').join(',')}"]\n|===\n`
+    
+    // Header row - prefix each cell with . to make it a header cell in AsciiDoc
+    // Ensure cells are properly formatted (no leading/trailing spaces, escape special chars)
+    const headerRowCells = headerCells.map(cell => {
+      // Clean up the cell content
+      let cleanCell = cell.trim()
+      // Escape pipe characters if any
+      cleanCell = cleanCell.replace(/\|/g, '\\|')
+      // Return with . prefix for header
+      return `.${cleanCell}`
+    })
+    tableAsciidoc += headerRowCells.join('|') + '\n\n'
+    
+    // Data rows
+    dataRows.forEach(row => {
+      if (!row.includes('|')) return
+      const rowParts = row.split('|')
+      const rowCells: string[] = []
+      
+      // Parse data row cells the same way as header
+      for (let i = 0; i < rowParts.length; i++) {
+        const cell = rowParts[i].trim()
+        // Skip empty cells only at the very start and end
+        if (cell === '' && (i === 0 || i === rowParts.length - 1)) continue
+        rowCells.push(cell)
+      }
+      
+      // Ensure we have the right number of cells
+      while (rowCells.length < colCount) {
+        rowCells.push('')
+      }
+      
+      // Take only the number of columns we need
+      const finalCells = rowCells.slice(0, colCount)
+      tableAsciidoc += finalCells.map(cell => cell.replace(/\|/g, '\\|')).join('|') + '\n'
+    })
+    
+    tableAsciidoc += '|==='
+    return tableAsciidoc
+  })
+  
+  // Convert horizontal rules (but not table separators, which are already processed)
+  // Convert standalone --- lines to AsciiDoc horizontal rule
+  // We do this after table processing to avoid interfering with table separators
+  asciidoc = asciidoc.replace(/^---\s*$/gm, (match, offset, string) => {
+    // Check if this is part of a table separator (would have been processed already)
+    const lines = string.split('\n')
+    const lineIndex = string.substring(0, offset).split('\n').length - 1
+    const prevLine = lines[lineIndex - 1]?.trim() || ''
+    const nextLine = lines[lineIndex + 1]?.trim() || ''
+    
+    // If it looks like a table separator (has pipes nearby), don't convert
+    if (prevLine.includes('|') || nextLine.includes('|')) {
+      return match
+    }
+    
+    // Convert to AsciiDoc horizontal rule (three single quotes)
+    return '\'\'\''
+  })
+  
+  // Convert blockquotes - handle multi-line blockquotes
+  // Match consecutive lines starting with >
+  asciidoc = asciidoc.replace(/(^>\s+.+(?:\n>\s+.+)*)/gm, (match) => {
+    const lines = match.split('\n').map((line: string) => line.replace(/^>\s*/, ''))
+    const content = lines.join('\n').trim()
+    return `____\n${content}\n____`
+  })
+  
+  // Convert lists (must be at start of line)
+  // Unordered lists: *, -, +
+  asciidoc = asciidoc.replace(/^(\s*)[\*\-\+]\s+(.+)$/gm, '$1* $2')
+  // Ordered lists: 1., 2., etc.
+  asciidoc = asciidoc.replace(/^(\s*)\d+\.\s+(.+)$/gm, '$1. $2')
+  
+  // Convert images: ![alt](url) -> image:url[alt] (single colon for inline, but AsciiDoc will render as block)
+  // For block images in AsciiDoc, we can use image:: or just ensure it's on its own line
+  asciidoc = asciidoc.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, url) => {
+    // Escape brackets in alt text and URL if needed
+    const escapedAlt = alt.replace(/\[/g, '\\[').replace(/\]/g, '\\]').replace(/"/g, '&quot;')
+    // Use image:: for block-level images (double colon)
+    // Add width attribute to make it responsive
+    return `image::${url}[${escapedAlt},width=100%]`
+  })
+  
+  // Convert links: [text](url) -> link:url[text]
+  asciidoc = asciidoc.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+    // Skip if it was an image (shouldn't happen after image conversion, but safety check)
+    if (match.startsWith('![')) return match
+    // Escape brackets in link text
+    const escapedText = text.replace(/\[/g, '\\[').replace(/\]/g, '\\]')
+    return `link:${url}[${escapedText}]`
+  })
+  
+  // Nostr addresses are already converted to link: format above, no need to restore
+  
+  // Convert strikethrough: ~~text~~ -> [line-through]#text#
+  // Also handle single tilde strikethrough: ~text~ -> [line-through]#text#
+  asciidoc = asciidoc.replace(/~~([^~\n]+?)~~/g, '[line-through]#$1#')
+  // Single tilde strikethrough (common in some markdown flavors)
+  asciidoc = asciidoc.replace(/(?<!~)~([^~\n]+?)~(?!~)/g, '[line-through]#$1#')
+  
+  // Note: Subscript ~text~ is now handled as strikethrough above
+  // If you need subscript, use a different syntax or handle it differently
+  
+  // Convert superscript: ^text^
+  asciidoc = asciidoc.replace(/\^([^\^\n]+?)\^/g, '[superscript]#$1#')
+  
+  // Convert bold: **text** or __text__
+  asciidoc = asciidoc.replace(/\*\*([^*\n]+?)\*\*/g, '*$1*')
+  asciidoc = asciidoc.replace(/__(?!_)([^_\n]+?)(?<!_)__/g, '*$1*')
+  
+  // Convert italic: *text* or _text_ (but not if already bold)
+  // Process single asterisk for italic (but not if it's part of **bold**)
+  asciidoc = asciidoc.replace(/(?<!\*)\*(?![\*\s])([^\*\n]+?)(?<!\*)\*(?!\*)/g, (match, text) => {
+    // Skip if it looks like a list item
+    if (/^\s*\*\s/.test(match)) return match
+    // Skip if already processed as bold (shouldn't happen, but safety)
+    if (match.includes('*$1*')) return match
+    return `_${text}_`
+  })
+  // Process single underscore for italic
+  asciidoc = asciidoc.replace(/(?<!_)_(?!_)([^_\n]+?)(?<!_)_(?!_)/g, (match, text) => {
+    // Skip if already processed as bold
+    if (match.includes('*$1*')) return match
+    return `_${text}_`
+  })
+  
+  // Restore inline code
+  inlineCodePlaceholders.forEach((code, index) => {
+    asciidoc = asciidoc.replace(`__INLINE_CODE_${index}__`, code)
+  })
+  
+  // Restore code blocks
+  codeBlockPlaceholders.forEach((block, index) => {
+    asciidoc = asciidoc.replace(`__CODE_BLOCK_${index}__`, block)
+  })
+  
+  return asciidoc
+}
+
 export default function AsciidocArticle({
   event,
   className,
@@ -56,9 +305,15 @@ export default function AsciidocArticle({
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   const contentRef = useRef<HTMLDivElement>(null)
   
-  // Preprocess content to convert URLs to AsciiDoc syntax
+  // Preprocess content: convert all markdown to AsciiDoc syntax
   const processedContent = useMemo(() => {
-    let content = preprocessAsciidocMediaLinks(event.content)
+    let content = event.content
+    
+    // Convert all markdown syntax to AsciiDoc syntax
+    content = convertMarkdownToAsciidoc(content)
+    
+    // Now process raw URLs that aren't already in AsciiDoc syntax
+    content = preprocessAsciidocMediaLinks(content)
     
     // Convert "Read naddr... instead." patterns to AsciiDoc links
     const redirectRegex = /Read (naddr1[a-z0-9]+) instead\./gi
@@ -356,28 +611,86 @@ export default function AsciidocArticle({
         
         let htmlString = typeof html === 'string' ? html : html.toString()
         
+        // Note: Markdown is now converted to AsciiDoc in preprocessing,
+        // so post-processing markdown should not be necessary
+        
         // Post-process HTML to handle nostr: links
         // Mentions (npub/nprofile) should be inline, events (note/nevent/naddr) should be block-level
-        htmlString = htmlString.replace(/<a[^>]*href=["']nostr:([^"']+)["'][^>]*>(.*?)<\/a>/g, (_match, bech32Id) => {
+        // First, handle nostr: links in <a> tags (from AsciiDoc link: syntax)
+        // Match the full bech32 address format - addresses can vary in length
+        // npub: 58 chars, nprofile: variable, note: 58 chars, nevent: variable, naddr: 200+ chars
+        // Use a more flexible pattern that matches any valid bech32 address
+        htmlString = htmlString.replace(/<a[^>]*href=["']nostr:((?:npub1|nprofile1|note1|nevent1|naddr1)[a-z0-9]{20,})["'][^>]*>([^<]*)<\/a>/gi, (_match, bech32Id, _linkText) => {
+          // Validate bech32 ID and create appropriate placeholder
+          if (!bech32Id) return _match
+          
+          // Escape the bech32 ID for HTML attributes
+          const escapedId = bech32Id.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+          
           if (bech32Id.startsWith('npub') || bech32Id.startsWith('nprofile')) {
-            return `<span data-nostr-mention="${bech32Id}" class="nostr-mention-placeholder"></span>`
+            return `<span data-nostr-mention="${escapedId}" class="nostr-mention-placeholder"></span>`
           } else if (bech32Id.startsWith('note') || bech32Id.startsWith('nevent') || bech32Id.startsWith('naddr')) {
-            return `<div data-nostr-note="${bech32Id}" class="nostr-note-placeholder"></div>`
+            return `<div data-nostr-note="${escapedId}" class="nostr-note-placeholder"></div>`
           }
           return _match
         })
         
-        // Also handle nostr: links in plain text (not in <a> tags)
-        htmlString = htmlString.replace(/nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g, (match, bech32Id) => {
-          // Only replace if not already in a tag (basic check)
-          if (!match.includes('<') && !match.includes('>')) {
+        // Also handle nostr: addresses in plain text nodes (not already in <a> tags)
+        // Process text nodes by replacing content between > and <
+        // Use more flexible regex that matches any valid bech32 address
+        htmlString = htmlString.replace(/>([^<]*nostr:((?:npub1|nprofile1|note1|nevent1|naddr1)[a-z0-9]+)[^<]*)</g, (_match, textContent) => {
+          // Extract nostr addresses from the text content - use the same flexible pattern
+          const nostrRegex = /nostr:((?:npub1|nprofile1|note1|nevent1|naddr1)[a-z0-9]+)/g
+          let processedText = textContent
+          const replacements: Array<{ start: number; end: number; replacement: string }> = []
+          
+          let m
+          while ((m = nostrRegex.exec(textContent)) !== null) {
+            const bech32Id = m[1]
+            const start = m.index
+            const end = m.index + m[0].length
+            
             if (bech32Id.startsWith('npub') || bech32Id.startsWith('nprofile')) {
-              return `<span data-nostr-mention="${bech32Id}" class="nostr-mention-placeholder"></span>`
+              replacements.push({
+                start,
+                end,
+                replacement: `<span data-nostr-mention="${bech32Id}" class="nostr-mention-placeholder"></span>`
+              })
             } else if (bech32Id.startsWith('note') || bech32Id.startsWith('nevent') || bech32Id.startsWith('naddr')) {
-              return `<div data-nostr-note="${bech32Id}" class="nostr-note-placeholder"></div>`
+              replacements.push({
+                start,
+                end,
+                replacement: `<div data-nostr-note="${bech32Id}" class="nostr-note-placeholder"></div>`
+              })
             }
           }
-          return match
+          
+          // Apply replacements in reverse order to preserve indices
+          for (let i = replacements.length - 1; i >= 0; i--) {
+            const r = replacements[i]
+            processedText = processedText.substring(0, r.start) + r.replacement + processedText.substring(r.end)
+          }
+          
+          return `>${processedText}<`
+        })
+        
+        // Handle LaTeX math expressions from AsciiDoc stem processor
+        // AsciiDoc with stem: latexmath outputs \(...\) for inline and \[...\] for block math
+        // In HTML, these appear as literal \( and \) characters (backslash + parenthesis)
+        // We need to match the literal backslash-paren sequence
+        // In regex: \\ matches a literal backslash, \( matches a literal (
+        htmlString = htmlString.replace(/\\\(([^)]+?)\\\)/g, (_match, latex) => {
+          // Inline math - escape for HTML attribute
+          // Unescape any HTML entities that might have been created
+          const unescaped = latex.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+          const escaped = unescaped.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+          return `<span data-latex-inline="${escaped}" class="latex-inline-placeholder"></span>`
+        })
+        htmlString = htmlString.replace(/\\\[([^\]]+?)\\\]/g, (_match, latex) => {
+          // Block math - escape for HTML attribute
+          const unescaped = latex.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+          const escaped = unescaped.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+          return `<div data-latex-block="${escaped}" class="latex-block-placeholder my-4"></div>`
         })
         
         // Handle wikilinks - convert passthrough markers to placeholders
@@ -487,12 +800,20 @@ export default function AsciidocArticle({
     const nostrMentions = contentRef.current.querySelectorAll('.nostr-mention-placeholder[data-nostr-mention]')
     nostrMentions.forEach((element) => {
       const bech32Id = element.getAttribute('data-nostr-mention')
-      if (!bech32Id) return
+      if (!bech32Id) {
+        logger.warn('Nostr mention placeholder found but no bech32Id attribute')
+        return
+      }
       
       // Create an inline container for React component (mentions should be inline)
       const container = document.createElement('span')
       container.className = 'inline-block'
-      element.parentNode?.replaceChild(container, element)
+      const parent = element.parentNode
+      if (!parent) {
+        logger.warn('Nostr mention placeholder has no parent node')
+        return
+      }
+      parent.replaceChild(container, element)
       
       // Use React to render the component
       const root = createRoot(container)
@@ -504,17 +825,66 @@ export default function AsciidocArticle({
     const nostrNotes = contentRef.current.querySelectorAll('.nostr-note-placeholder[data-nostr-note]')
     nostrNotes.forEach((element) => {
       const bech32Id = element.getAttribute('data-nostr-note')
-      if (!bech32Id) return
+      if (!bech32Id) {
+        logger.warn('Nostr note placeholder found but no bech32Id attribute')
+        return
+      }
       
       // Create a block-level container for React component that fills width
       const container = document.createElement('div')
       container.className = 'w-full my-2'
-      element.parentNode?.replaceChild(container, element)
+      const parent = element.parentNode
+      if (!parent) {
+        logger.warn('Nostr note placeholder has no parent node')
+        return
+      }
+      parent.replaceChild(container, element)
       
       // Use React to render the component
       const root = createRoot(container)
       root.render(<EmbeddedNote noteId={bech32Id} />)
       reactRootsRef.current.set(container, root)
+    })
+    
+    // Process LaTeX math expressions - render with KaTeX
+    const latexInlinePlaceholders = contentRef.current.querySelectorAll('.latex-inline-placeholder[data-latex-inline]')
+    latexInlinePlaceholders.forEach((element) => {
+      const latex = element.getAttribute('data-latex-inline')
+      if (!latex) return
+      
+      try {
+        // Render LaTeX with KaTeX
+        const rendered = katex.renderToString(latex, {
+          throwOnError: false,
+          displayMode: false
+        })
+        // Replace the placeholder with the rendered HTML
+        element.outerHTML = rendered
+      } catch (error) {
+        logger.error('Error rendering LaTeX inline math:', error)
+        // On error, show the raw LaTeX
+        element.outerHTML = `<span>$${latex}$</span>`
+      }
+    })
+    
+    const latexBlockPlaceholders = contentRef.current.querySelectorAll('.latex-block-placeholder[data-latex-block]')
+    latexBlockPlaceholders.forEach((element) => {
+      const latex = element.getAttribute('data-latex-block')
+      if (!latex) return
+      
+      try {
+        // Render LaTeX with KaTeX in display mode
+        const rendered = katex.renderToString(latex, {
+          throwOnError: false,
+          displayMode: true
+        })
+        // Replace the placeholder with the rendered HTML
+        element.outerHTML = rendered
+      } catch (error) {
+        logger.error('Error rendering LaTeX block math:', error)
+        // On error, show the raw LaTeX
+        element.outerHTML = `<div>$$${latex}$$</div>`
+      }
     })
     
     // Process YouTube URLs - replace placeholders with React components
