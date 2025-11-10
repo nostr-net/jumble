@@ -9,7 +9,7 @@ import { useMediaExtraction } from '@/hooks'
 import { cleanUrl, isImage, isMedia, isVideo, isAudio } from '@/lib/url'
 import { ExternalLink } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
-import { ExtendedKind } from '@/constants'
+import { ExtendedKind, URL_REGEX } from '@/constants'
 import React, { useMemo, useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -22,6 +22,7 @@ import NostrNode from './NostrNode'
 import { remarkNostr } from './remarkNostr'
 import { remarkHashtags } from './remarkHashtags'
 import { remarkUnwrapImages } from './remarkUnwrapImages'
+import { remarkUnwrapNostr } from './remarkUnwrapNostr'
 import { preprocessMediaLinks } from './preprocessMediaLinks'
 import { Components } from './types'
 
@@ -72,6 +73,70 @@ export default function MarkdownArticle({
     return hashtags
   }, [event.content])
   
+  // Create a stable key for contentHashtags to prevent unnecessary re-renders
+  const contentHashtagsKey = useMemo(() => {
+    return Array.from(contentHashtags).sort().join(',')
+  }, [contentHashtags])
+
+  // Extract HTTP/HTTPS links from content (in order of appearance) for WebPreview cards at bottom
+  const contentLinks = useMemo(() => {
+    const links: string[] = []
+    const seenUrls = new Set<string>()
+    
+    // Extract markdown links: [text](url)
+    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
+    let match
+    while ((match = markdownLinkRegex.exec(event.content)) !== null) {
+      const url = match[2]
+      if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+        const cleaned = cleanUrl(url)
+        if (cleaned && !seenUrls.has(cleaned)) {
+          links.push(cleaned)
+          seenUrls.add(cleaned)
+        }
+      }
+    }
+    
+    // Extract raw URLs
+    while ((match = URL_REGEX.exec(event.content)) !== null) {
+      const url = match[0]
+      if (!isImage(url) && !isMedia(url)) {
+        const cleaned = cleanUrl(url)
+        if (cleaned && !seenUrls.has(cleaned)) {
+          links.push(cleaned)
+          seenUrls.add(cleaned)
+        }
+      }
+    }
+    
+    return links
+  }, [event.content])
+
+  // Extract HTTP/HTTPS links from r tags (excluding those already in content)
+  const tagLinks = useMemo(() => {
+    const links: string[] = []
+    const seenUrls = new Set<string>()
+    
+    // Create a set of content link URLs for quick lookup
+    const contentLinkUrls = new Set(contentLinks)
+    
+    event.tags
+      .filter(tag => tag[0] === 'r' && tag[1])
+      .forEach(tag => {
+        const url = tag[1]
+        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+          const cleaned = cleanUrl(url)
+          // Only include if not already in content links and not already seen in tags
+          if (cleaned && !contentLinkUrls.has(cleaned) && !seenUrls.has(cleaned)) {
+            links.push(cleaned)
+            seenUrls.add(cleaned)
+          }
+        }
+      })
+    
+    return links
+  }, [event.tags, contentLinks])
+  
   // Extract media URLs that are in the content (so we don't render them twice)
   const mediaUrlsInContent = useMemo(() => {
     const urls = new Set<string>()
@@ -85,7 +150,14 @@ export default function MarkdownArticle({
   
   // All images from useMediaExtraction are already cleaned and deduplicated
   // This includes images from content, tags, imeta, r tags, etc.
-  const allImages = extractedMedia.images
+  // Memoize with stable key based on image URLs to prevent unnecessary re-renders
+  const allImagesKey = useMemo(() => {
+    return extractedMedia.images.map(img => img.url).sort().join(',')
+  }, [extractedMedia.images])
+  
+  const allImages = useMemo(() => {
+    return extractedMedia.images
+  }, [allImagesKey])
   
   // Handle image clicks to open carousel
   const [lightboxIndex, setLightboxIndex] = useState(-1)
@@ -141,7 +213,11 @@ export default function MarkdownArticle({
   const components = useMemo(
     () =>
       ({
-        nostr: ({ rawText, bech32Id }) => <NostrNode rawText={rawText} bech32Id={bech32Id} />,
+        nostr: ({ rawText, bech32Id }) => (
+          <div data-nostr-node="true" className="my-2">
+            <NostrNode rawText={rawText} bech32Id={bech32Id} />
+          </div>
+        ),
         a: ({ href, children, ...props }) => {
           if (!href) {
             return <span {...props} className="break-words" />
@@ -275,14 +351,23 @@ export default function MarkdownArticle({
             )
           }
           
-          // Check if this is a regular HTTP/HTTPS URL that should show WebPreview
+          // For regular HTTP/HTTPS URLs, render as green text link (like hashtags) instead of WebPreview
+          // WebPreview cards will be shown at the bottom
           const cleanedHref = cleanUrl(href)
           const isRegularUrl = href.startsWith('http://') || href.startsWith('https://')
-          const shouldShowPreview = isRegularUrl && !isImage(cleanedHref) && !isMedia(cleanedHref)
           
-          // For regular URLs, show WebPreview directly (no wrapper)
-          if (shouldShowPreview) {
-            return <WebPreview url={cleanedHref} className="mt-2" />
+          if (isRegularUrl && !isImage(cleanedHref) && !isMedia(cleanedHref)) {
+            return (
+              <a
+                {...props}
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline"
+              >
+                {children}
+              </a>
+            )
           }
           
           return (
@@ -298,50 +383,64 @@ export default function MarkdownArticle({
           )
         },
         p: (props) => {
-          // Check if the paragraph contains an img element or Image component
-          // Since Image renders a div, we need to convert the paragraph to a div to avoid nesting issues
+          // Check if the paragraph contains block-level elements that cannot be inside <p>
+          // Convert to <div> to avoid DOM nesting warnings
           const children = props.children
           const childrenArray = React.Children.toArray(children)
           
-          // Fast path: check if paragraph has only one child that might be an image
-          if (childrenArray.length === 1) {
-            const child = childrenArray[0]
-            if (React.isValidElement(child)) {
-              // Check for img type (string) before conversion, Image component after, or data attribute
-              if (child.type === 'img' || child.type === Image || child.props?.['data-markdown-image']) {
-                return <div {...props} className="break-words" />
+          // Helper to check if a child is a block-level component
+          const isBlockLevel = (child: React.ReactNode): boolean => {
+            if (!React.isValidElement(child)) return false
+            
+            // Any div element is block-level and cannot be inside <p>
+            if (child.type === 'div') {
+              return true
+            }
+            
+            // Check for known block-level components
+            if (child.type === 'img' || 
+                child.type === Image || 
+                child.type === MediaPlayer || 
+                child.type === NostrNode ||
+                child.props?.['data-markdown-image'] ||
+                child.props?.['data-markdown-image-wrapper'] ||
+                child.props?.['data-nostr-node'] ||
+                child.props?.['data-embedded-note']) {
+              return true
+            }
+            
+            // Check children recursively (up to 3 levels deep for nested structures like EmbeddedNote -> MarkdownArticle)
+            if (child.props?.children) {
+              const grandchildren = React.Children.toArray(child.props.children)
+              if (grandchildren.some((gc: React.ReactNode) => isBlockLevel(gc))) {
+                return true
               }
-              // Check if child contains an img/image (for links wrapping images)
-              if (child.props?.children) {
-                const grandchildren = React.Children.toArray(child.props.children)
-                if (grandchildren.some((gc: React.ReactNode) => 
-                  React.isValidElement(gc) && 
-                  (gc.type === 'img' || gc.type === Image || gc.props?.['data-markdown-image'])
-                )) {
-                  return <div {...props} className="break-words" />
+              // Check one more level deep
+              for (const gc of grandchildren) {
+                if (React.isValidElement(gc) && gc.props?.children) {
+                  const greatGrandchildren = React.Children.toArray(gc.props.children)
+                  if (greatGrandchildren.some((ggc: React.ReactNode) => isBlockLevel(ggc))) {
+                    return true
+                  }
+                  // Check one more level for deeply nested structures
+                  for (const ggc of greatGrandchildren) {
+                    if (React.isValidElement(ggc) && ggc.props?.children) {
+                      const greatGreatGrandchildren = React.Children.toArray(ggc.props.children)
+                      if (greatGreatGrandchildren.some((gggc: React.ReactNode) => isBlockLevel(gggc))) {
+                        return true
+                      }
+                    }
+                  }
                 }
               }
             }
+            
+            return false
           }
           
-          // Check all children for images (for paragraphs with multiple children where one is an image)
-          for (const child of childrenArray) {
-            if (React.isValidElement(child)) {
-              // Direct image check
-              if (child.type === 'img' || child.type === Image || child.props?.['data-markdown-image']) {
-                return <div {...props} className="break-words" />
-              }
-              // One-level deep check for nested images (like in links)
-              if (child.props?.children) {
-                const grandchildren = React.Children.toArray(child.props.children)
-                if (grandchildren.some((gc: React.ReactNode) => 
-                  React.isValidElement(gc) && 
-                  (gc.type === 'img' || gc.type === Image || gc.props?.['data-markdown-image'])
-                )) {
-                  return <div {...props} className="break-words" />
-                }
-              }
-            }
+          // Check all children for block-level elements
+          if (childrenArray.some(isBlockLevel)) {
+            return <div {...props} className="break-words" />
           }
           
           return <p {...props} className="break-words" />
@@ -422,12 +521,18 @@ export default function MarkdownArticle({
           
           // Check if this is actually a video or audio URL (converted by remarkMedia)
           if (cleanedSrc && (isVideo(cleanedSrc) || isAudio(cleanedSrc))) {
+            // Wrap MediaPlayer in a div to ensure it's block-level and breaks out of paragraphs
+            // Use stable key to prevent flickering
+            const stableKey = cleanedSrc
             return (
-              <MediaPlayer
-                src={cleanedSrc}
-                className="max-w-[400px] my-2"
-                mustLoad={false}
-              />
+              <div key={`media-wrapper-${stableKey}`} className="my-2">
+                <MediaPlayer
+                  key={`media-${stableKey}`}
+                  src={cleanedSrc}
+                  className="max-w-[400px]"
+                  mustLoad={false}
+                />
+              </div>
             )
           }
           
@@ -438,27 +543,33 @@ export default function MarkdownArticle({
           
           // Always render images inline in their content position
           // The shared lightbox will show all images (content + tags) when clicked
+          // Wrap in div to ensure block-level rendering and prevent paragraph nesting
+          // Use stable key based on cleaned URL to prevent flickering
+          const stableKey = cleanedSrc || src
           return (
-            <Image
-              image={{ url: src, pubkey: event.pubkey }}
-              className="max-w-[400px] rounded-lg my-2 cursor-zoom-in"
-              classNames={{
-                wrapper: 'rounded-lg inline-block',
-                errorPlaceholder: 'aspect-square h-[30vh]'
-              }}
-              data-markdown-image="true"
-              data-image-index={imageIndex >= 0 ? imageIndex.toString() : undefined}
-              onClick={(e) => {
-                e.stopPropagation()
-                if (imageIndex >= 0) {
-                  setLightboxIndex(imageIndex)
-                }
-              }}
-            />
+            <div key={`img-wrapper-${stableKey}`} className="my-2 inline-block" data-markdown-image-wrapper="true">
+              <Image
+                key={`img-${stableKey}`}
+                image={{ url: src, pubkey: event.pubkey }}
+                className="max-w-[400px] rounded-lg cursor-zoom-in"
+                classNames={{
+                  wrapper: 'rounded-lg inline-block',
+                  errorPlaceholder: 'aspect-square h-[30vh]'
+                }}
+                data-markdown-image="true"
+                data-image-index={imageIndex >= 0 ? imageIndex.toString() : undefined}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (imageIndex >= 0) {
+                    setLightboxIndex(imageIndex)
+                  }
+                }}
+              />
+            </div>
           )
         }
       }) as Components,
-    [showImageGallery, event.pubkey, event.kind, contentHashtags, allImages, navigateToHashtag]
+    [showImageGallery, event.pubkey, event.kind, contentHashtagsKey, allImagesKey, navigateToHashtag]
   )
 
   return (
@@ -666,7 +777,7 @@ export default function MarkdownArticle({
           />
         )
       })()}
-      <Markdown remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapImages, remarkNostr, remarkHashtags]} components={components}>
+      <Markdown remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapImages, remarkNostr, remarkUnwrapNostr, remarkHashtags]} components={components}>
         {processedContent}
       </Markdown>
       
@@ -704,6 +815,26 @@ export default function MarkdownArticle({
                 #<span className="truncate">{tag}</span>
               </div>
             ))}
+        </div>
+      )}
+
+      {/* WebPreview cards for links from content (in order of appearance) */}
+      {contentLinks.length > 0 && (
+        <div className="space-y-3 mt-6 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Links</h3>
+          {contentLinks.map((url, index) => (
+            <WebPreview key={`content-${index}-${url}`} url={url} className="w-full" />
+          ))}
+        </div>
+      )}
+
+      {/* WebPreview cards for links from tags */}
+      {tagLinks.length > 0 && (
+        <div className="space-y-3 mt-6 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Related Links</h3>
+          {tagLinks.map((url, index) => (
+            <WebPreview key={`tag-${index}-${url}`} url={url} className="w-full" />
+          ))}
         </div>
       )}
       </div>

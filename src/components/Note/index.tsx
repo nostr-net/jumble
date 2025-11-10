@@ -10,7 +10,6 @@ import { Event, kinds } from 'nostr-tools'
 import { useMemo, useState } from 'react'
 import AudioPlayer from '../AudioPlayer'
 import ClientTag from '../ClientTag'
-import EnhancedContent from '../UniversalContent/EnhancedContent'
 import { FormattedTimestamp } from '../FormattedTimestamp'
 import Nip05 from '../Nip05'
 import NoteOptions from '../NoteOptions'
@@ -148,7 +147,7 @@ export default function Note({
   } else if (event.kind === ExtendedKind.POLL) {
     content = (
       <>
-        <EnhancedContent className="mt-2" event={event} useEnhancedParsing={true} />
+        <MarkdownArticle className="mt-2" event={event} hideMetadata={true} />
         <Poll className="mt-2" event={event} />
       </>
     )
@@ -161,12 +160,12 @@ export default function Note({
   } else if (event.kind === ExtendedKind.RELAY_REVIEW) {
     content = <RelayReview className="mt-2" event={event} />
   } else if (event.kind === ExtendedKind.PUBLIC_MESSAGE) {
-    content = <EnhancedContent className="mt-2" event={event} useEnhancedParsing={true} />
+    content = <MarkdownArticle className="mt-2" event={event} hideMetadata={true} />
   } else if (event.kind === ExtendedKind.ZAP_REQUEST || event.kind === ExtendedKind.ZAP_RECEIPT) {
     content = <Zap className="mt-2" event={event} />
   } else if (event.kind === kinds.ShortTextNote || event.kind === ExtendedKind.COMMENT || event.kind === ExtendedKind.VOICE_COMMENT) {
-    // Plain text notes use EnhancedContent for proper image/media rendering
-    content = <EnhancedContent className="mt-2" event={event} mustLoadMedia={false} />
+    // Plain text notes use MarkdownArticle for proper markdown rendering
+    content = <MarkdownArticle className="mt-2" event={event} hideMetadata={true} />
   } else {
     // Use MarkdownArticle for all other kinds
     // Only 30023, 30041, 30817, and 30818 will show image gallery and article info

@@ -15,6 +15,8 @@ import Lightbox from 'yet-another-react-lightbox'
 import Zoom from 'yet-another-react-lightbox/plugins/zoom'
 import { TImetaInfo } from '@/types'
 import { useMediaExtraction } from '@/hooks'
+import WebPreview from '@/components/WebPreview'
+import { cleanUrl, isImage, isMedia } from '@/lib/url'
 
 export default function AsciidocArticle({
   event,
@@ -217,6 +219,25 @@ export default function AsciidocArticle({
     return () => clearTimeout(timeoutId)
   }, [parsedContent?.html])
 
+  // Style external HTTP/HTTPS links as green (like hashtags)
+  useEffect(() => {
+    if (!contentRef.current || !parsedContent) return
+
+    const styleExternalLinks = () => {
+      const links = contentRef.current?.querySelectorAll('a[href^="http://"], a[href^="https://"]')
+      links?.forEach((link) => {
+        const href = link.getAttribute('href')
+        if (href && !isImage(href) && !isMedia(href)) {
+          // Add green link styling
+          link.classList.add('text-green-600', 'dark:text-green-400', 'hover:text-green-700', 'dark:hover:text-green-300', 'hover:underline')
+        }
+      })
+    }
+
+    const timeoutId = setTimeout(styleExternalLinks, 100)
+    return () => clearTimeout(timeoutId)
+  }, [parsedContent?.html])
+
   // Add ToC return buttons to section headers
   useEffect(() => {
     if (!contentRef.current || !isArticleType || !parsedContent) return
@@ -261,6 +282,50 @@ export default function AsciidocArticle({
   // This includes images from tags, content, and parsed HTML
   const extractedMedia = useMediaExtraction(event, event.content)
   
+  // Extract HTTP/HTTPS links from parsed content (in order of appearance) for WebPreview cards at bottom
+  const contentLinks = useMemo(() => {
+    if (!parsedContent?.links) return []
+    const links: string[] = []
+    const seenUrls = new Set<string>()
+    
+    parsedContent.links.forEach((link) => {
+      if (link.isExternal && (link.url.startsWith('http://') || link.url.startsWith('https://')) && !isImage(link.url) && !isMedia(link.url)) {
+        const cleaned = cleanUrl(link.url)
+        if (cleaned && !seenUrls.has(cleaned)) {
+          links.push(cleaned)
+          seenUrls.add(cleaned)
+        }
+      }
+    })
+    
+    return links
+  }, [parsedContent?.links])
+
+  // Extract HTTP/HTTPS links from r tags (excluding those already in content)
+  const tagLinks = useMemo(() => {
+    const links: string[] = []
+    const seenUrls = new Set<string>()
+    
+    // Create a set of content link URLs for quick lookup
+    const contentLinkUrls = new Set(contentLinks)
+    
+    event.tags
+      .filter(tag => tag[0] === 'r' && tag[1])
+      .forEach(tag => {
+        const url = tag[1]
+        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+          const cleaned = cleanUrl(url)
+          // Only include if not already in content links and not already seen in tags
+          if (cleaned && !contentLinkUrls.has(cleaned) && !seenUrls.has(cleaned)) {
+            links.push(cleaned)
+            seenUrls.add(cleaned)
+          }
+        }
+      })
+    
+    return links
+  }, [event.tags, contentLinks])
+
   // Extract images from parsed HTML (after AsciiDoc processing) for carousel
   // This ensures we get images that were rendered in the HTML output
   const imagesInContent = useMemo<TImetaInfo[]>(() => {
@@ -481,6 +546,26 @@ export default function AsciidocArticle({
             })()}
           </CollapsibleContent>
         </Collapsible>
+      )}
+
+      {/* WebPreview cards for links from content (in order of appearance) */}
+      {contentLinks.length > 0 && (
+        <div className="space-y-3 mt-6 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Links</h3>
+          {contentLinks.map((url, index) => (
+            <WebPreview key={`content-${index}-${url}`} url={url} className="w-full" />
+          ))}
+        </div>
+      )}
+
+      {/* WebPreview cards for links from tags */}
+      {tagLinks.length > 0 && (
+        <div className="space-y-3 mt-6 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Related Links</h3>
+          {tagLinks.map((url, index) => (
+            <WebPreview key={`tag-${index}-${url}`} url={url} className="w-full" />
+          ))}
+        </div>
       )}
     </article>
   )

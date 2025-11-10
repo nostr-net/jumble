@@ -28,6 +28,7 @@ import Emoji from '../Emoji'
 import ImageGallery from '../ImageGallery'
 import MediaPlayer from '../MediaPlayer'
 import YoutubeEmbeddedPlayer from '../YoutubeEmbeddedPlayer'
+import WebPreview from '../WebPreview'
 import { toNote } from '@/lib/link'
 
 const REDIRECT_REGEX = /Read (naddr1[a-z0-9]+) instead\./i
@@ -90,6 +91,54 @@ export default function Content({
 
     return { nodes, emojiInfos }
   }, [_content, event])
+
+  // Extract HTTP/HTTPS links from content nodes (in order of appearance) for WebPreview cards at bottom
+  const contentLinks = useMemo(() => {
+    if (!nodes) return []
+    const links: string[] = []
+    const seenUrls = new Set<string>()
+    
+    nodes.forEach((node) => {
+      if (node.type === 'url') {
+        const url = node.data
+        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+          const cleaned = cleanUrl(url)
+          if (cleaned && !seenUrls.has(cleaned)) {
+            links.push(cleaned)
+            seenUrls.add(cleaned)
+          }
+        }
+      }
+    })
+    
+    return links
+  }, [nodes])
+
+  // Extract HTTP/HTTPS links from r tags (excluding those already in content)
+  const tagLinks = useMemo(() => {
+    if (!event) return []
+    const links: string[] = []
+    const seenUrls = new Set<string>()
+    
+    // Create a set of content link URLs for quick lookup
+    const contentLinkUrls = new Set(contentLinks)
+    
+    event.tags
+      .filter(tag => tag[0] === 'r' && tag[1])
+      .forEach(tag => {
+        const url = tag[1]
+        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+          const cleaned = cleanUrl(url)
+          // Only include if not already in content links and not already seen in tags
+          if (cleaned && !contentLinkUrls.has(cleaned) && !seenUrls.has(cleaned)) {
+            links.push(cleaned)
+            seenUrls.add(cleaned)
+          }
+        }
+      })
+    
+    return links
+  }, [event, contentLinks])
 
   if (!nodes || nodes.length === 0) {
     return null
@@ -354,6 +403,26 @@ export default function Content({
         }
         return null
       })}
+
+      {/* WebPreview cards for links from content (in order of appearance) */}
+      {contentLinks.length > 0 && (
+        <div className="space-y-3 mt-6 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Links</h3>
+          {contentLinks.map((url, index) => (
+            <WebPreview key={`content-${index}-${url}`} url={url} className="w-full" />
+          ))}
+        </div>
+      )}
+
+      {/* WebPreview cards for links from tags */}
+      {tagLinks.length > 0 && (
+        <div className="space-y-3 mt-6 pt-4 border-t">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Related Links</h3>
+          {tagLinks.map((url, index) => (
+            <WebPreview key={`tag-${index}-${url}`} url={url} className="w-full" />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
