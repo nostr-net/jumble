@@ -44,9 +44,20 @@ class WebService {
             const parser = new DOMParser()
             const doc = parser.parseFromString(html, 'text/html')
 
-            const title =
+            let title =
               doc.querySelector('meta[property="og:title"]')?.getAttribute('content') ||
               doc.querySelector('title')?.textContent
+            
+            // Filter out common redirect/loading titles (including variations with ellipsis)
+            if (title) {
+              const trimmedTitle = title.trim()
+              if (/^(Redirecting|Loading|Please wait|Redirect)(\.\.\.|…)?$/i.test(trimmedTitle) || 
+                  trimmedTitle === '...' || 
+                  trimmedTitle === '…') {
+                title = undefined
+              }
+            }
+            
             const description =
               doc.querySelector('meta[property="og:description"]')?.getAttribute('content') ||
               (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content
