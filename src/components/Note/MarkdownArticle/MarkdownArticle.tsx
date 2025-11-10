@@ -526,19 +526,11 @@ function parseMarkdownContent(
           </div>
         )
       } else {
-        // Render as green link (will show WebPreview at bottom for HTTP/HTTPS)
+        // Render as WebPreview component (shows opengraph data or fallback card)
         parts.push(
-          <a
-            key={`link-${patternIdx}`}
-            href={url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words"
-            onClick={(e) => e.stopPropagation()}
-            title={text.length > 200 ? text : undefined}
-          >
-            {displayText}
-          </a>
+          <div key={`link-${patternIdx}`} className="my-2">
+            <WebPreview url={url} className="w-full" />
+          </div>
         )
       }
     } else if (pattern.type === 'youtube-url') {

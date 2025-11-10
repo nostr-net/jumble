@@ -401,7 +401,12 @@ export default function AsciidocArticle({
             const relayPath = `/relays/${encodeURIComponent(href)}`
             return `<a href="${relayPath}" class="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer" data-relay-url="${href}" data-original-text="${linkText.replace(/"/g, '&quot;')}">${linkText}</a>`
           }
-          // For regular links, store original text for truncation in DOM manipulation
+          // For regular HTTP/HTTPS links, replace with WebPreview placeholder
+          if (href.startsWith('http://') || href.startsWith('https://')) {
+            const cleanedUrl = cleanUrl(href)
+            return `<div data-webpreview-url="${cleanedUrl.replace(/"/g, '&quot;')}" class="webpreview-placeholder my-2"></div>`
+          }
+          // For other links (like relative links), keep as-is
           const escapedLinkText = linkText.replace(/"/g, '&quot;')
           return match.replace(/<a/, `<a data-original-text="${escapedLinkText}"`)
         })
@@ -424,6 +429,25 @@ export default function AsciidocArticle({
           if (!match.includes('<') && !match.includes('>') && isWebsocketUrl(match)) {
             const relayPath = `/relays/${encodeURIComponent(match)}`
             return `<a href="${relayPath}" class="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer" data-relay-url="${match}" data-original-text="${match.replace(/"/g, '&quot;')}">${match}</a>`
+          }
+          return match
+        })
+        
+        // Handle plain HTTP/HTTPS URLs in text (not in <a> tags, not YouTube, not relay) - convert to WebPreview placeholders
+        const httpUrlRegex = /https?:\/\/[^\s<>"']+/g
+        htmlString = htmlString.replace(httpUrlRegex, (match) => {
+          // Only replace if not already in a tag (basic check)
+          if (!match.includes('<') && !match.includes('>')) {
+            // Skip if it's a YouTube URL or relay URL (already handled)
+            if (isYouTubeUrl(match) || isWebsocketUrl(match)) {
+              return match
+            }
+            // Skip if it's an image or media URL (handled separately)
+            if (isImage(match) || isVideo(match) || isAudio(match)) {
+              return match
+            }
+            const cleanedUrl = cleanUrl(match)
+            return `<div data-webpreview-url="${cleanedUrl.replace(/"/g, '&quot;')}" class="webpreview-placeholder my-2"></div>`
           }
           return match
         })
@@ -536,6 +560,23 @@ export default function AsciidocArticle({
       // Use React to render the component
       const root = createRoot(container)
       root.render(<Wikilink dTag={dtag} displayText={displayText} />)
+      reactRootsRef.current.set(container, root)
+    })
+    
+    // Process WebPreview placeholders - replace with React components
+    const webpreviewPlaceholders = contentRef.current.querySelectorAll('.webpreview-placeholder[data-webpreview-url]')
+    webpreviewPlaceholders.forEach((element) => {
+      const url = element.getAttribute('data-webpreview-url')
+      if (!url) return
+      
+      // Create a container for React component
+      const container = document.createElement('div')
+      container.className = 'my-2'
+      element.parentNode?.replaceChild(container, element)
+      
+      // Use React to render the component
+      const root = createRoot(container)
+      root.render(<WebPreview url={url} className="w-full" />)
       reactRootsRef.current.set(container, root)
     })
     
