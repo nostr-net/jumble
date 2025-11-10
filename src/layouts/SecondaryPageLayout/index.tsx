@@ -66,13 +66,20 @@ const SecondaryPageLayout = forwardRef(
             }}
           >
             {title && (
-              <SecondaryPageTitlebar
-                title={title}
-                controls={controls}
-                hideBackButton={hideBackButton}
-                hideBottomBorder={hideTitlebarBottomBorder}
-                titlebar={titlebar}
-              />
+              <>
+                <div className="flex justify-center py-1 border-b">
+                  <span className="text-green-600 dark:text-green-500 font-semibold text-sm">
+                    Imwald
+                  </span>
+                </div>
+                <SecondaryPageTitlebar
+                  title={title}
+                  controls={controls}
+                  hideBackButton={hideBackButton}
+                  hideBottomBorder={hideTitlebarBottomBorder}
+                  titlebar={titlebar}
+                />
+              </>
             )}
             {children}
           </div>
@@ -85,13 +92,20 @@ const SecondaryPageLayout = forwardRef(
       <DeepBrowsingProvider active={currentIndex === index} scrollAreaRef={scrollAreaRef}>
         <div className="h-full flex flex-col">
           {title && (
-            <SecondaryPageTitlebar
-              title={title}
-              controls={controls}
-              hideBackButton={hideBackButton}
-              hideBottomBorder={hideTitlebarBottomBorder}
-              titlebar={titlebar}
-            />
+            <>
+              <div className="flex justify-center py-1 border-b">
+                <span className="text-green-600 dark:text-green-500 font-semibold text-sm">
+                  Imwald
+                </span>
+              </div>
+              <SecondaryPageTitlebar
+                title={title}
+                controls={controls}
+                hideBackButton={hideBackButton}
+                hideBottomBorder={hideTitlebarBottomBorder}
+                titlebar={titlebar}
+              />
+            </>
           )}
           <div className="flex-1" ref={scrollAreaRef}>
             {children}
@@ -119,8 +133,6 @@ export function SecondaryPageTitlebar({
   hideBottomBorder?: boolean
   titlebar?: React.ReactNode
 }): JSX.Element {
-  const { isSmallScreen } = useScreenSize()
-  
   if (titlebar) {
     return (
       <Titlebar className="p-1" hideBottomBorder={hideBottomBorder}>
@@ -136,27 +148,10 @@ export function SecondaryPageTitlebar({
       {hideBackButton ? (
         <div className="flex gap-2 items-center pl-3 w-fit truncate text-lg font-semibold">
           {title}
-          <span className="text-green-600 dark:text-green-500 font-semibold text-sm ml-2">
-            Im Wald 🌲
-          </span>
         </div>
       ) : (
         <div className="flex items-center flex-1 w-0">
           <BackButton>{title}</BackButton>
-        </div>
-      )}
-      {isSmallScreen && (
-        <div className="absolute left-1/2 transform -translate-x-1/2 z-10">
-          <span className="text-green-600 dark:text-green-500 font-semibold text-sm">
-            Im Wald 🌲
-          </span>
-        </div>
-      )}
-      {!isSmallScreen && !hideBackButton && (
-        <div className="absolute left-1/2 transform -translate-x-1/2 z-10 pointer-events-none">
-          <span className="text-green-600 dark:text-green-500 font-semibold text-sm">
-            Im Wald 🌲
-          </span>
         </div>
       )}
       <div className="flex-shrink-0">{controls}</div>

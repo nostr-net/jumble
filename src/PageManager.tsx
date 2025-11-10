@@ -353,6 +353,11 @@ function MainContentArea({
         {primaryNoteView ? (
           // Show note view with back button
           <div className="flex flex-col h-full w-full">
+            <div className="flex justify-center py-1 border-b">
+              <span className="text-green-600 dark:text-green-500 font-semibold text-sm">
+                Imwald
+              </span>
+            </div>
             <div className="flex gap-1 p-1 items-center justify-between font-semibold border-b">
               <div className="flex items-center flex-1 w-0">
                 <Button
@@ -369,7 +374,7 @@ function MainContentArea({
                 </Button>
               </div>
               <div className="flex-1 flex justify-center">
-                <div className="text-lg font-semibold text-green-500">
+                <div className="text-lg font-semibold">
                   {getPageTitle(primaryViewType, window.location.pathname)}
                 </div>
               </div>
@@ -732,6 +737,11 @@ export function PageManager({ maxStackSize = 5 }: { maxStackSize?: number }) {
             {primaryNoteView ? (
               // Show primary note view with back button on mobile
               <div className="flex flex-col h-full w-full">
+                <div className="flex justify-center py-1 border-b">
+                  <span className="text-green-600 dark:text-green-500 font-semibold text-sm">
+                    Imwald
+                  </span>
+                </div>
                 <div className="flex gap-1 p-1 items-center justify-between font-semibold border-b">
                   <div className="flex items-center flex-1 w-0">
                     <Button
