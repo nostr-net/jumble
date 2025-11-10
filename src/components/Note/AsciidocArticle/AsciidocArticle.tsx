@@ -1,11 +1,11 @@
-import { useSecondaryPage, useSmartHashtagNavigation } from '@/PageManager'
+import { useSecondaryPage, useSmartHashtagNavigation, useSmartRelayNavigation } from '@/PageManager'
 import Image from '@/components/Image'
 import MediaPlayer from '@/components/MediaPlayer'
 import WebPreview from '@/components/WebPreview'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNoteList } from '@/lib/link'
 import { useMediaExtraction } from '@/hooks'
-import { cleanUrl, isImage, isMedia, isVideo, isAudio } from '@/lib/url'
+import { cleanUrl, isImage, isMedia, isVideo, isAudio, isWebsocketUrl } from '@/lib/url'
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { Event, kinds } from 'nostr-tools'
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
@@ -17,6 +17,17 @@ import { EmbeddedNote, EmbeddedMention } from '@/components/Embedded'
 import Wikilink from '@/components/UniversalContent/Wikilink'
 import { preprocessAsciidocMediaLinks } from '../MarkdownArticle/preprocessMarkup'
 import logger from '@/lib/logger'
+import { WS_URL_REGEX } from '@/constants'
+
+/**
+ * Truncate link display text to 200 characters, adding ellipsis if truncated
+ */
+function truncateLinkText(text: string, maxLength: number = 200): string {
+  if (text.length <= maxLength) {
+    return text
+  }
+  return text.substring(0, maxLength) + '...'
+}
 
 export default function AsciidocArticle({
   event,
@@ -29,6 +40,7 @@ export default function AsciidocArticle({
 }) {
   const { push } = useSecondaryPage()
   const { navigateToHashtag } = useSmartHashtagNavigation()
+  const { navigateToRelay } = useSmartRelayNavigation()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   const contentRef = useRef<HTMLDivElement>(null)
   
@@ -213,6 +225,31 @@ export default function AsciidocArticle({
     })
   }, [tagMedia, mediaUrlsInContent, metadata.image, hideImagesAndInfo])
   
+  // Filter tag links to only show what's not in content (to avoid duplicate WebPreview cards)
+  const leftoverTagLinks = useMemo(() => {
+    const contentLinksSet = new Set(contentLinks.map(link => cleanUrl(link)).filter(Boolean))
+    return tagLinks.filter(link => {
+      const cleaned = cleanUrl(link)
+      return cleaned && !contentLinksSet.has(cleaned)
+    })
+  }, [tagLinks, contentLinks])
+  
+  // Extract hashtags from content (for deduplication with metadata tags)
+  const hashtagsInContent = useMemo(() => {
+    const tags = new Set<string>()
+    const hashtagRegex = /#([a-zA-Z0-9_]+)/g
+    let match
+    while ((match = hashtagRegex.exec(event.content)) !== null) {
+      tags.add(match[1].toLowerCase())
+    }
+    return tags
+  }, [event.content])
+  
+  // Filter metadata tags to only show what's not already in content
+  const leftoverMetadataTags = useMemo(() => {
+    return metadata.tags.filter(tag => !hashtagsInContent.has(tag.toLowerCase()))
+  }, [metadata.tags, hashtagsInContent])
+  
   // Parse AsciiDoc content and post-process for nostr: links and hashtags
   const [parsedHtml, setParsedHtml] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
@@ -292,6 +329,28 @@ export default function AsciidocArticle({
           // Escape special characters for HTML attributes
           const escaped = linkContent.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
           return `<span data-wikilink="${escaped}" class="wikilink-placeholder"></span>`
+        })
+        
+        // Handle relay URLs (wss:// or ws://) in links - convert to relay page links
+        htmlString = htmlString.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/g, (match, href, linkText) => {
+          // Check if the href is a relay URL
+          if (isWebsocketUrl(href)) {
+            const relayPath = `/relays/${encodeURIComponent(href)}`
+            return `<a href="${relayPath}" class="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer" data-relay-url="${href}" data-original-text="${linkText.replace(/"/g, '&quot;')}">${linkText}</a>`
+          }
+          // For regular links, store original text for truncation in DOM manipulation
+          const escapedLinkText = linkText.replace(/"/g, '&quot;')
+          return match.replace(/<a/, `<a data-original-text="${escapedLinkText}"`)
+        })
+        
+        // Handle relay URLs in plain text (not in <a> tags) - convert to relay page links
+        htmlString = htmlString.replace(WS_URL_REGEX, (match) => {
+          // Only replace if not already in a tag (basic check)
+          if (!match.includes('<') && !match.includes('>') && isWebsocketUrl(match)) {
+            const relayPath = `/relays/${encodeURIComponent(match)}`
+            return `<a href="${relayPath}" class="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer" data-relay-url="${match}" data-original-text="${match.replace(/"/g, '&quot;')}">${match}</a>`
+          }
+          return match
         })
         
         setParsedHtml(htmlString)
@@ -454,6 +513,38 @@ export default function AsciidocArticle({
       }
     })
     
+    // Handle all links - truncate display text and add click handlers for relay URLs
+    const allLinks = contentRef.current.querySelectorAll('a[href]')
+    allLinks.forEach((link) => {
+      const href = link.getAttribute('href')
+      if (!href) return
+      
+      // Get current link text (this might be the full URL or custom text)
+      const linkText = link.textContent || ''
+      
+      // Truncate link text if it's longer than 200 characters
+      if (linkText.length > 200) {
+        const truncatedText = truncateLinkText(linkText)
+        link.textContent = truncatedText
+        // Store full text as title for tooltip
+        if (!link.getAttribute('title')) {
+          link.setAttribute('title', linkText)
+        }
+      }
+      
+      // Handle relay URL links - add click handlers to navigate to relay page
+      const relayUrl = link.getAttribute('data-relay-url')
+      if (relayUrl) {
+        const relayPath = `/relays/${encodeURIComponent(relayUrl)}`
+        link.setAttribute('href', relayPath)
+        link.addEventListener('click', (e) => {
+          e.stopPropagation()
+          e.preventDefault()
+          navigateToRelay(relayPath)
+        })
+      }
+    })
+    
     // Cleanup function
     return () => {
       reactRootsRef.current.forEach((root) => {
@@ -461,7 +552,7 @@ export default function AsciidocArticle({
       })
       reactRootsRef.current.clear()
     }
-  }, [parsedHtml, isLoading, navigateToHashtag])
+  }, [parsedHtml, isLoading, navigateToHashtag, navigateToRelay])
   
   // Initialize syntax highlighting
   useEffect(() => {
@@ -558,10 +649,12 @@ export default function AsciidocArticle({
           color: #5eead4 !important;
         }
         .asciidoc-content img {
+          display: block;
           max-width: 400px;
           height: auto;
           border-radius: 0.5rem;
           cursor: zoom-in;
+          margin: 0.5rem 0;
         }
         .asciidoc-content a[href^="/notes?t="] {
           color: #16a34a !important;
@@ -671,10 +764,10 @@ export default function AsciidocArticle({
           />
         )}
         
-        {/* Hashtags from metadata */}
-        {!hideImagesAndInfo && metadata.tags.length > 0 && (
+        {/* Hashtags from metadata (only if not already in content) */}
+        {!hideImagesAndInfo && leftoverMetadataTags.length > 0 && (
           <div className="flex gap-2 flex-wrap pb-2 mt-4">
-            {metadata.tags.map((tag) => (
+            {leftoverMetadataTags.map((tag) => (
               <div
                 key={tag}
                 title={tag}
@@ -690,25 +783,15 @@ export default function AsciidocArticle({
           </div>
         )}
 
-        {/* WebPreview cards for links from content */}
-        {contentLinks.length > 0 && (
-          <div className="space-y-3 mt-6 pt-4 border-t">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3">Links</h3>
-            {contentLinks.map((url, index) => (
-              <WebPreview key={`content-${index}-${url}`} url={url} className="w-full" />
-            ))}
-          </div>
-        )}
-
-        {/* WebPreview cards for links from tags */}
-        {tagLinks.length > 0 && (
-          <div className="space-y-3 mt-6 pt-4 border-t">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3">Related Links</h3>
-            {tagLinks.map((url, index) => (
-              <WebPreview key={`tag-${index}-${url}`} url={url} className="w-full" />
-            ))}
-          </div>
-        )}
+                {/* WebPreview cards for links from tags (only if not already in content) */}
+                {/* Note: Links in content are already rendered as links in the AsciiDoc HTML above, so we don't show WebPreview for them */}
+                {leftoverTagLinks.length > 0 && (
+                  <div className="space-y-3 mt-6">
+                    {leftoverTagLinks.map((url, index) => (
+                      <WebPreview key={`tag-${index}-${url}`} url={url} className="w-full" />
+                    ))}
+                  </div>
+                )}
       </div>
       
       {/* Image gallery lightbox */}

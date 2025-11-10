@@ -1,4 +1,4 @@
-import { useSecondaryPage, useSmartHashtagNavigation } from '@/PageManager'
+import { useSecondaryPage, useSmartHashtagNavigation, useSmartRelayNavigation } from '@/PageManager'
 import Image from '@/components/Image'
 import MediaPlayer from '@/components/MediaPlayer'
 import Wikilink from '@/components/UniversalContent/Wikilink'
@@ -6,10 +6,10 @@ import WebPreview from '@/components/WebPreview'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNoteList } from '@/lib/link'
 import { useMediaExtraction } from '@/hooks'
-import { cleanUrl, isImage, isMedia, isVideo, isAudio } from '@/lib/url'
+import { cleanUrl, isImage, isMedia, isVideo, isAudio, isWebsocketUrl } from '@/lib/url'
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { Event, kinds } from 'nostr-tools'
-import { ExtendedKind } from '@/constants'
+import { ExtendedKind, WS_URL_REGEX } from '@/constants'
 import React, { useMemo, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import Lightbox from 'yet-another-react-lightbox'
@@ -18,10 +18,22 @@ import { EmbeddedNote, EmbeddedMention } from '@/components/Embedded'
 import { preprocessMarkdownMediaLinks } from './preprocessMarkup'
 
 /**
+ * Truncate link display text to 200 characters, adding ellipsis if truncated
+ */
+function truncateLinkText(text: string, maxLength: number = 200): string {
+  if (text.length <= maxLength) {
+    return text
+  }
+  return text.substring(0, maxLength) + '...'
+}
+
+/**
  * Parse markdown content and render with post-processing for nostr: links and hashtags
  * Post-processes:
  * - nostr: links -> EmbeddedNote or EmbeddedMention
  * - #hashtags -> green hyperlinks to /notes?t=hashtag
+ * - wss:// and ws:// URLs -> hyperlinks to /relays/{url}
+ * Returns both rendered nodes and a set of hashtags found in content (for deduplication)
  */
 function parseMarkdownContent(
   content: string,
@@ -30,13 +42,15 @@ function parseMarkdownContent(
     imageIndexMap: Map<string, number>
     openLightbox: (index: number) => void
     navigateToHashtag: (href: string) => void
+    navigateToRelay: (url: string) => void
   }
-): React.ReactNode[] {
-  const { eventPubkey, imageIndexMap, openLightbox, navigateToHashtag } = options
+): { nodes: React.ReactNode[]; hashtagsInContent: Set<string> } {
+  const { eventPubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay } = options
   const parts: React.ReactNode[] = []
+  const hashtagsInContent = new Set<string>()
   let lastIndex = 0
   
-  // Find all patterns: markdown images, markdown links, nostr addresses, hashtags, wikilinks
+  // Find all patterns: markdown images, markdown links, relay URLs, nostr addresses, hashtags, wikilinks
   const patterns: Array<{ index: number; end: number; type: string; data: any }> = []
   
   // Markdown images: ![](url) or ![alt](url)
@@ -71,18 +85,41 @@ function parseMarkdownContent(
     }
   })
   
-  // Nostr addresses (nostr:npub1..., nostr:note1..., etc.) - not in markdown links
-  const nostrRegex = /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g
-  const nostrMatches = Array.from(content.matchAll(nostrRegex))
-  nostrMatches.forEach(match => {
+  // Relay URLs (wss:// or ws://) - not in markdown links
+  const relayUrlMatches = Array.from(content.matchAll(WS_URL_REGEX))
+  relayUrlMatches.forEach(match => {
     if (match.index !== undefined) {
+      const url = match[0]
       // Only add if not already covered by a markdown link/image
       const isInMarkdown = patterns.some(p => 
         (p.type === 'markdown-link' || p.type === 'markdown-image') && 
         match.index! >= p.index && 
         match.index! < p.end
       )
-      if (!isInMarkdown) {
+      // Only process valid websocket URLs
+      if (!isInMarkdown && isWebsocketUrl(url)) {
+        patterns.push({
+          index: match.index,
+          end: match.index + match[0].length,
+          type: 'relay-url',
+          data: { url }
+        })
+      }
+    }
+  })
+  
+  // Nostr addresses (nostr:npub1..., nostr:note1..., etc.) - not in markdown links or relay URLs
+  const nostrRegex = /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g
+  const nostrMatches = Array.from(content.matchAll(nostrRegex))
+  nostrMatches.forEach(match => {
+    if (match.index !== undefined) {
+      // Only add if not already covered by a markdown link/image or relay URL
+      const isInOther = patterns.some(p => 
+        (p.type === 'markdown-link' || p.type === 'markdown-image' || p.type === 'relay-url') && 
+        match.index! >= p.index && 
+        match.index! < p.end
+      )
+      if (!isInOther) {
         patterns.push({
           index: match.index,
           end: match.index + match[0].length,
@@ -93,7 +130,7 @@ function parseMarkdownContent(
     }
   })
   
-  // Hashtags (#tag) - but not inside markdown links or nostr addresses
+  // Hashtags (#tag) - but not inside markdown links, relay URLs, or nostr addresses
   const hashtagRegex = /#([a-zA-Z0-9_]+)/g
   const hashtagMatches = Array.from(content.matchAll(hashtagRegex))
   hashtagMatches.forEach(match => {
@@ -165,12 +202,12 @@ function parseMarkdownContent(
       const imageIndex = imageIndexMap.get(cleaned)
       if (isImage(cleaned)) {
         parts.push(
-          <div key={`img-${i}`} className="my-2 inline-block">
+          <div key={`img-${i}`} className="my-2 block">
             <Image
               image={{ url, pubkey: eventPubkey }}
               className="max-w-[400px] rounded-lg cursor-zoom-in"
               classNames={{
-                wrapper: 'rounded-lg inline-block',
+                wrapper: 'rounded-lg block',
                 errorPlaceholder: 'aspect-square h-[30vh]'
               }}
               onClick={(e) => {
@@ -195,17 +232,58 @@ function parseMarkdownContent(
       }
     } else if (pattern.type === 'markdown-link') {
       const { text, url } = pattern.data
-      // Render as green link (will show WebPreview at bottom for HTTP/HTTPS)
+      const displayText = truncateLinkText(text)
+      // Check if it's a relay URL - if so, link to relay page instead
+      if (isWebsocketUrl(url)) {
+        const relayPath = `/relays/${encodeURIComponent(url)}`
+        parts.push(
+          <a
+            key={`relay-${i}`}
+            href={relayPath}
+            className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              navigateToRelay(relayPath)
+            }}
+            title={text.length > 200 ? text : undefined}
+          >
+            {displayText}
+          </a>
+        )
+      } else {
+        // Render as green link (will show WebPreview at bottom for HTTP/HTTPS)
+        parts.push(
+          <a
+            key={`link-${i}`}
+            href={url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words"
+            onClick={(e) => e.stopPropagation()}
+            title={text.length > 200 ? text : undefined}
+          >
+            {displayText}
+          </a>
+        )
+      }
+    } else if (pattern.type === 'relay-url') {
+      const { url } = pattern.data
+      const relayPath = `/relays/${encodeURIComponent(url)}`
+      const displayText = truncateLinkText(url)
       parts.push(
         <a
-          key={`link-${i}`}
-          href={url}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words"
-          onClick={(e) => e.stopPropagation()}
+          key={`relay-${i}`}
+          href={relayPath}
+          className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation()
+            e.preventDefault()
+            navigateToRelay(relayPath)
+          }}
+          title={url.length > 200 ? url : undefined}
         >
-          {text}
+          {displayText}
         </a>
       )
     } else if (pattern.type === 'nostr') {
@@ -229,15 +307,17 @@ function parseMarkdownContent(
       }
     } else if (pattern.type === 'hashtag') {
       const tag = pattern.data
+      const tagLower = tag.toLowerCase()
+      hashtagsInContent.add(tagLower) // Track hashtags rendered inline
       parts.push(
         <a
           key={`hashtag-${i}`}
-          href={`/notes?t=${tag.toLowerCase()}`}
+          href={`/notes?t=${tagLower}`}
           className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer"
           onClick={(e) => {
             e.stopPropagation()
             e.preventDefault()
-            navigateToHashtag(`/notes?t=${tag.toLowerCase()}`)
+            navigateToHashtag(`/notes?t=${tagLower}`)
           }}
         >
           #{tag}
@@ -272,10 +352,10 @@ function parseMarkdownContent(
   
   // If no patterns, just return the content as text
   if (parts.length === 0) {
-    return [<span key="text-only">{content}</span>]
+    return { nodes: [<span key="text-only">{content}</span>], hashtagsInContent }
   }
   
-  return parts
+  return { nodes: parts, hashtagsInContent }
 }
 
 export default function MarkdownArticle({
@@ -289,6 +369,7 @@ export default function MarkdownArticle({
 }) {
   const { push } = useSecondaryPage()
   const { navigateToHashtag } = useSmartHashtagNavigation()
+  const { navigateToRelay } = useSmartRelayNavigation()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
   
   // Extract all media from event
@@ -459,20 +540,35 @@ export default function MarkdownArticle({
     })
   }, [tagMedia, mediaUrlsInContent, metadata.image, hideMetadata])
   
+  // Filter tag links to only show what's not in content (to avoid duplicate WebPreview cards)
+  const leftoverTagLinks = useMemo(() => {
+    const contentLinksSet = new Set(contentLinks.map(link => cleanUrl(link)).filter(Boolean))
+    return tagLinks.filter(link => {
+      const cleaned = cleanUrl(link)
+      return cleaned && !contentLinksSet.has(cleaned)
+    })
+  }, [tagLinks, contentLinks])
+  
   // Preprocess content to convert URLs to markdown syntax
   const preprocessedContent = useMemo(() => {
     return preprocessMarkdownMediaLinks(event.content)
   }, [event.content])
   
   // Parse markdown content with post-processing for nostr: links and hashtags
-  const parsedContent = useMemo(() => {
+  const { nodes: parsedContent, hashtagsInContent } = useMemo(() => {
     return parseMarkdownContent(preprocessedContent, {
       eventPubkey: event.pubkey,
       imageIndexMap,
       openLightbox,
-      navigateToHashtag
+      navigateToHashtag,
+      navigateToRelay
     })
-  }, [preprocessedContent, event.pubkey, imageIndexMap, openLightbox, navigateToHashtag])
+  }, [preprocessedContent, event.pubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay])
+  
+  // Filter metadata tags to only show what's not already in content
+  const leftoverMetadataTags = useMemo(() => {
+    return metadata.tags.filter(tag => !hashtagsInContent.has(tag.toLowerCase()))
+  }, [metadata.tags, hashtagsInContent])
   
   return (
     <>
@@ -563,10 +659,10 @@ export default function MarkdownArticle({
           {parsedContent}
         </div>
         
-        {/* Hashtags from metadata */}
-        {metadata.tags.length > 0 && (
+        {/* Hashtags from metadata (only if not already in content) */}
+        {leftoverMetadataTags.length > 0 && (
           <div className="flex gap-2 flex-wrap pb-2 mt-4">
-            {metadata.tags.map((tag) => (
+            {leftoverMetadataTags.map((tag) => (
               <div
                 key={tag}
                 title={tag}
@@ -582,21 +678,11 @@ export default function MarkdownArticle({
           </div>
         )}
 
-        {/* WebPreview cards for links from content */}
-        {contentLinks.length > 0 && (
-          <div className="space-y-3 mt-6 pt-4 border-t">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3">Links</h3>
-            {contentLinks.map((url, index) => (
-              <WebPreview key={`content-${index}-${url}`} url={url} className="w-full" />
-            ))}
-          </div>
-        )}
-
-        {/* WebPreview cards for links from tags */}
-        {tagLinks.length > 0 && (
-          <div className="space-y-3 mt-6 pt-4 border-t">
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3">Related Links</h3>
-            {tagLinks.map((url, index) => (
+        {/* WebPreview cards for links from tags (only if not already in content) */}
+        {/* Note: Links in content are already rendered as green hyperlinks above, so we don't show WebPreview for them */}
+        {leftoverTagLinks.length > 0 && (
+          <div className="space-y-3 mt-6">
+            {leftoverTagLinks.map((url, index) => (
               <WebPreview key={`tag-${index}-${url}`} url={url} className="w-full" />
             ))}
           </div>
