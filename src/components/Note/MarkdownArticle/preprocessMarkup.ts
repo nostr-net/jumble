@@ -1,0 +1,207 @@
+import { isImage, isVideo, isAudio } from '@/lib/url'
+import { URL_REGEX } from '@/constants'
+
+/**
+ * Preprocess content to convert raw media URLs and hyperlinks to markdown syntax
+ * - Images: https://example.com/image.png -> ![](https://example.com/image.png)
+ * - Videos: https://example.com/video.mp4 -> ![](https://example.com/video.mp4)
+ * - Audio: https://example.com/audio.mp3 -> ![](https://example.com/audio.mp3)
+ * - Hyperlinks: https://example.com/page -> [https://example.com/page](https://example.com/page)
+ */
+export function preprocessMarkdownMediaLinks(content: string): string {
+  let processed = content
+  
+  // Find all URLs but process them in reverse order to preserve indices
+  const allMatches: Array<{ url: string; index: number }> = []
+  
+  let match
+  const regex = new RegExp(URL_REGEX.source, URL_REGEX.flags)
+  while ((match = regex.exec(content)) !== null) {
+    const index = match.index
+    const url = match[0]
+    const before = content.substring(Math.max(0, index - 20), index)
+    
+    // Check if this URL is already part of markdown syntax
+    // Skip if preceded by: [text](url, ![text](url, or ](url
+    if (before.match(/\[[^\]]*$/) || before.match(/\]\([^)]*$/) || before.match(/!\[[^\]]*$/)) {
+      continue
+    }
+    
+    allMatches.push({ url, index })
+  }
+  
+  // Process in reverse order to preserve indices
+  for (let i = allMatches.length - 1; i >= 0; i--) {
+    const { url, index } = allMatches[i]
+    
+    // Check if URL is in code block
+    const beforeUrl = content.substring(0, index)
+    const backticksCount = (beforeUrl.match(/```/g) || []).length
+    if (backticksCount % 2 === 1) {
+      continue // In code block
+    }
+    
+    // Check if URL is in inline code
+    const lastBacktick = beforeUrl.lastIndexOf('`')
+    if (lastBacktick !== -1) {
+      const afterUrl = content.substring(index + url.length)
+      const nextBacktick = afterUrl.indexOf('`')
+      if (nextBacktick !== -1) {
+        const codeBefore = beforeUrl.substring(lastBacktick + 1)
+        const codeAfter = afterUrl.substring(0, nextBacktick)
+        // If no newlines between backticks, it's inline code
+        if (!codeBefore.includes('\n') && !codeAfter.includes('\n')) {
+          continue
+        }
+      }
+    }
+    
+    // Check if it's a media URL
+    const isImageUrl = isImage(url)
+    const isVideoUrl = isVideo(url)
+    const isAudioUrl = isAudio(url)
+    
+    let replacement: string
+    if (isImageUrl || isVideoUrl || isAudioUrl) {
+      // Media URLs: convert to ![](url)
+      replacement = `![](${url})`
+    } else {
+      // Regular hyperlinks: convert to [url](url) format
+      replacement = `[${url}](${url})`
+    }
+    
+    // Replace the URL
+    processed = processed.substring(0, index) + replacement + processed.substring(index + url.length)
+  }
+  
+  return processed
+}
+
+/**
+ * Preprocess content to convert raw media URLs and hyperlinks to AsciiDoc syntax
+ * - Images: https://example.com/image.png -> image::https://example.com/image.png[]
+ * - Videos: https://example.com/video.mp4 -> video::https://example.com/video.mp4[]
+ * - Audio: https://example.com/audio.mp3 -> audio::https://example.com/audio.mp3[]
+ * - Hyperlinks: https://example.com/page -> https://example.com/page[link text]
+ * - Wikilinks: [[link]] or [[link|display]] -> +++WIKILINK:link|display+++ (passthrough for post-processing)
+ */
+export function preprocessAsciidocMediaLinks(content: string): string {
+  let processed = content
+  
+  // First, protect wikilinks by converting them to passthrough format
+  // This prevents AsciiDoc from processing them and prevents URLs inside from being processed
+  const wikilinkRegex = /\[\[([^\]]+)\]\]/g
+  const wikilinkRanges: Array<{ start: number; end: number }> = []
+  const wikilinkMatches = Array.from(content.matchAll(wikilinkRegex))
+  wikilinkMatches.forEach(match => {
+    if (match.index !== undefined) {
+      wikilinkRanges.push({
+        start: match.index,
+        end: match.index + match[0].length
+      })
+    }
+  })
+  
+  processed = processed.replace(wikilinkRegex, (_match, linkContent) => {
+    // Convert to AsciiDoc passthrough format so it's preserved
+    return `+++WIKILINK:${linkContent}+++`
+  })
+  
+  // Find all URLs but process them in reverse order to preserve indices
+  const allMatches: Array<{ url: string; index: number }> = []
+  
+  let match
+  const regex = new RegExp(URL_REGEX.source, URL_REGEX.flags)
+  while ((match = regex.exec(content)) !== null) {
+    const index = match.index
+    const url = match[0]
+    const urlEnd = index + url.length
+    
+    // Skip URLs that are inside wikilinks
+    const isInWikilink = wikilinkRanges.some(range => 
+      index >= range.start && urlEnd <= range.end
+    )
+    if (isInWikilink) {
+      continue
+    }
+    
+    const before = content.substring(Math.max(0, index - 30), index)
+    
+    // Check if this URL is already part of AsciiDoc syntax
+    // Skip if preceded by: image::, video::, audio::, or link:
+    if (before.match(/image::\s*$/) || 
+        before.match(/video::\s*$/) || 
+        before.match(/audio::\s*$/) ||
+        before.match(/link:\S+\[/) ||
+        before.match(/https?:\/\/[^\s]*\[/)) {
+      continue
+    }
+    
+    allMatches.push({ url, index })
+  }
+  
+  // Process in reverse order to preserve indices
+  for (let i = allMatches.length - 1; i >= 0; i--) {
+    const { url, index } = allMatches[i]
+    
+    // Check if URL is in code block
+    const beforeUrl = content.substring(0, index)
+    const codeBlockCount = (beforeUrl.match(/----/g) || []).length
+    if (codeBlockCount % 2 === 1) {
+      continue // In code block
+    }
+    
+    // Check if it's a media URL
+    const isImageUrl = isImage(url)
+    const isVideoUrl = isVideo(url)
+    const isAudioUrl = isAudio(url)
+    
+    let replacement: string
+    if (isImageUrl) {
+      // Images: convert to image::url[]
+      replacement = `image::${url}[]`
+    } else if (isVideoUrl) {
+      // Videos: convert to video::url[]
+      replacement = `video::${url}[]`
+    } else if (isAudioUrl) {
+      // Audio: convert to audio::url[]
+      replacement = `audio::${url}[]`
+    } else {
+      // Regular hyperlinks: convert to link:url[url]
+      replacement = `link:${url}[${url}]`
+    }
+    
+    // Replace the URL
+    processed = processed.substring(0, index) + replacement + processed.substring(index + url.length)
+  }
+  
+  return processed
+}
+
+/**
+ * Post-process content to convert nostr: links and hashtags
+ * This should be applied AFTER markup processing
+ */
+export function postProcessNostrLinks(content: string): string {
+  let processed = content
+  
+  // Convert nostr: prefixed links to embedded format
+  // nostr:npub1... -> [nostr:npub1...]
+  // nostr:note1... -> [nostr:note1...]
+  // etc.
+  const nostrRegex = /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g
+  processed = processed.replace(nostrRegex, (match) => {
+    // Already in a link? Don't double-wrap
+    // Check if it's already in markdown link syntax [text](nostr:...)
+    // or AsciiDoc link syntax link:nostr:...[text]
+    return match // Keep as is for now, will be processed by the parser
+  })
+  
+  // Convert hashtags to links
+  // #tag -> link:/notes?t=tag[#tag] (for AsciiDoc) or [#tag](/notes?t=tag) (for Markdown)
+  // But only if not already in a link
+  // We'll handle this in the rendering phase to avoid breaking markup
+  
+  return processed
+}
+

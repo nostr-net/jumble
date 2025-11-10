@@ -1,22 +1,22 @@
 import { useSecondaryPage, useSmartHashtagNavigation } from '@/PageManager'
-import ImageWithLightbox from '@/components/ImageWithLightbox'
+import Image from '@/components/Image'
+import MediaPlayer from '@/components/MediaPlayer'
+import WebPreview from '@/components/WebPreview'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNoteList } from '@/lib/link'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useMediaExtraction } from '@/hooks'
+import { cleanUrl, isImage, isMedia, isVideo, isAudio } from '@/lib/url'
+import { getImetaInfosFromEvent } from '@/lib/event'
 import { Event, kinds } from 'nostr-tools'
-import { useMemo, useState, useEffect, useRef } from 'react'
-import { useEventFieldParser } from '@/hooks/useContentParser'
-import HighlightSourcePreview from '../../UniversalContent/HighlightSourcePreview'
-import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { ExtendedKind } from '@/constants'
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { createRoot, Root } from 'react-dom/client'
 import Lightbox from 'yet-another-react-lightbox'
 import Zoom from 'yet-another-react-lightbox/plugins/zoom'
-import { TImetaInfo } from '@/types'
-import { useMediaExtraction } from '@/hooks'
-import WebPreview from '@/components/WebPreview'
-import { cleanUrl, isImage, isMedia } from '@/lib/url'
+import { EmbeddedNote, EmbeddedMention } from '@/components/Embedded'
+import Wikilink from '@/components/UniversalContent/Wikilink'
+import { preprocessAsciidocMediaLinks } from '../MarkdownArticle/preprocessMarkup'
+import logger from '@/lib/logger'
 
 export default function AsciidocArticle({
   event,
@@ -30,445 +30,695 @@ export default function AsciidocArticle({
   const { push } = useSecondaryPage()
   const { navigateToHashtag } = useSmartHashtagNavigation()
   const metadata = useMemo(() => getLongFormArticleMetadataFromEvent(event), [event])
-  const [isInfoOpen, setIsInfoOpen] = useState(false)
-  
-  // Determine if this is an article-type event that should show ToC and Article Info
-  const isArticleType = useMemo(() => {
-    return event.kind === kinds.LongFormArticle || 
-           event.kind === ExtendedKind.WIKI_ARTICLE || 
-           event.kind === ExtendedKind.PUBLICATION ||
-           event.kind === ExtendedKind.PUBLICATION_CONTENT
-  }, [event.kind])
-  
-  // Use the comprehensive content parser
-  const { parsedContent, isLoading, error } = useEventFieldParser(event, 'content', {
-    enableMath: true,
-    enableSyntaxHighlighting: true
-  })
-
   const contentRef = useRef<HTMLDivElement>(null)
-
-  // Handle wikilink clicks
-  useEffect(() => {
-    if (!contentRef.current) return
-
-    const handleWikilinkClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement
-      if (target.classList.contains('wikilink')) {
-        event.preventDefault()
-        const dTag = target.getAttribute('data-dtag')
-        const displayText = target.getAttribute('data-display')
-        
-        if (dTag && displayText) {
-          // Create a simple dropdown menu
-          const existingDropdown = document.querySelector('.wikilink-dropdown')
-          if (existingDropdown) {
-            existingDropdown.remove()
-          }
-
-          const dropdown = document.createElement('div')
-          dropdown.className = 'wikilink-dropdown fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 p-2'
-          dropdown.style.left = `${event.pageX}px`
-          dropdown.style.top = `${event.pageY + 10}px`
-
-          const wikistrButton = document.createElement('button')
-          wikistrButton.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2'
-          wikistrButton.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>View on Wikistr'
-          wikistrButton.onclick = () => {
-            window.open(`https://wikistr.imwald.eu/${dTag}`, '_blank', 'noopener,noreferrer')
-            dropdown.remove()
-          }
-
-          const alexandriaButton = document.createElement('button')
-          alexandriaButton.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2'
-          alexandriaButton.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>View on Alexandria'
-          alexandriaButton.onclick = () => {
-            window.open(`https://next-alexandria.gitcitadel.eu/events?d=${dTag}`, '_blank', 'noopener,noreferrer')
-            dropdown.remove()
-          }
-
-          dropdown.appendChild(wikistrButton)
-          dropdown.appendChild(alexandriaButton)
-          document.body.appendChild(dropdown)
-
-          // Close dropdown when clicking outside
-          const closeDropdown = (e: MouseEvent) => {
-            if (!dropdown.contains(e.target as Node)) {
-              dropdown.remove()
-              document.removeEventListener('click', closeDropdown)
-            }
-          }
-          setTimeout(() => document.addEventListener('click', closeDropdown), 0)
-        }
-      }
-    }
-
-    contentRef.current.addEventListener('click', handleWikilinkClick)
+  
+  // Preprocess content to convert URLs to AsciiDoc syntax
+  const processedContent = useMemo(() => {
+    let content = preprocessAsciidocMediaLinks(event.content)
     
-    return () => {
-      contentRef.current?.removeEventListener('click', handleWikilinkClick)
-    }
-  }, [parsedContent])
-
-  // Process nostr addresses and other interactive elements after HTML is rendered
-  useEffect(() => {
-    if (!contentRef.current || !parsedContent) return
-
-    const processInteractiveElements = () => {
-      // Process embedded note containers
-      const embeddedNotes = contentRef.current?.querySelectorAll('[data-embedded-note]')
-      embeddedNotes?.forEach((container) => {
-        const bech32Id = container.getAttribute('data-embedded-note')
-        if (bech32Id) {
-          // Replace with actual EmbeddedNote component
-          const embeddedNoteElement = document.createElement('div')
-          embeddedNoteElement.innerHTML = `<div data-embedded-note="${bech32Id}">Loading embedded event...</div>`
-          container.parentNode?.replaceChild(embeddedNoteElement.firstChild!, container)
-        }
-      })
-
-      // Process user handles
-      const userHandles = contentRef.current?.querySelectorAll('[data-pubkey]')
-      userHandles?.forEach((handle) => {
-        const pubkey = handle.getAttribute('data-pubkey')
-        if (pubkey) {
-          // Replace with actual Username component
-          const usernameElement = document.createElement('span')
-          usernameElement.innerHTML = `<span class="user-handle" data-pubkey="${pubkey}">@${handle.textContent}</span>`
-          handle.parentNode?.replaceChild(usernameElement.firstChild!, handle)
-        }
-      })
-
-      // Process hashtag links in content
-      const hashtagLinks = contentRef.current?.querySelectorAll('a.hashtag-link, a[href^="/notes?t="], a[href^="notes?t="]')
-      hashtagLinks?.forEach((link) => {
-        const href = link.getAttribute('href')
-        if (href && (href.startsWith('/notes?t=') || href.startsWith('notes?t='))) {
-          // Normalize href to include leading slash if missing
-          const normalizedHref = href.startsWith('/') ? href : `/${href}`
-          // Remove existing click handlers to avoid duplicates
-          const newLink = link.cloneNode(true) as HTMLElement
-          link.parentNode?.replaceChild(newLink, link)
-          
-          newLink.addEventListener('click', (e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            navigateToHashtag(normalizedHref)
-          })
-        }
-      })
-
-      // Process wikilinks
-      const wikilinks = contentRef.current?.querySelectorAll('.wikilink')
-      wikilinks?.forEach((wikilink) => {
-        const dTag = wikilink.getAttribute('data-dtag')
-        const displayText = wikilink.getAttribute('data-display')
-        if (dTag && displayText) {
-          // Add click handler for wikilinks
-          wikilink.addEventListener('click', (e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            const mouseEvent = e as MouseEvent
-            // Create dropdown menu similar to the original implementation
-            const existingDropdown = document.querySelector('.wikilink-dropdown')
-            if (existingDropdown) {
-              existingDropdown.remove()
-            }
-
-            const dropdown = document.createElement('div')
-            dropdown.className = 'wikilink-dropdown fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 p-2'
-            dropdown.style.left = `${mouseEvent.pageX}px`
-            dropdown.style.top = `${mouseEvent.pageY + 10}px`
-
-            const wikistrButton = document.createElement('button')
-            wikistrButton.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2'
-            wikistrButton.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>View on Wikistr'
-            wikistrButton.onclick = () => {
-              window.open(`https://wikistr.imwald.eu/${dTag}`, '_blank', 'noopener,noreferrer')
-              dropdown.remove()
-            }
-
-            const alexandriaButton = document.createElement('button')
-            alexandriaButton.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2'
-            alexandriaButton.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>View on Alexandria'
-            alexandriaButton.onclick = () => {
-              window.open(`https://next-alexandria.gitcitadel.eu/events?d=${dTag}`, '_blank', 'noopener,noreferrer')
-              dropdown.remove()
-            }
-
-            dropdown.appendChild(wikistrButton)
-            dropdown.appendChild(alexandriaButton)
-            document.body.appendChild(dropdown)
-
-            // Close dropdown when clicking outside
-            const closeDropdown = (e: MouseEvent) => {
-              if (!dropdown.contains(e.target as Node)) {
-                dropdown.remove()
-                document.removeEventListener('click', closeDropdown)
-              }
-            }
-            setTimeout(() => document.addEventListener('click', closeDropdown), 0)
-          })
-        }
-      })
-    }
-
-    // Process elements after a short delay to ensure content is rendered
-    const timeoutId = setTimeout(processInteractiveElements, 100)
+    // Convert "Read naddr... instead." patterns to AsciiDoc links
+    const redirectRegex = /Read (naddr1[a-z0-9]+) instead\./gi
+    content = content.replace(redirectRegex, (_match, naddr) => {
+      return `Read link:/notes/${naddr}[${naddr}] instead.`
+    })
     
-    return () => clearTimeout(timeoutId)
-  }, [parsedContent?.html])
-
-  // Style external HTTP/HTTPS links as green (like hashtags)
-  useEffect(() => {
-    if (!contentRef.current || !parsedContent) return
-
-    const styleExternalLinks = () => {
-      const links = contentRef.current?.querySelectorAll('a[href^="http://"], a[href^="https://"]')
-      links?.forEach((link) => {
-        const href = link.getAttribute('href')
-        if (href && !isImage(href) && !isMedia(href)) {
-          // Add green link styling
-          link.classList.add('text-green-600', 'dark:text-green-400', 'hover:text-green-700', 'dark:hover:text-green-300', 'hover:underline')
-        }
-      })
-    }
-
-    const timeoutId = setTimeout(styleExternalLinks, 100)
-    return () => clearTimeout(timeoutId)
-  }, [parsedContent?.html])
-
-  // Add ToC return buttons to section headers
-  useEffect(() => {
-    if (!contentRef.current || !isArticleType || !parsedContent) return
-
-    const addTocReturnButtons = () => {
-      const headers = contentRef.current?.querySelectorAll('h1, h2, h3, h4, h5, h6')
-      if (!headers) return
-
-      headers.forEach((header) => {
-        // Skip if button already exists
-        if (header.querySelector('.toc-return-btn')) return
-
-        // Create the return button
-        const returnBtn = document.createElement('span')
-        returnBtn.className = 'toc-return-btn'
-        returnBtn.innerHTML = '↑ ToC'
-        returnBtn.title = 'Return to Table of Contents'
-        
-        // Add click handler
-        returnBtn.addEventListener('click', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          // Scroll to the ToC
-          const tocElement = document.getElementById('toc')
-          if (tocElement) {
-            tocElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
-        })
-        
-        // Add the button to the header
-        header.appendChild(returnBtn)
-      })
-    }
-
-    // Add buttons after a short delay to ensure content is rendered
-    const timeoutId = setTimeout(addTocReturnButtons, 100)
-    
-    return () => clearTimeout(timeoutId)
-  }, [parsedContent?.html, isArticleType])
-
-  // Extract images from content using the unified media extraction service
-  // This includes images from tags, content, and parsed HTML
+    return content
+  }, [event.content])
+  
+  // Extract all media from event
   const extractedMedia = useMediaExtraction(event, event.content)
   
-  // Extract HTTP/HTTPS links from parsed content (in order of appearance) for WebPreview cards at bottom
-  const contentLinks = useMemo(() => {
-    if (!parsedContent?.links) return []
-    const links: string[] = []
+  // Extract media from tags only (for display at top)
+  const tagMedia = useMemo(() => {
     const seenUrls = new Set<string>()
+    const media: Array<{ url: string; type: 'image' | 'video' | 'audio' }> = []
     
-    parsedContent.links.forEach((link) => {
-      if (link.isExternal && (link.url.startsWith('http://') || link.url.startsWith('https://')) && !isImage(link.url) && !isMedia(link.url)) {
-        const cleaned = cleanUrl(link.url)
-        if (cleaned && !seenUrls.has(cleaned)) {
-          links.push(cleaned)
-          seenUrls.add(cleaned)
-        }
+    // Extract from imeta tags
+    const imetaInfos = getImetaInfosFromEvent(event)
+    imetaInfos.forEach((info) => {
+      const cleaned = cleanUrl(info.url)
+      if (!cleaned || seenUrls.has(cleaned)) return
+      if (!isImage(cleaned) && !isMedia(cleaned)) return
+      
+      seenUrls.add(cleaned)
+      if (info.m?.startsWith('image/') || isImage(cleaned)) {
+        media.push({ url: info.url, type: 'image' })
+      } else if (info.m?.startsWith('video/') || isVideo(cleaned)) {
+        media.push({ url: info.url, type: 'video' })
+      } else if (info.m?.startsWith('audio/') || isAudio(cleaned)) {
+        media.push({ url: info.url, type: 'audio' })
       }
     })
     
-    return links
-  }, [parsedContent?.links])
-
-  // Extract HTTP/HTTPS links from r tags (excluding those already in content)
+    // Extract from r tags
+    event.tags.filter(tag => tag[0] === 'r' && tag[1]).forEach(tag => {
+      const url = tag[1]
+      const cleaned = cleanUrl(url)
+      if (!cleaned || seenUrls.has(cleaned)) return
+      if (!isImage(cleaned) && !isMedia(cleaned)) return
+      
+      seenUrls.add(cleaned)
+      if (isImage(cleaned)) {
+        media.push({ url, type: 'image' })
+      } else if (isVideo(cleaned)) {
+        media.push({ url, type: 'video' })
+      } else if (isAudio(cleaned)) {
+        media.push({ url, type: 'audio' })
+      }
+    })
+    
+    // Extract from image tag
+    const imageTag = event.tags.find(tag => tag[0] === 'image' && tag[1])
+    if (imageTag?.[1]) {
+      const cleaned = cleanUrl(imageTag[1])
+      if (cleaned && !seenUrls.has(cleaned) && isImage(cleaned)) {
+        seenUrls.add(cleaned)
+        media.push({ url: imageTag[1], type: 'image' })
+      }
+    }
+    
+    return media
+  }, [event.id, JSON.stringify(event.tags)])
+  
+  // Extract non-media links from tags
   const tagLinks = useMemo(() => {
     const links: string[] = []
     const seenUrls = new Set<string>()
-    
-    // Create a set of content link URLs for quick lookup
-    const contentLinkUrls = new Set(contentLinks)
     
     event.tags
       .filter(tag => tag[0] === 'r' && tag[1])
       .forEach(tag => {
         const url = tag[1]
-        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
-          const cleaned = cleanUrl(url)
-          // Only include if not already in content links and not already seen in tags
-          if (cleaned && !contentLinkUrls.has(cleaned) && !seenUrls.has(cleaned)) {
-            links.push(cleaned)
-            seenUrls.add(cleaned)
-          }
+        if (!url.startsWith('http://') && !url.startsWith('https://')) return
+        if (isImage(url) || isMedia(url)) return
+        
+        const cleaned = cleanUrl(url)
+        if (cleaned && !seenUrls.has(cleaned)) {
+          links.push(cleaned)
+          seenUrls.add(cleaned)
         }
       })
     
     return links
-  }, [event.tags, contentLinks])
-
-  // Extract images from parsed HTML (after AsciiDoc processing) for carousel
-  // This ensures we get images that were rendered in the HTML output
-  const imagesInContent = useMemo<TImetaInfo[]>(() => {
-    if (!parsedContent?.html || !event) return []
-    
-    const images: TImetaInfo[] = []
-    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+  }, [event.id, JSON.stringify(event.tags)])
+  
+  // Get all images for gallery (deduplicated)
+  const allImages = useMemo(() => {
     const seenUrls = new Set<string>()
+    const images: Array<{ url: string; alt?: string }> = []
     
-    // Create a map of extracted media by URL for metadata lookup
-    const mediaMap = new Map<string, TImetaInfo>()
-    extractedMedia.all.forEach((media) => {
-      if (media.m?.startsWith('image/')) {
-        mediaMap.set(media.url, media)
+    // Add images from extractedMedia
+    extractedMedia.images.forEach(img => {
+      const cleaned = cleanUrl(img.url)
+      if (cleaned && !seenUrls.has(cleaned)) {
+        seenUrls.add(cleaned)
+        images.push({ url: img.url, alt: img.alt })
       }
     })
     
-    let match
-    while ((match = imgRegex.exec(parsedContent.html)) !== null) {
-      const url = match[1]
-      if (url && !seenUrls.has(url)) {
-        seenUrls.add(url)
-        // Use metadata from extracted media if available, otherwise create basic entry
-        const mediaInfo = mediaMap.get(url) || { url, pubkey: event.pubkey }
-        images.push(mediaInfo)
+    // Add metadata image if it exists
+    if (metadata.image) {
+      const cleaned = cleanUrl(metadata.image)
+      if (cleaned && !seenUrls.has(cleaned) && isImage(cleaned)) {
+        seenUrls.add(cleaned)
+        images.push({ url: metadata.image })
       }
     }
     
     return images
-  }, [parsedContent?.html, event, extractedMedia])
-
-  // Handle image clicks to open carousel
-  const [lightboxIndex, setLightboxIndex] = useState(-1)
+  }, [extractedMedia.images, metadata.image])
   
-  useEffect(() => {
-    if (!contentRef.current || imagesInContent.length === 0) return
-
-    const handleImageClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement
-      if (target.tagName === 'IMG' && target.hasAttribute('data-asciidoc-image')) {
-        event.preventDefault()
-        event.stopPropagation()
-        
-        const imageIndex = target.getAttribute('data-image-index')
-        if (imageIndex !== null) {
-          setLightboxIndex(parseInt(imageIndex, 10))
+  // Create image index map for lightbox
+  const imageIndexMap = useMemo(() => {
+    const map = new Map<string, number>()
+    allImages.forEach((img, index) => {
+      const cleaned = cleanUrl(img.url)
+      if (cleaned) map.set(cleaned, index)
+    })
+    return map
+  }, [allImages])
+  
+  // Parse content to find media URLs that are already rendered
+  const mediaUrlsInContent = useMemo(() => {
+    const urls = new Set<string>()
+    const urlRegex = /https?:\/\/[^\s<>"']+/g
+    let match
+    while ((match = urlRegex.exec(event.content)) !== null) {
+      const url = match[0]
+      const cleaned = cleanUrl(url)
+      if (cleaned && (isImage(cleaned) || isVideo(cleaned) || isAudio(cleaned))) {
+        urls.add(cleaned)
+      }
+    }
+    return urls
+  }, [event.content])
+  
+  // Extract non-media links from content
+  const contentLinks = useMemo(() => {
+    const links: string[] = []
+    const seenUrls = new Set<string>()
+    const urlRegex = /https?:\/\/[^\s<>"']+/g
+    let match
+    while ((match = urlRegex.exec(event.content)) !== null) {
+      const url = match[0]
+      if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+        const cleaned = cleanUrl(url)
+        if (cleaned && !seenUrls.has(cleaned)) {
+          links.push(cleaned)
+          seenUrls.add(cleaned)
         }
       }
     }
-
-    const contentElement = contentRef.current
-    contentElement.addEventListener('click', handleImageClick)
+    return links
+  }, [event.content])
+  
+  // Image gallery state
+  const [lightboxIndex, setLightboxIndex] = useState(-1)
+  
+  const openLightbox = useCallback((index: number) => {
+    setLightboxIndex(index)
+  }, [])
+  
+  // Filter tag media to only show what's not in content
+  const leftoverTagMedia = useMemo(() => {
+    const metadataImageUrl = metadata.image ? cleanUrl(metadata.image) : null
+    return tagMedia.filter(media => {
+      const cleaned = cleanUrl(media.url)
+      if (!cleaned) return false
+      // Skip if already in content
+      if (mediaUrlsInContent.has(cleaned)) return false
+      // Skip if this is the metadata image (shown separately)
+      if (metadataImageUrl && cleaned === metadataImageUrl && !hideImagesAndInfo) return false
+      return true
+    })
+  }, [tagMedia, mediaUrlsInContent, metadata.image, hideImagesAndInfo])
+  
+  // Parse AsciiDoc content and post-process for nostr: links and hashtags
+  const [parsedHtml, setParsedHtml] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(true)
+  
+  useEffect(() => {
+    let cancelled = false
+    
+    const parseAsciidoc = async () => {
+      setIsLoading(true)
+      try {
+        const Asciidoctor = await import('@asciidoctor/core')
+        const asciidoctor = Asciidoctor.default()
+        
+        if (cancelled) return
+        
+        const html = asciidoctor.convert(processedContent, {
+          safe: 'safe',
+          backend: 'html5',
+          doctype: 'article',
+          attributes: {
+            'showtitle': true,
+            'sectanchors': true,
+            'sectlinks': true,
+            'toc': 'left',
+            'toclevels': 6,
+            'toc-title': 'Table of Contents',
+            'source-highlighter': 'highlight.js',
+            'stem': 'latexmath',
+            'data-uri': true,
+            'imagesdir': '',
+            'linkcss': false,
+            'stylesheet': '',
+            'stylesdir': '',
+            'prewrap': true,
+            'sectnums': false,
+            'sectnumlevels': 6,
+            'experimental': true,
+            'compat-mode': false,
+            'attribute-missing': 'warn',
+            'attribute-undefined': 'warn',
+            'skip-front-matter': true
+          }
+        })
+        
+        if (cancelled) return
+        
+        let htmlString = typeof html === 'string' ? html : html.toString()
+        
+        // Post-process HTML to handle nostr: links
+        // Mentions (npub/nprofile) should be inline, events (note/nevent/naddr) should be block-level
+        htmlString = htmlString.replace(/<a[^>]*href=["']nostr:([^"']+)["'][^>]*>(.*?)<\/a>/g, (_match, bech32Id) => {
+          if (bech32Id.startsWith('npub') || bech32Id.startsWith('nprofile')) {
+            return `<span data-nostr-mention="${bech32Id}" class="nostr-mention-placeholder"></span>`
+          } else if (bech32Id.startsWith('note') || bech32Id.startsWith('nevent') || bech32Id.startsWith('naddr')) {
+            return `<div data-nostr-note="${bech32Id}" class="nostr-note-placeholder"></div>`
+          }
+          return _match
+        })
+        
+        // Also handle nostr: links in plain text (not in <a> tags)
+        htmlString = htmlString.replace(/nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g, (match, bech32Id) => {
+          // Only replace if not already in a tag (basic check)
+          if (!match.includes('<') && !match.includes('>')) {
+            if (bech32Id.startsWith('npub') || bech32Id.startsWith('nprofile')) {
+              return `<span data-nostr-mention="${bech32Id}" class="nostr-mention-placeholder"></span>`
+            } else if (bech32Id.startsWith('note') || bech32Id.startsWith('nevent') || bech32Id.startsWith('naddr')) {
+              return `<div data-nostr-note="${bech32Id}" class="nostr-note-placeholder"></div>`
+            }
+          }
+          return match
+        })
+        
+        // Handle wikilinks - convert passthrough markers to placeholders
+        // AsciiDoc passthrough +++WIKILINK:link|display+++ outputs just WIKILINK:link|display in HTML
+        // Match WIKILINK: followed by any characters (including |) until end of text or HTML tag
+        htmlString = htmlString.replace(/WIKILINK:([^<>\s]+)/g, (_match, linkContent) => {
+          // Escape special characters for HTML attributes
+          const escaped = linkContent.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+          return `<span data-wikilink="${escaped}" class="wikilink-placeholder"></span>`
+        })
+        
+        setParsedHtml(htmlString)
+      } catch (error) {
+        logger.error('Failed to parse AsciiDoc', error as Error)
+        setParsedHtml('<p>Error parsing AsciiDoc content</p>')
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+    
+    parseAsciidoc()
     
     return () => {
-      contentElement.removeEventListener('click', handleImageClick)
+      cancelled = true
     }
-  }, [imagesInContent.length])
-
-  if (isLoading) {
-    return (
-      <div className={`prose prose-zinc max-w-none dark:prose-invert break-words ${className || ''}`}>
-        <div>Loading content...</div>
-      </div>
+  }, [processedContent])
+  
+  // Store React roots for cleanup
+  const reactRootsRef = useRef<Map<Element, Root>>(new Map())
+  
+  // Post-process rendered HTML to inject React components for nostr: links and handle hashtags
+  useEffect(() => {
+    if (!contentRef.current || !parsedHtml || isLoading) return
+    
+    // Clean up previous roots
+    reactRootsRef.current.forEach((root, element) => {
+      root.unmount()
+      reactRootsRef.current.delete(element)
+    })
+    
+    // Process nostr: mentions - replace placeholders with React components (inline)
+    const nostrMentions = contentRef.current.querySelectorAll('.nostr-mention-placeholder[data-nostr-mention]')
+    nostrMentions.forEach((element) => {
+      const bech32Id = element.getAttribute('data-nostr-mention')
+      if (!bech32Id) return
+      
+      // Create an inline container for React component (mentions should be inline)
+      const container = document.createElement('span')
+      container.className = 'inline-block'
+      element.parentNode?.replaceChild(container, element)
+      
+      // Use React to render the component
+      const root = createRoot(container)
+      root.render(<EmbeddedMention userId={bech32Id} />)
+      reactRootsRef.current.set(container, root)
+    })
+    
+    // Process nostr: notes - replace placeholders with React components
+    const nostrNotes = contentRef.current.querySelectorAll('.nostr-note-placeholder[data-nostr-note]')
+    nostrNotes.forEach((element) => {
+      const bech32Id = element.getAttribute('data-nostr-note')
+      if (!bech32Id) return
+      
+      // Create a block-level container for React component that fills width
+      const container = document.createElement('div')
+      container.className = 'w-full my-2'
+      element.parentNode?.replaceChild(container, element)
+      
+      // Use React to render the component
+      const root = createRoot(container)
+      root.render(<EmbeddedNote noteId={bech32Id} />)
+      reactRootsRef.current.set(container, root)
+    })
+    
+    // Process wikilinks - replace placeholders with React components
+    const wikilinks = contentRef.current.querySelectorAll('.wikilink-placeholder[data-wikilink]')
+    wikilinks.forEach((element) => {
+      const linkContent = element.getAttribute('data-wikilink')
+      if (!linkContent) return
+      
+      // Parse wikilink: extract target and display text
+      let target = linkContent.includes('|') ? linkContent.split('|')[0].trim() : linkContent.trim()
+      let displayText = linkContent.includes('|') ? linkContent.split('|')[1].trim() : linkContent.trim()
+      
+      // Handle book: prefix
+      if (linkContent.startsWith('book:')) {
+        target = linkContent.replace('book:', '').trim()
+      }
+      
+      // Convert to d-tag format (same as MarkdownArticle)
+      const dtag = target.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+      
+      // Create a container for React component
+      const container = document.createElement('span')
+      container.className = 'inline-block'
+      element.parentNode?.replaceChild(container, element)
+      
+      // Use React to render the component
+      const root = createRoot(container)
+      root.render(<Wikilink dTag={dtag} displayText={displayText} />)
+      reactRootsRef.current.set(container, root)
+    })
+    
+    // Process hashtags in text nodes - convert #tag to links
+    const walker = document.createTreeWalker(
+      contentRef.current,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          // Skip if parent is a link, code, or pre tag
+          const parent = node.parentElement
+          if (!parent) return NodeFilter.FILTER_ACCEPT
+          if (parent.tagName === 'A' || parent.tagName === 'CODE' || parent.tagName === 'PRE') {
+            return NodeFilter.FILTER_REJECT
+          }
+          return NodeFilter.FILTER_ACCEPT
+        }
+      }
     )
-  }
-
-  if (error) {
-    return (
-      <div className={`prose prose-zinc max-w-none dark:prose-invert break-words ${className || ''}`}>
-        <div className="text-red-500">Error loading content: {error.message}</div>
-      </div>
-    )
-  }
-
-  if (!parsedContent) {
-    return (
-      <div className={`prose prose-zinc max-w-none dark:prose-invert break-words ${className || ''}`}>
-        <div>No content available</div>
-      </div>
-    )
-  }
-
+    
+    const textNodes: Text[] = []
+    let node
+    while ((node = walker.nextNode())) {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+        textNodes.push(node as Text)
+      }
+    }
+    
+    textNodes.forEach((textNode) => {
+      const text = textNode.textContent || ''
+      const hashtagRegex = /#([a-zA-Z0-9_]+)/g
+      const matches = Array.from(text.matchAll(hashtagRegex))
+      
+      if (matches.length > 0) {
+        const fragment = document.createDocumentFragment()
+        let lastIndex = 0
+        
+        matches.forEach((match) => {
+          if (match.index === undefined) return
+          
+          // Add text before hashtag
+          if (match.index > lastIndex) {
+            fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
+          }
+          
+          // Create hashtag link
+          const link = document.createElement('a')
+          link.href = `/notes?t=${match[1].toLowerCase()}`
+          link.className = 'inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline cursor-pointer'
+          link.textContent = `#${match[1]}`
+          link.addEventListener('click', (e) => {
+            e.stopPropagation()
+            e.preventDefault()
+            navigateToHashtag(`/notes?t=${match[1].toLowerCase()}`)
+          })
+          fragment.appendChild(link)
+          
+          lastIndex = match.index + match[0].length
+        })
+        
+        // Add remaining text
+        if (lastIndex < text.length) {
+          fragment.appendChild(document.createTextNode(text.slice(lastIndex)))
+        }
+        
+        textNode.parentNode?.replaceChild(fragment, textNode)
+      }
+    })
+    
+    // Cleanup function
+    return () => {
+      reactRootsRef.current.forEach((root) => {
+        root.unmount()
+      })
+      reactRootsRef.current.clear()
+    }
+  }, [parsedHtml, isLoading, navigateToHashtag])
+  
+  // Initialize syntax highlighting
+  useEffect(() => {
+    const initHighlight = async () => {
+      if (typeof window !== 'undefined') {
+        const hljs = await import('highlight.js')
+        if (contentRef.current) {
+          contentRef.current.querySelectorAll('pre code').forEach((block) => {
+            const element = block as HTMLElement
+            element.style.color = 'inherit'
+            element.classList.add('text-gray-900', 'dark:text-gray-100')
+            hljs.default.highlightElement(element)
+            element.style.color = 'inherit'
+          })
+        }
+      }
+    }
+    
+    const timeoutId = setTimeout(initHighlight, 100)
+    return () => clearTimeout(timeoutId)
+  }, [parsedHtml])
+  
   return (
-    <article className={`prose prose-zinc max-w-none dark:prose-invert break-words leading-relaxed ${parsedContent?.cssClasses || ''} ${className || ''}`}>
-      {/* Article metadata - hide when used as nested content */}
-      {!hideImagesAndInfo && (
-        <header className="mb-8">
-          <h1 className="break-words text-4xl font-bold mb-6 leading-tight">{metadata.title}</h1>
-          {metadata.summary && (
-            <blockquote className="border-l-4 border-primary pl-6 italic text-muted-foreground mb-8 text-lg leading-relaxed">
-              <p className="break-words">{metadata.summary}</p>
-            </blockquote>
-          )}
-          {metadata.image && (
-            <div className="mb-8">
-              <ImageWithLightbox
-                image={{ url: metadata.image, pubkey: event.pubkey }}
-                className="w-full max-w-[400px] h-auto object-contain rounded-lg shadow-lg mx-auto"
-              />
-            </div>
-          )}
-        </header>
-      )}
+    <>
+      <style>{`
+        .hljs {
+          background: transparent !important;
+        }
+        .hljs-keyword,
+        .hljs-selector-tag,
+        .hljs-literal,
+        .hljs-title,
+        .hljs-section,
+        .hljs-doctag,
+        .hljs-type,
+        .hljs-name,
+        .hljs-strong {
+          color: #dc2626 !important;
+          font-weight: bold !important;
+        }
+        .hljs-string,
+        .hljs-title.class_,
+        .hljs-attr,
+        .hljs-symbol,
+        .hljs-bullet,
+        .hljs-addition,
+        .hljs-code,
+        .hljs-regexp,
+        .hljs-selector-pseudo,
+        .hljs-selector-attr,
+        .hljs-selector-class,
+        .hljs-selector-id {
+          color: #0284c7 !important;
+        }
+        .hljs-comment,
+        .hljs-quote {
+          color: #6b7280 !important;
+        }
+        .hljs-number,
+        .hljs-deletion {
+          color: #0d9488 !important;
+        }
+        .dark .hljs-keyword,
+        .dark .hljs-selector-tag,
+        .dark .hljs-literal,
+        .dark .hljs-title,
+        .dark .hljs-section,
+        .dark .hljs-doctag,
+        .dark .hljs-type,
+        .dark .hljs-name,
+        .dark .hljs-strong {
+          color: #f87171 !important;
+        }
+        .dark .hljs-string,
+        .dark .hljs-title.class_,
+        .dark .hljs-attr,
+        .dark .hljs-symbol,
+        .dark .hljs-bullet,
+        .dark .hljs-addition,
+        .dark .hljs-code,
+        .dark .hljs-regexp,
+        .dark .hljs-selector-pseudo,
+        .dark .hljs-selector-attr,
+        .dark .hljs-selector-class,
+        .dark .hljs-selector-id {
+          color: #38bdf8 !important;
+        }
+        .dark .hljs-comment,
+        .dark .hljs-quote {
+          color: #9ca3af !important;
+        }
+        .dark .hljs-number,
+        .dark .hljs-deletion {
+          color: #5eead4 !important;
+        }
+        .asciidoc-content img {
+          max-width: 400px;
+          height: auto;
+          border-radius: 0.5rem;
+          cursor: zoom-in;
+        }
+        .asciidoc-content a[href^="/notes?t="] {
+          color: #16a34a !important;
+          text-decoration: none !important;
+        }
+        .asciidoc-content a[href^="/notes?t="]:hover {
+          color: #15803d !important;
+          text-decoration: underline !important;
+        }
+        .dark .asciidoc-content a[href^="/notes?t="] {
+          color: #4ade80 !important;
+        }
+        .dark .asciidoc-content a[href^="/notes?t="]:hover {
+          color: #86efac !important;
+        }
+      `}</style>
+      <div className={`prose prose-zinc max-w-none dark:prose-invert break-words overflow-wrap-anywhere ${className || ''}`}>
+        {/* Metadata */}
+        {!hideImagesAndInfo && metadata.title && <h1 className="break-words">{metadata.title}</h1>}
+        {!hideImagesAndInfo && metadata.summary && (
+          <blockquote>
+            <p className="break-words">{metadata.summary}</p>
+          </blockquote>
+        )}
+        {hideImagesAndInfo && metadata.title && (
+          <h2 className="text-2xl font-bold mb-4 leading-tight break-words">{metadata.title}</h2>
+        )}
+        
+        {/* Metadata image */}
+        {!hideImagesAndInfo && metadata.image && (() => {
+          const cleanedMetadataImage = cleanUrl(metadata.image)
+          // Don't show if already in content
+          if (cleanedMetadataImage && mediaUrlsInContent.has(cleanedMetadataImage)) {
+            return null
+          }
+          
+          const metadataImageIndex = imageIndexMap.get(cleanedMetadataImage)
+          
+          return (
+            <Image
+              image={{ url: metadata.image, pubkey: event.pubkey }}
+              className="max-w-[400px] w-full h-auto my-0 cursor-zoom-in"
+              classNames={{
+                wrapper: 'rounded-lg',
+                errorPlaceholder: 'aspect-square h-[30vh]'
+              }}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (metadataImageIndex !== undefined) {
+                  openLightbox(metadataImageIndex)
+                }
+              }}
+            />
+          )
+        })()}
+        
+        {/* Media from tags (only if not in content) */}
+        {leftoverTagMedia.length > 0 && (
+          <div className="space-y-4 mb-6">
+            {leftoverTagMedia.map((media) => {
+              const cleaned = cleanUrl(media.url)
+              const mediaIndex = imageIndexMap.get(cleaned)
+              
+              if (media.type === 'image') {
+                return (
+                  <div key={`tag-media-${cleaned}`} className="my-2">
+                    <Image
+                      image={{ url: media.url, pubkey: event.pubkey }}
+                      className="max-w-[400px] rounded-lg cursor-zoom-in"
+                      classNames={{
+                        wrapper: 'rounded-lg',
+                        errorPlaceholder: 'aspect-square h-[30vh]'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (mediaIndex !== undefined) {
+                          openLightbox(mediaIndex)
+                        }
+                      }}
+                    />
+                  </div>
+                )
+              } else if (media.type === 'video' || media.type === 'audio') {
+                return (
+                  <div key={`tag-media-${cleaned}`} className="my-2">
+                    <MediaPlayer
+                      src={media.url}
+                      className="max-w-[400px]"
+                      mustLoad={true}
+                    />
+                  </div>
+                )
+              }
+              return null
+            })}
+          </div>
+        )}
+        
+        {/* Parsed AsciiDoc content */}
+        {isLoading ? (
+          <div>Loading content...</div>
+        ) : (
+          <div
+            ref={contentRef}
+            className="asciidoc-content break-words"
+            dangerouslySetInnerHTML={{ __html: parsedHtml }}
+          />
+        )}
+        
+        {/* Hashtags from metadata */}
+        {!hideImagesAndInfo && metadata.tags.length > 0 && (
+          <div className="flex gap-2 flex-wrap pb-2 mt-4">
+            {metadata.tags.map((tag) => (
+              <div
+                key={tag}
+                title={tag}
+                className="flex items-center rounded-full px-3 bg-muted text-muted-foreground max-w-44 cursor-pointer hover:bg-accent hover:text-accent-foreground"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  push(toNoteList({ hashtag: tag, kinds: [kinds.LongFormArticle] }))
+                }}
+              >
+                #<span className="truncate">{tag}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
-      {/* Show title inline when used as nested content */}
-      {hideImagesAndInfo && metadata.title && (
-        <h2 className="text-2xl font-bold mb-4 leading-tight break-words">{metadata.title}</h2>
-      )}
+        {/* WebPreview cards for links from content */}
+        {contentLinks.length > 0 && (
+          <div className="space-y-3 mt-6 pt-4 border-t">
+            <h3 className="text-sm font-semibold text-muted-foreground mb-3">Links</h3>
+            {contentLinks.map((url, index) => (
+              <WebPreview key={`content-${index}-${url}`} url={url} className="w-full" />
+            ))}
+          </div>
+        )}
 
-      {/* Render AsciiDoc content (everything is now processed as AsciiDoc) */}
-      <div 
-        ref={contentRef} 
-        className={`prose prose-zinc max-w-none dark:prose-invert break-words leading-relaxed text-base ${isArticleType ? "asciidoc-content" : "simple-content"}`}
-        style={{
-          // Override any problematic AsciiDoc styles
-          '--tw-prose-body': 'inherit',
-          '--tw-prose-headings': 'inherit',
-          '--tw-prose-lead': 'inherit',
-          '--tw-prose-links': 'inherit',
-          '--tw-prose-bold': 'inherit',
-          '--tw-prose-counters': 'inherit',
-          '--tw-prose-bullets': 'inherit',
-          '--tw-prose-hr': 'inherit',
-          '--tw-prose-quotes': 'inherit',
-          '--tw-prose-quote-borders': 'inherit',
-          '--tw-prose-captions': 'inherit',
-          '--tw-prose-code': 'inherit',
-          '--tw-prose-pre-code': 'inherit',
-          '--tw-prose-pre-bg': 'inherit',
-          '--tw-prose-th-borders': 'inherit',
-          '--tw-prose-td-borders': 'inherit'
-        } as React.CSSProperties}
-        dangerouslySetInnerHTML={{ __html: parsedContent?.html || '' }} 
-      />
-
-      {/* Image carousel lightbox */}
-      {imagesInContent.length > 0 && lightboxIndex >= 0 && createPortal(
+        {/* WebPreview cards for links from tags */}
+        {tagLinks.length > 0 && (
+          <div className="space-y-3 mt-6 pt-4 border-t">
+            <h3 className="text-sm font-semibold text-muted-foreground mb-3">Related Links</h3>
+            {tagLinks.map((url, index) => (
+              <WebPreview key={`tag-${index}-${url}`} url={url} className="w-full" />
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {/* Image gallery lightbox */}
+      {allImages.length > 0 && lightboxIndex >= 0 && createPortal(
         <div onClick={(e) => e.stopPropagation()}>
           <Lightbox
             index={lightboxIndex}
-            slides={imagesInContent.map(({ url }) => ({ 
+            slides={allImages.map(({ url, alt }) => ({ 
               src: url, 
-              alt: url 
+              alt: alt || url 
             }))}
             plugins={[Zoom]}
             open={lightboxIndex >= 0}
@@ -488,85 +738,7 @@ export default function AsciidocArticle({
         </div>,
         document.body
       )}
-
-      {/* Collapsible Article Info - only for article-type events */}
-      {!hideImagesAndInfo && isArticleType && (parsedContent?.highlightSources?.length > 0 || parsedContent?.hashtags?.length > 0) && (
-        <Collapsible open={isInfoOpen} onOpenChange={setIsInfoOpen} className="mt-4">
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" className="w-full justify-between">
-              <span>Article Info</span>
-              {isInfoOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-4 mt-2">
-
-            {/* Highlight sources */}
-            {parsedContent?.highlightSources?.length > 0 && (
-              <div className="p-4 bg-muted rounded-lg">
-                <h4 className="text-sm font-semibold mb-3">Highlight sources:</h4>
-                <div className="space-y-3">
-                  {parsedContent?.highlightSources?.map((source, index) => (
-                    <HighlightSourcePreview
-                      key={index}
-                      source={source}
-                      className="w-full"
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Hashtags - only show t-tags that don't appear as #hashtag in content */}
-            {(() => {
-              // Get content hashtags from parsedContent (hashtags extracted from content as #hashtag)
-              // Normalize to lowercase for comparison
-              const contentHashtags = new Set((parsedContent?.hashtags || []).map(t => t.toLowerCase()))
-              // Filter metadata.tags (t-tags from event) to exclude those already in content
-              const tagsToShow = (metadata.tags || []).filter(tag => !contentHashtags.has(tag.toLowerCase()))
-              return tagsToShow.length > 0 && (
-                <div className="p-4 bg-muted rounded-lg">
-                  <h4 className="text-sm font-semibold mb-3">Tags:</h4>
-                  <div className="flex gap-2 flex-wrap">
-                    {tagsToShow.map((tag) => (
-                      <div
-                        key={tag}
-                        title={tag}
-                        className="flex items-center rounded-full px-3 py-1 bg-background text-muted-foreground max-w-44 cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          push(toNoteList({ hashtag: tag, kinds: [kinds.LongFormArticle] }))
-                        }}
-                      >
-                        #<span className="truncate">{tag}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
-      {/* WebPreview cards for links from content (in order of appearance) */}
-      {contentLinks.length > 0 && (
-        <div className="space-y-3 mt-6 pt-4 border-t">
-          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Links</h3>
-          {contentLinks.map((url, index) => (
-            <WebPreview key={`content-${index}-${url}`} url={url} className="w-full" />
-          ))}
-        </div>
-      )}
-
-      {/* WebPreview cards for links from tags */}
-      {tagLinks.length > 0 && (
-        <div className="space-y-3 mt-6 pt-4 border-t">
-          <h3 className="text-sm font-semibold text-muted-foreground mb-3">Related Links</h3>
-          {tagLinks.map((url, index) => (
-            <WebPreview key={`tag-${index}-${url}`} url={url} className="w-full" />
-          ))}
-        </div>
-      )}
-    </article>
+    </>
   )
 }
+
