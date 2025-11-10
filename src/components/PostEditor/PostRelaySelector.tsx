@@ -96,7 +96,11 @@ export default function PostRelaySelector({
                 ...cacheRelayList.originalRelays
                   .filter(relay => (relay.scope === 'both' || relay.scope === 'write') && isLocalNetworkUrl(relay.url))
                   .map(relay => relay.url)
-              ].filter(url => isLocalNetworkUrl(url))
+              ].filter(url => {
+                // Filter out invalid/empty URLs
+                if (!url || typeof url !== 'string' || url.trim() === '' || url === 'ws://' || url === 'wss://') return false
+                return isLocalNetworkUrl(url)
+              })
               const existingUrls = new Set(userWriteRelays.map(url => normalizeUrl(url) || url))
               const newCacheRelays = cacheRelays
                 .map(url => normalizeUrl(url) || url)

@@ -128,6 +128,13 @@ class RelaySelectionService {
   }
 
   /**
+   * Validate that a URL is a valid, non-empty relay URL
+   */
+  private isValidRelayUrl(url: string | undefined | null): url is string {
+    return !!(url && typeof url === 'string' && url.trim() !== '' && url !== 'ws://' && url !== 'wss://')
+  }
+
+  /**
    * Get relay list from IndexedDB cache (kind 10002 and 10432 merged)
    * If not in cache, fetch from relays before returning empty
    * This avoids fetching from relays every time, but ensures we have data when needed
@@ -162,9 +169,15 @@ class RelaySelectionService {
       if (cacheRelayListEvent) {
         const cacheRelayList = getRelayListFromEvent(cacheRelayListEvent)
         
+        // Filter out invalid/empty URLs before merging
+        const validCacheRead = cacheRelayList.read.filter(this.isValidRelayUrl)
+        const validCacheWrite = cacheRelayList.write.filter(this.isValidRelayUrl)
+        const validRelayRead = relayList.read.filter(this.isValidRelayUrl)
+        const validRelayWrite = relayList.write.filter(this.isValidRelayUrl)
+        
         // Merge read relays - cache relays first, then others
-        const mergedRead = [...cacheRelayList.read, ...relayList.read]
-        const mergedWrite = [...cacheRelayList.write, ...relayList.write]
+        const mergedRead = [...validCacheRead, ...validRelayRead]
+        const mergedWrite = [...validCacheWrite, ...validRelayWrite]
         const mergedOriginalRelays = new Map<string, { url: string; scope: 'read' | 'write' | 'both' }>()
         
         // Add cache relay original relays first (prioritized)

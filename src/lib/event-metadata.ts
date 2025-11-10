@@ -22,7 +22,9 @@ export function getRelayListFromEvent(event?: Event | null, blockedRelays?: stri
   const normalizedBlockedRelays = (blockedRelays || []).map(url => normalizeUrl(url) || url)
   
   event.tags.filter(tagNameEquals('r')).forEach(([, url, type]) => {
-    if (!url || !isWebsocketUrl(url)) return
+    // Filter out empty, invalid, or malformed URLs
+    if (!url || typeof url !== 'string' || url.trim() === '' || url === 'ws://' || url === 'wss://') return
+    if (!isWebsocketUrl(url)) return
 
     const normalizedUrl = normalizeUrl(url)
     if (!normalizedUrl) return
