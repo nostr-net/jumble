@@ -112,7 +112,6 @@ export function useProfileTimeline({
 
   useEffect(() => {
     let cancelled = false
-    const refreshIndex = refreshToken
 
     const subscribe = async () => {
       setIsLoading(!timelineCache.has(cacheKey))
@@ -134,7 +133,11 @@ export function useProfileTimeline({
           .filter((request) => request.urls.length)
 
         if (!subRequests.length) {
-          updateCache([])
+          timelineCache.set(cacheKey, {
+            events: [],
+            lastUpdated: Date.now()
+          })
+          setEvents([])
           setIsLoading(false)
           return
         }

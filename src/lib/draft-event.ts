@@ -1034,7 +1034,7 @@ export async function createHighlightDraftEvent(
           }
         }
       } catch (err) {
-        logger.error('Failed to decode naddr', { error: err, reference: tag })
+        logger.error('Failed to decode naddr', { error: err, reference: sourceValue })
       }
     } else if (sourceValue.startsWith('nevent')) {
       // Handle nevent
@@ -1056,7 +1056,7 @@ export async function createHighlightDraftEvent(
           }
         }
       } catch (err) {
-        logger.error('Failed to decode nevent', { error: err, reference: tag })
+        logger.error('Failed to decode nevent', { error: err, reference: sourceValue })
       }
     } else if (sourceValue.startsWith('note')) {
       // Handle note1... (bech32 encoded event ID)
@@ -1073,7 +1073,7 @@ export async function createHighlightDraftEvent(
           }
         }
       } catch (err) {
-        logger.error('Failed to decode note', { error: err, reference: tag })
+        logger.error('Failed to decode note', { error: err, reference: sourceValue })
       }
     } else {
       // Regular hex event ID

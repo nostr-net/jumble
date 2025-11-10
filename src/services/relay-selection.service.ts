@@ -185,7 +185,7 @@ class RelaySelectionService {
         }
       }
     } catch (error) {
-      logger.error('Failed to get contextual relays', { error, relaySets })
+      logger.error('Failed to get contextual relays', { error })
     }
 
     return Array.from(contextualRelays)
@@ -440,7 +440,7 @@ class RelaySelectionService {
             }
           }
         } catch (error) {
-          logger.error('Failed to decode nostr address', { error, tag })
+          logger.error('Failed to decode nostr address', { error, match })
         }
       }
     }

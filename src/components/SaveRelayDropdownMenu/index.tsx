@@ -131,7 +131,7 @@ function RelayItem({ urls }: { urls: string[] }) {
         await addFavoriteRelays(urls)
       }
     } catch (error) {
-      logger.error('Failed to toggle favorite relay', { error, url })
+      logger.error('Failed to toggle favorite relay', { error, urls })
     } finally {
       setIsLoading(false)
     }
@@ -256,7 +256,7 @@ function BlockRelayItem({ urls }: { urls: string[] }) {
         await addBlockedRelays(urls)
       }
     } catch (error) {
-      logger.error('Failed to toggle blocked relay', { error, url })
+      logger.error('Failed to toggle blocked relay', { error, urls })
     } finally {
       setIsLoading(false)
     }

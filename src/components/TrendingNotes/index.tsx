@@ -14,7 +14,7 @@ import { FAST_READ_RELAY_URLS } from '@/constants'
 import logger from '@/lib/logger'
 import { normalizeUrl } from '@/lib/url'
 
-const SHOW_COUNT = 10
+const SHOW_COUNT = 25
 const CACHE_DURATION = 30 * 60 * 1000 // 30 minutes
 
 // Unified cache for all custom trending feeds
@@ -40,7 +40,7 @@ export default function TrendingNotes() {
   const { zapReplyThreshold } = useZap()
   const [nostrEvents, setNostrEvents] = useState<NostrEvent[]>([])
   const [nostrLoading, setNostrLoading] = useState(false)
-  const [showCount, setShowCount] = useState(10)
+  const [showCount, setShowCount] = useState(SHOW_COUNT)
   const [activeTab, setActiveTab] = useState<TrendingTab>('nostr')
   const [sortOrder, setSortOrder] = useState<SortOrder>('most-popular')
   const [hashtagFilter] = useState<HashtagFilter>('popular')
@@ -244,7 +244,7 @@ export default function TrendingNotes() {
               const events = await client.fetchEvents([relay], {
                 kinds: [1, 11, 30023, 9802, 20, 21, 22],
                 since: twentyFourHoursAgo,
-                limit: 100
+                limit: 200
               })
               logger.debug('[TrendingNotes] Fetched', events.length, 'events from relay', relay)
               return events
@@ -386,7 +386,8 @@ export default function TrendingNotes() {
      
   }, []) // Only run once on mount to prevent infinite loop
 
-  const relaysFilteredEvents = useMemo(() => {
+  // Compute filtered events without slicing (for pagination length check)
+  const relaysFilteredEventsAll = useMemo(() => {
     const idSet = new Set<string>()
     const sourceEvents = cacheEvents.length > 0 ? cacheEvents : nostrEvents
 
@@ -412,6 +413,9 @@ export default function TrendingNotes() {
             if (!allHashtags.includes(selectedHashtag.toLowerCase())) return false
           }
         }
+      }
+      
+      // Deduplicate events
       const id = isReplaceableEvent(evt.kind) ? getReplaceableCoordinateFromEvent(evt) : evt.id
       if (idSet.has(id)) {
         return false
@@ -465,12 +469,11 @@ export default function TrendingNotes() {
       return 0
     })
 
-    return filtered.slice(0, showCount)
+    return filtered
   }, [
     cacheEvents,
     nostrEvents,
     hideUntrustedNotes,
-    showCount,
     isEventDeleted,
     isUserTrusted,
     activeTab,
@@ -479,6 +482,11 @@ export default function TrendingNotes() {
     sortOrder,
     zapReplyThreshold
   ])
+
+  // Slice to showCount for display
+  const relaysFilteredEvents = useMemo(() => {
+    return relaysFilteredEventsAll.slice(0, showCount)
+  }, [relaysFilteredEventsAll, showCount])
 
   const filteredEvents = useMemo(() => {
     if (activeTab === 'nostr') {
@@ -491,7 +499,7 @@ export default function TrendingNotes() {
 
   // Reset showCount when tab changes
   useEffect(() => {
-    setShowCount(10)
+    setShowCount(SHOW_COUNT)
   }, [activeTab])
 
   // Reset filters when switching tabs
@@ -510,10 +518,12 @@ export default function TrendingNotes() {
 
 
   useEffect(() => {
+    // For relays/hashtags tabs, use the filtered length (before slicing)
+    // For nostr tab, use the raw events length
     const totalLength =
       activeTab === 'nostr'
         ? nostrEvents.length
-        : cacheEvents.length
+        : relaysFilteredEventsAll.length
 
     if (showCount >= totalLength) return
 
@@ -540,7 +550,7 @@ export default function TrendingNotes() {
         observerInstance.unobserve(currentBottomRef)
       }
     }
-  }, [activeTab, cacheEvents.length, nostrEvents.length, showCount, cacheLoading, nostrLoading])
+  }, [activeTab, nostrEvents.length, relaysFilteredEventsAll.length, showCount, cacheLoading, nostrLoading])
 
   return (
     <div className="min-h-screen">
@@ -682,15 +692,21 @@ export default function TrendingNotes() {
         <NoteCard key={event.id} className="w-full" event={event} />
       ))}
       {(() => {
-        const currentDataLength =
+        const totalAvailableLength =
           activeTab === 'nostr'
             ? nostrEvents.length
             : cacheEvents.length
 
+        // For relays/hashtags tabs, we need to check the filtered length, not raw cache length
+        // because filtering might reduce the available items
+        const actualAvailableLength = activeTab === 'nostr' 
+          ? totalAvailableLength
+          : relaysFilteredEventsAll.length
+
         const shouldShowLoading =
           (activeTab === 'nostr' && nostrLoading) ||
           ((activeTab === 'relays' || activeTab === 'hashtags') && cacheLoading) ||
-          showCount < currentDataLength
+          showCount < actualAvailableLength
 
         if (shouldShowLoading) {
           return (

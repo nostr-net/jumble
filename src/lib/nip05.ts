@@ -69,7 +69,7 @@ export async function fetchPubkeysFromDomain(domain: string): Promise<string[]> 
       return true
     }) as string[]
   } catch (error) {
-    logger.error('Error fetching pubkeys from domain', { error, nip05Domain })
+    logger.error('Error fetching pubkeys from domain', { error, domain })
     return []
   }
 }

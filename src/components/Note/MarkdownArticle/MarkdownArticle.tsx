@@ -49,7 +49,7 @@ export default function MarkdownArticle({
     // Convert "Read naddr... instead." patterns to markdown links for replaceable events
     // This is a standard format for forwarding readers to referred events (e.g., in wikis)
     const redirectRegex = /Read (naddr1[a-z0-9]+) instead\./gi
-    content = content.replace(redirectRegex, (match, naddr) => {
+    content = content.replace(redirectRegex, (_match, naddr) => {
       const href = toNote(naddr)
       return `Read [${naddr}](${href}) instead.`
     })
