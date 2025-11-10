@@ -3,8 +3,10 @@ import { ExtendedKind } from '@/constants'
 import { FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
 import { normalizeUrl, isLocalNetworkUrl } from '@/lib/url'
-import { TRelaySet } from '@/types'
+import { TRelaySet, TRelayList } from '@/types'
 import logger from '@/lib/logger'
+import indexedDb from '@/services/indexed-db.service'
+import { getRelayListFromEvent } from '@/lib/event-metadata'
 
 export interface RelaySelectionContext {
   // User's own relays
@@ -96,6 +98,11 @@ class RelaySelectionService {
     const userRelays = userWriteRelays.length > 0 ? userWriteRelays : FAST_WRITE_RELAY_URLS
     userRelays.forEach(addRelay)
 
+    // Explicitly ensure cache relays (local network URLs) are included in selectable relays
+    // This ensures they show up even if there's a timing issue with relay list updates
+    const cacheRelays = userWriteRelays.filter(url => isLocalNetworkUrl(url))
+    cacheRelays.forEach(addRelay)
+
     // Always include favorite relays
     favoriteRelays.forEach(addRelay)
 
@@ -121,6 +128,72 @@ class RelaySelectionService {
   }
 
   /**
+   * Get relay list from IndexedDB cache (kind 10002 and 10432 merged)
+   * If not in cache, fetch from relays before returning empty
+   * This avoids fetching from relays every time, but ensures we have data when needed
+   */
+  private async getCachedRelayList(pubkey: string): Promise<TRelayList | null> {
+    try {
+      // Get both kind 10002 (relay list) and kind 10432 (cache relays) from IndexedDB
+      const [relayListEvent, cacheRelayListEvent] = await Promise.all([
+        indexedDb.getReplaceableEvent(pubkey, kinds.RelayList),
+        indexedDb.getReplaceableEvent(pubkey, ExtendedKind.CACHE_RELAYS)
+      ])
+
+      let relayList: TRelayList
+      
+      // If no cached relay list event, fetch from relays (which will also cache it)
+      if (!relayListEvent) {
+        try {
+          relayList = await client.fetchRelayList(pubkey)
+        } catch (error) {
+          logger.warn('Failed to fetch relay list from relays', { error, pubkey })
+          relayList = {
+            write: [],
+            read: [],
+            originalRelays: []
+          }
+        }
+      } else {
+        relayList = getRelayListFromEvent(relayListEvent)
+      }
+
+      // Merge cache relays (kind 10432) into the relay list
+      if (cacheRelayListEvent) {
+        const cacheRelayList = getRelayListFromEvent(cacheRelayListEvent)
+        
+        // Merge read relays - cache relays first, then others
+        const mergedRead = [...cacheRelayList.read, ...relayList.read]
+        const mergedWrite = [...cacheRelayList.write, ...relayList.write]
+        const mergedOriginalRelays = new Map<string, { url: string; scope: 'read' | 'write' | 'both' }>()
+        
+        // Add cache relay original relays first (prioritized)
+        cacheRelayList.originalRelays.forEach(relay => {
+          mergedOriginalRelays.set(relay.url, relay)
+        })
+        // Then add regular relay original relays
+        relayList.originalRelays.forEach(relay => {
+          if (!mergedOriginalRelays.has(relay.url)) {
+            mergedOriginalRelays.set(relay.url, relay)
+          }
+        })
+        
+        // Deduplicate while preserving order (cache relays first)
+        return {
+          write: Array.from(new Set(mergedWrite)),
+          read: Array.from(new Set(mergedRead)),
+          originalRelays: Array.from(mergedOriginalRelays.values())
+        }
+      }
+
+      return relayList
+    } catch (error) {
+      logger.warn('Failed to get cached relay list from IndexedDB', { error, pubkey })
+      return null
+    }
+  }
+
+  /**
    * Get contextual relays based on the type of post
    */
   private async getContextualRelays(context: RelaySelectionContext): Promise<string[]> {
@@ -132,8 +205,9 @@ class RelaySelectionService {
       // For replies (any kind) and public messages
       if (parentEvent || isPublicMessage) {
         // Get the replied-to author's read relays (filter out their local relays)
+        // Use cached version from IndexedDB instead of fetching from relays
         if (parentEvent) {
-          const authorRelayList = await client.fetchRelayList(parentEvent.pubkey)
+          const authorRelayList = await this.getCachedRelayList(parentEvent.pubkey)
           if (authorRelayList?.read) {
             const filteredRelays = this.filterLocalRelaysFromOthers(authorRelayList.read)
             filteredRelays.slice(0, 4).forEach(url => contextualRelays.add(url))
@@ -168,14 +242,16 @@ class RelaySelectionService {
             const mentionRelayLists = await Promise.all(
               mentionedPubkeys.map(async (pubkey) => {
                 try {
-                  const relayList = await client.fetchRelayList(pubkey)
+                  // Use cached version from IndexedDB instead of fetching from relays
+                  const relayList = await this.getCachedRelayList(pubkey)
+                  if (!relayList) return []
                   // Use write relays for replies, read relays for public messages
                   const relayType = isPublicMessage ? 'read' : 'write'
-                  const userRelays = relayList?.[relayType] || []
+                  const userRelays = relayList[relayType] || []
                   // Filter out local relays from other users
                   return this.filterLocalRelaysFromOthers(userRelays)
                 } catch (error) {
-                  logger.warn('Failed to fetch relay list', { pubkey, error })
+                  logger.warn('Failed to get cached relay list', { pubkey, error })
                   return []
                 }
               })
@@ -254,12 +330,14 @@ class RelaySelectionService {
           const mentionRelayLists = await Promise.all(
             mentionedPubkeys.map(async (pubkey) => {
               try {
-                const relayList = await client.fetchRelayList(pubkey)
-                const userRelays = relayList?.write || []
+                // Use cached version from IndexedDB instead of fetching from relays
+                const relayList = await this.getCachedRelayList(pubkey)
+                if (!relayList) return []
+                const userRelays = relayList.write || []
                 // Filter out local relays from other users
                 return this.filterLocalRelaysFromOthers(userRelays)
               } catch (error) {
-                logger.warn('Failed to fetch relay list', { pubkey, error })
+                logger.warn('Failed to get cached relay list', { pubkey, error })
                 return []
               }
             })
@@ -342,8 +420,9 @@ class RelaySelectionService {
         }
       } else if (parentEvent && parentEvent.kind === ExtendedKind.PUBLIC_MESSAGE) {
         // For public message replies, get original sender's read relays (filter out their local relays)
+        // Use cached version from IndexedDB instead of fetching from relays
         try {
-          const senderRelayList = await client.fetchRelayList(parentEvent.pubkey)
+          const senderRelayList = await this.getCachedRelayList(parentEvent.pubkey)
           if (senderRelayList?.read) {
             const filteredRelays = this.filterLocalRelaysFromOthers(senderRelayList.read)
             filteredRelays.forEach(url => {

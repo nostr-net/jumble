@@ -1,8 +1,11 @@
-import { simplifyUrl, isLocalNetworkUrl } from '@/lib/url'
+import { simplifyUrl, isLocalNetworkUrl, normalizeUrl } from '@/lib/url'
 import { useCurrentRelays } from '@/providers/CurrentRelaysProvider'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useScreenSize } from '@/providers/ScreenSizeProvider'
 import { useNostr } from '@/providers/NostrProvider'
+import { getRelayListFromEvent } from '@/lib/event-metadata'
+import indexedDb from '@/services/indexed-db.service'
+import { ExtendedKind } from '@/constants'
 import { Check, ChevronDown, Server } from 'lucide-react'
 import { NostrEvent } from 'nostr-tools'
 import { Dispatch, SetStateAction, useCallback, useEffect, useState, useMemo } from 'react'
@@ -78,8 +81,37 @@ export default function PostRelaySelector({
     const updateRelaySelection = async () => {
       setIsLoading(true)
       try {
+        // Ensure cache relays (kind 10432) are included in userWriteRelays even if relayList hasn't been updated yet
+        // Get cache relays directly from IndexedDB (don't fetch new every time)
+        let userWriteRelays = relayList?.write || []
+        if (pubkey) {
+          try {
+            const cacheRelayListEvent = await indexedDb.getReplaceableEvent(pubkey, ExtendedKind.CACHE_RELAYS)
+            if (cacheRelayListEvent) {
+              const cacheRelayList = getRelayListFromEvent(cacheRelayListEvent)
+              // Get all cache relays (they should all be local network URLs)
+              // Include both write and both-scoped relays (cache relays should be write-capable)
+              const cacheRelays = [
+                ...cacheRelayList.write,
+                ...cacheRelayList.originalRelays
+                  .filter(relay => (relay.scope === 'both' || relay.scope === 'write') && isLocalNetworkUrl(relay.url))
+                  .map(relay => relay.url)
+              ].filter(url => isLocalNetworkUrl(url))
+              const existingUrls = new Set(userWriteRelays.map(url => normalizeUrl(url) || url))
+              const newCacheRelays = cacheRelays
+                .map(url => normalizeUrl(url) || url)
+                .filter((url): url is string => !!url && !existingUrls.has(url))
+              if (newCacheRelays.length > 0) {
+                userWriteRelays = [...newCacheRelays, ...userWriteRelays]
+              }
+            }
+          } catch (error) {
+            logger.warn('Failed to get cache relays from IndexedDB', { error, pubkey })
+          }
+        }
+        
         const result = await relaySelectionService.selectRelays({
-          userWriteRelays: relayList?.write || [],
+          userWriteRelays,
           userReadRelays: relayList?.read || [],
           favoriteRelays: memoizedFavoriteRelays,
           blockedRelays: memoizedBlockedRelays,
@@ -140,8 +172,37 @@ export default function PostRelaySelector({
       const updateRelaySelection = async () => {
         setIsLoading(true)
         try {
+          // Ensure cache relays (kind 10432) are included in userWriteRelays even if relayList hasn't been updated yet
+          // Get cache relays directly from IndexedDB (don't fetch new every time)
+          let userWriteRelays = relayList?.write || []
+          if (pubkey) {
+            try {
+              const cacheRelayListEvent = await indexedDb.getReplaceableEvent(pubkey, ExtendedKind.CACHE_RELAYS)
+              if (cacheRelayListEvent) {
+                const cacheRelayList = getRelayListFromEvent(cacheRelayListEvent)
+                // Get all cache relays (they should all be local network URLs)
+                // Include both write and both-scoped relays (cache relays should be write-capable)
+                const cacheRelays = [
+                  ...cacheRelayList.write,
+                  ...cacheRelayList.originalRelays
+                    .filter(relay => (relay.scope === 'both' || relay.scope === 'write') && isLocalNetworkUrl(relay.url))
+                    .map(relay => relay.url)
+                ].filter(url => isLocalNetworkUrl(url))
+                const existingUrls = new Set(userWriteRelays.map(url => normalizeUrl(url) || url))
+                const newCacheRelays = cacheRelays
+                  .map(url => normalizeUrl(url) || url)
+                  .filter((url): url is string => !!url && !existingUrls.has(url))
+                if (newCacheRelays.length > 0) {
+                  userWriteRelays = [...newCacheRelays, ...userWriteRelays]
+                }
+              }
+            } catch (error) {
+              logger.warn('Failed to get cache relays from IndexedDB', { error, pubkey })
+            }
+          }
+          
           const result = await relaySelectionService.selectRelays({
-            userWriteRelays: relayList?.write || [],
+            userWriteRelays,
             userReadRelays: relayList?.read || [],
             favoriteRelays: memoizedFavoriteRelays,
             blockedRelays: memoizedBlockedRelays,
