@@ -1,5 +1,15 @@
 import { isImage, isVideo, isAudio } from '@/lib/url'
-import { URL_REGEX } from '@/constants'
+import { URL_REGEX, YOUTUBE_URL_REGEX } from '@/constants'
+
+/**
+ * Check if a URL is a YouTube URL
+ */
+function isYouTubeUrl(url: string): boolean {
+  // Create a new regex instance to avoid state issues with global regex
+  const flags = YOUTUBE_URL_REGEX.flags.replace('g', '')
+  const regex = new RegExp(YOUTUBE_URL_REGEX.source, flags)
+  return regex.test(url)
+}
 
 /**
  * Preprocess content to convert raw media URLs and hyperlinks to markdown syntax
@@ -151,10 +161,11 @@ export function preprocessAsciidocMediaLinks(content: string): string {
       continue // In code block
     }
     
-    // Check if it's a media URL
+    // Check if it's a media URL or YouTube URL
     const isImageUrl = isImage(url)
     const isVideoUrl = isVideo(url)
     const isAudioUrl = isAudio(url)
+    const isYouTube = isYouTubeUrl(url)
     
     let replacement: string
     if (isImageUrl) {
@@ -166,6 +177,10 @@ export function preprocessAsciidocMediaLinks(content: string): string {
     } else if (isAudioUrl) {
       // Audio: convert to audio::url[]
       replacement = `audio::${url}[]`
+    } else if (isYouTube) {
+      // YouTube URLs: convert to link:url[url] (will be handled in post-processing)
+      // This allows AsciiDoc to process it as a link, then we'll replace it with YouTube player
+      replacement = `link:${url}[${url}]`
     } else {
       // Regular hyperlinks: convert to link:url[url]
       replacement = `link:${url}[${url}]`

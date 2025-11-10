@@ -2,6 +2,7 @@ import { useSecondaryPage, useSmartHashtagNavigation, useSmartRelayNavigation } 
 import Image from '@/components/Image'
 import MediaPlayer from '@/components/MediaPlayer'
 import WebPreview from '@/components/WebPreview'
+import YoutubeEmbeddedPlayer from '@/components/YoutubeEmbeddedPlayer'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNoteList } from '@/lib/link'
 import { useMediaExtraction } from '@/hooks'
@@ -17,7 +18,7 @@ import { EmbeddedNote, EmbeddedMention } from '@/components/Embedded'
 import Wikilink from '@/components/UniversalContent/Wikilink'
 import { preprocessAsciidocMediaLinks } from '../MarkdownArticle/preprocessMarkup'
 import logger from '@/lib/logger'
-import { WS_URL_REGEX } from '@/constants'
+import { WS_URL_REGEX, YOUTUBE_URL_REGEX } from '@/constants'
 
 /**
  * Truncate link display text to 200 characters, adding ellipsis if truncated
@@ -27,6 +28,17 @@ function truncateLinkText(text: string, maxLength: number = 200): string {
     return text
   }
   return text.substring(0, maxLength) + '...'
+}
+
+/**
+ * Check if a URL is a YouTube URL
+ */
+function isYouTubeUrl(url: string): boolean {
+  // Create a new regex instance to avoid state issues with global regex
+  // Keep the 'i' flag for case-insensitivity but remove 'g' to avoid state issues
+  const flags = YOUTUBE_URL_REGEX.flags.replace('g', '')
+  const regex = new RegExp(YOUTUBE_URL_REGEX.source, flags)
+  return regex.test(url)
 }
 
 export default function AsciidocArticle({
@@ -112,7 +124,29 @@ export default function AsciidocArticle({
     return media
   }, [event.id, JSON.stringify(event.tags)])
   
-  // Extract non-media links from tags
+  // Extract YouTube URLs from tags (for display at top)
+  const tagYouTubeUrls = useMemo(() => {
+    const youtubeUrls: string[] = []
+    const seenUrls = new Set<string>()
+    
+    event.tags
+      .filter(tag => tag[0] === 'r' && tag[1])
+      .forEach(tag => {
+        const url = tag[1]
+        if (!url.startsWith('http://') && !url.startsWith('https://')) return
+        if (!isYouTubeUrl(url)) return
+        
+        const cleaned = cleanUrl(url)
+        if (cleaned && !seenUrls.has(cleaned)) {
+          youtubeUrls.push(cleaned)
+          seenUrls.add(cleaned)
+        }
+      })
+    
+    return youtubeUrls
+  }, [event.id, JSON.stringify(event.tags)])
+  
+  // Extract non-media links from tags (excluding YouTube URLs)
   const tagLinks = useMemo(() => {
     const links: string[] = []
     const seenUrls = new Set<string>()
@@ -123,6 +157,7 @@ export default function AsciidocArticle({
         const url = tag[1]
         if (!url.startsWith('http://') && !url.startsWith('https://')) return
         if (isImage(url) || isMedia(url)) return
+        if (isYouTubeUrl(url)) return // Exclude YouTube URLs
         
         const cleaned = cleanUrl(url)
         if (cleaned && !seenUrls.has(cleaned)) {
@@ -185,7 +220,22 @@ export default function AsciidocArticle({
     return urls
   }, [event.content])
   
-  // Extract non-media links from content
+  // Extract YouTube URLs from content
+  const youtubeUrlsInContent = useMemo(() => {
+    const urls = new Set<string>()
+    const urlRegex = /https?:\/\/[^\s<>"']+/g
+    let match
+    while ((match = urlRegex.exec(event.content)) !== null) {
+      const url = match[0]
+      const cleaned = cleanUrl(url)
+      if (cleaned && isYouTubeUrl(cleaned)) {
+        urls.add(cleaned)
+      }
+    }
+    return urls
+  }, [event.content])
+  
+  // Extract non-media links from content (excluding YouTube URLs)
   const contentLinks = useMemo(() => {
     const links: string[] = []
     const seenUrls = new Set<string>()
@@ -193,7 +243,7 @@ export default function AsciidocArticle({
     let match
     while ((match = urlRegex.exec(event.content)) !== null) {
       const url = match[0]
-      if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+      if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url) && !isYouTubeUrl(url)) {
         const cleaned = cleanUrl(url)
         if (cleaned && !seenUrls.has(cleaned)) {
           links.push(cleaned)
@@ -224,6 +274,14 @@ export default function AsciidocArticle({
       return true
     })
   }, [tagMedia, mediaUrlsInContent, metadata.image, hideImagesAndInfo])
+  
+  // Filter tag YouTube URLs to only show what's not in content
+  const leftoverTagYouTubeUrls = useMemo(() => {
+    return tagYouTubeUrls.filter(url => {
+      const cleaned = cleanUrl(url)
+      return cleaned && !youtubeUrlsInContent.has(cleaned)
+    })
+  }, [tagYouTubeUrls, youtubeUrlsInContent])
   
   // Filter tag links to only show what's not in content (to avoid duplicate WebPreview cards)
   const leftoverTagLinks = useMemo(() => {
@@ -331,8 +389,13 @@ export default function AsciidocArticle({
           return `<span data-wikilink="${escaped}" class="wikilink-placeholder"></span>`
         })
         
-        // Handle relay URLs (wss:// or ws://) in links - convert to relay page links
+        // Handle YouTube URLs and relay URLs in links
         htmlString = htmlString.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/g, (match, href, linkText) => {
+          // Check if the href is a YouTube URL
+          if (isYouTubeUrl(href)) {
+            const cleanedUrl = cleanUrl(href)
+            return `<div data-youtube-url="${cleanedUrl.replace(/"/g, '&quot;')}" class="youtube-placeholder my-2"></div>`
+          }
           // Check if the href is a relay URL
           if (isWebsocketUrl(href)) {
             const relayPath = `/relays/${encodeURIComponent(href)}`
@@ -341,6 +404,18 @@ export default function AsciidocArticle({
           // For regular links, store original text for truncation in DOM manipulation
           const escapedLinkText = linkText.replace(/"/g, '&quot;')
           return match.replace(/<a/, `<a data-original-text="${escapedLinkText}"`)
+        })
+        
+        // Handle YouTube URLs in plain text (not in <a> tags)
+        // Create a new regex instance to avoid state issues
+        const youtubeRegex = new RegExp(YOUTUBE_URL_REGEX.source, YOUTUBE_URL_REGEX.flags)
+        htmlString = htmlString.replace(youtubeRegex, (match) => {
+          // Only replace if not already in a tag (basic check)
+          if (!match.includes('<') && !match.includes('>') && isYouTubeUrl(match)) {
+            const cleanedUrl = cleanUrl(match)
+            return `<div data-youtube-url="${cleanedUrl.replace(/"/g, '&quot;')}" class="youtube-placeholder my-2"></div>`
+          }
+          return match
         })
         
         // Handle relay URLs in plain text (not in <a> tags) - convert to relay page links
@@ -415,6 +490,23 @@ export default function AsciidocArticle({
       // Use React to render the component
       const root = createRoot(container)
       root.render(<EmbeddedNote noteId={bech32Id} />)
+      reactRootsRef.current.set(container, root)
+    })
+    
+    // Process YouTube URLs - replace placeholders with React components
+    const youtubePlaceholders = contentRef.current.querySelectorAll('.youtube-placeholder[data-youtube-url]')
+    youtubePlaceholders.forEach((element) => {
+      const youtubeUrl = element.getAttribute('data-youtube-url')
+      if (!youtubeUrl) return
+      
+      // Create a container for React component
+      const container = document.createElement('div')
+      container.className = 'my-2'
+      element.parentNode?.replaceChild(container, element)
+      
+      // Use React to render the component
+      const root = createRoot(container)
+      root.render(<YoutubeEmbeddedPlayer url={youtubeUrl} className="max-w-[400px]" mustLoad={false} />)
       reactRootsRef.current.set(container, root)
     })
     
@@ -749,6 +841,24 @@ export default function AsciidocArticle({
                 )
               }
               return null
+            })}
+          </div>
+        )}
+        
+        {/* YouTube URLs from tags (only if not in content) */}
+        {leftoverTagYouTubeUrls.length > 0 && (
+          <div className="space-y-4 mb-6">
+            {leftoverTagYouTubeUrls.map((url) => {
+              const cleaned = cleanUrl(url)
+              return (
+                <div key={`tag-youtube-${cleaned}`} className="my-2">
+                  <YoutubeEmbeddedPlayer
+                    url={url}
+                    className="max-w-[400px]"
+                    mustLoad={false}
+                  />
+                </div>
+              )
             })}
           </div>
         )}
