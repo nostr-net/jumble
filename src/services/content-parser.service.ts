@@ -85,11 +85,21 @@ class ContentParserService {
     // Check for LaTeX math
     const hasMath = enableMath && this.hasMathContent(content)
 
+    // Preprocess content: Convert "Read naddr... instead." patterns to hyperlinks
+    // This is a standard format for forwarding readers to referred events (e.g., in wikis)
+    let preprocessedContent = content
+    const redirectRegex = /Read (naddr1[a-z0-9]+) instead\./gi
+    preprocessedContent = preprocessedContent.replace(redirectRegex, (_match, naddr) => {
+      // Convert to AsciiDoc link format pointing to the note page
+      // Use a regular HTTP link format that will be processed as a normal link
+      return `Read link:/notes/${naddr}[${naddr}] instead.`
+    })
+
     let html = ''
 
     try {
       // Convert everything to AsciiDoc format and process as AsciiDoc
-      const asciidocContent = this.convertToAsciidoc(content, markupType)
+      const asciidocContent = this.convertToAsciidoc(preprocessedContent, markupType)
       html = await this.parseAsciidoc(asciidocContent, { enableMath, enableSyntaxHighlighting })
     } catch (error) {
       logger.error('Content parsing error', { error })
