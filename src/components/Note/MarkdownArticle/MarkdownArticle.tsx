@@ -3,13 +3,14 @@ import Image from '@/components/Image'
 import MediaPlayer from '@/components/MediaPlayer'
 import Wikilink from '@/components/UniversalContent/Wikilink'
 import WebPreview from '@/components/WebPreview'
+import YoutubeEmbeddedPlayer from '@/components/YoutubeEmbeddedPlayer'
 import { getLongFormArticleMetadataFromEvent } from '@/lib/event-metadata'
 import { toNoteList } from '@/lib/link'
 import { useMediaExtraction } from '@/hooks'
 import { cleanUrl, isImage, isMedia, isVideo, isAudio, isWebsocketUrl } from '@/lib/url'
 import { getImetaInfosFromEvent } from '@/lib/event'
 import { Event, kinds } from 'nostr-tools'
-import { ExtendedKind, WS_URL_REGEX } from '@/constants'
+import { ExtendedKind, WS_URL_REGEX, YOUTUBE_URL_REGEX } from '@/constants'
 import React, { useMemo, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import Lightbox from 'yet-another-react-lightbox'
@@ -25,6 +26,17 @@ function truncateLinkText(text: string, maxLength: number = 200): string {
     return text
   }
   return text.substring(0, maxLength) + '...'
+}
+
+/**
+ * Check if a URL is a YouTube URL
+ */
+function isYouTubeUrl(url: string): boolean {
+  // Create a new regex instance to avoid state issues with global regex
+  // Keep the 'i' flag for case-insensitivity but remove 'g' to avoid state issues
+  const flags = YOUTUBE_URL_REGEX.flags.replace('g', '')
+  const regex = new RegExp(YOUTUBE_URL_REGEX.source, flags)
+  return regex.test(url)
 }
 
 /**
@@ -86,14 +98,37 @@ function parseMarkdownContent(
     }
   })
   
-  // Relay URLs (wss:// or ws://) - not in markdown links
-  const relayUrlMatches = Array.from(content.matchAll(WS_URL_REGEX))
-  relayUrlMatches.forEach(match => {
+  // YouTube URLs - not in markdown links
+  const youtubeUrlMatches = Array.from(content.matchAll(YOUTUBE_URL_REGEX))
+  youtubeUrlMatches.forEach(match => {
     if (match.index !== undefined) {
       const url = match[0]
       // Only add if not already covered by a markdown link/image
       const isInMarkdown = patterns.some(p => 
         (p.type === 'markdown-link' || p.type === 'markdown-image') && 
+        match.index! >= p.index && 
+        match.index! < p.end
+      )
+      // Only process if not in markdown link
+      if (!isInMarkdown && isYouTubeUrl(url)) {
+        patterns.push({
+          index: match.index,
+          end: match.index + match[0].length,
+          type: 'youtube-url',
+          data: { url }
+        })
+      }
+    }
+  })
+  
+  // Relay URLs (wss:// or ws://) - not in markdown links
+  const relayUrlMatches = Array.from(content.matchAll(WS_URL_REGEX))
+  relayUrlMatches.forEach(match => {
+    if (match.index !== undefined) {
+      const url = match[0]
+      // Only add if not already covered by a markdown link/image or YouTube URL
+      const isInMarkdown = patterns.some(p => 
+        (p.type === 'markdown-link' || p.type === 'markdown-image' || p.type === 'youtube-url') && 
         match.index! >= p.index && 
         match.index! < p.end
       )
@@ -109,14 +144,14 @@ function parseMarkdownContent(
     }
   })
   
-  // Nostr addresses (nostr:npub1..., nostr:note1..., etc.) - not in markdown links or relay URLs
+  // Nostr addresses (nostr:npub1..., nostr:note1..., etc.) - not in markdown links, relay URLs, or YouTube URLs
   const nostrRegex = /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g
   const nostrMatches = Array.from(content.matchAll(nostrRegex))
   nostrMatches.forEach(match => {
     if (match.index !== undefined) {
-      // Only add if not already covered by a markdown link/image or relay URL
+      // Only add if not already covered by a markdown link/image, relay URL, or YouTube URL
       const isInOther = patterns.some(p => 
-        (p.type === 'markdown-link' || p.type === 'markdown-image' || p.type === 'relay-url') && 
+        (p.type === 'markdown-link' || p.type === 'markdown-image' || p.type === 'relay-url' || p.type === 'youtube-url') && 
         match.index! >= p.index && 
         match.index! < p.end
       )
@@ -479,6 +514,17 @@ function parseMarkdownContent(
             {displayText}
           </a>
         )
+      } else if (isYouTubeUrl(url)) {
+        // Render YouTube URL as embedded player
+        parts.push(
+          <div key={`youtube-${patternIdx}`} className="my-2">
+            <YoutubeEmbeddedPlayer
+              url={url}
+              className="max-w-[400px]"
+              mustLoad={false}
+            />
+          </div>
+        )
       } else {
         // Render as green link (will show WebPreview at bottom for HTTP/HTTPS)
         parts.push(
@@ -495,6 +541,18 @@ function parseMarkdownContent(
           </a>
         )
       }
+    } else if (pattern.type === 'youtube-url') {
+      const { url } = pattern.data
+      // Render YouTube URL as embedded player
+      parts.push(
+        <div key={`youtube-url-${patternIdx}`} className="my-2">
+          <YoutubeEmbeddedPlayer
+            url={url}
+            className="max-w-[400px]"
+            mustLoad={false}
+          />
+        </div>
+      )
     } else if (pattern.type === 'relay-url') {
       const { url } = pattern.data
       const relayPath = `/relays/${encodeURIComponent(url)}`
@@ -1108,7 +1166,29 @@ export default function MarkdownArticle({
     return media
   }, [event.id, JSON.stringify(event.tags)])
   
-  // Extract non-media links from tags
+  // Extract YouTube URLs from tags (for display at top)
+  const tagYouTubeUrls = useMemo(() => {
+    const youtubeUrls: string[] = []
+    const seenUrls = new Set<string>()
+    
+    event.tags
+      .filter(tag => tag[0] === 'r' && tag[1])
+      .forEach(tag => {
+        const url = tag[1]
+        if (!url.startsWith('http://') && !url.startsWith('https://')) return
+        if (!isYouTubeUrl(url)) return
+        
+        const cleaned = cleanUrl(url)
+        if (cleaned && !seenUrls.has(cleaned)) {
+          youtubeUrls.push(cleaned)
+          seenUrls.add(cleaned)
+        }
+      })
+    
+    return youtubeUrls
+  }, [event.id, JSON.stringify(event.tags)])
+  
+  // Extract non-media links from tags (excluding YouTube URLs)
   const tagLinks = useMemo(() => {
     const links: string[] = []
     const seenUrls = new Set<string>()
@@ -1119,6 +1199,7 @@ export default function MarkdownArticle({
         const url = tag[1]
         if (!url.startsWith('http://') && !url.startsWith('https://')) return
         if (isImage(url) || isMedia(url)) return
+        if (isYouTubeUrl(url)) return // Exclude YouTube URLs
         
         const cleaned = cleanUrl(url)
         if (cleaned && !seenUrls.has(cleaned)) {
@@ -1181,7 +1262,22 @@ export default function MarkdownArticle({
     return urls
   }, [event.content])
   
-  // Extract non-media links from content
+  // Extract YouTube URLs from content
+  const youtubeUrlsInContent = useMemo(() => {
+    const urls = new Set<string>()
+    const urlRegex = /https?:\/\/[^\s<>"']+/g
+    let match
+    while ((match = urlRegex.exec(event.content)) !== null) {
+      const url = match[0]
+      const cleaned = cleanUrl(url)
+      if (cleaned && isYouTubeUrl(cleaned)) {
+        urls.add(cleaned)
+      }
+    }
+    return urls
+  }, [event.content])
+  
+  // Extract non-media links from content (excluding YouTube URLs)
   const contentLinks = useMemo(() => {
     const links: string[] = []
     const seenUrls = new Set<string>()
@@ -1189,7 +1285,7 @@ export default function MarkdownArticle({
     let match
     while ((match = urlRegex.exec(event.content)) !== null) {
       const url = match[0]
-      if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+      if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url) && !isYouTubeUrl(url)) {
         const cleaned = cleanUrl(url)
         if (cleaned && !seenUrls.has(cleaned)) {
           links.push(cleaned)
@@ -1220,6 +1316,14 @@ export default function MarkdownArticle({
       return true
     })
   }, [tagMedia, mediaUrlsInContent, metadata.image, hideMetadata])
+  
+  // Filter tag YouTube URLs to only show what's not in content
+  const leftoverTagYouTubeUrls = useMemo(() => {
+    return tagYouTubeUrls.filter(url => {
+      const cleaned = cleanUrl(url)
+      return cleaned && !youtubeUrlsInContent.has(cleaned)
+    })
+  }, [tagYouTubeUrls, youtubeUrlsInContent])
   
   // Filter tag links to only show what's not in content (to avoid duplicate WebPreview cards)
   const leftoverTagLinks = useMemo(() => {
@@ -1336,6 +1440,24 @@ export default function MarkdownArticle({
             })}
         </div>
       )}
+      
+        {/* YouTube URLs from tags (only if not in content) */}
+        {leftoverTagYouTubeUrls.length > 0 && (
+          <div className="space-y-4 mb-6">
+            {leftoverTagYouTubeUrls.map((url) => {
+              const cleaned = cleanUrl(url)
+              return (
+                <div key={`tag-youtube-${cleaned}`} className="my-2">
+                  <YoutubeEmbeddedPlayer
+                    url={url}
+                    className="max-w-[400px]"
+                    mustLoad={false}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
       
         {/* Parsed content */}
         <div className="break-words whitespace-pre-wrap">
