@@ -110,9 +110,11 @@ export default function Content({
     }
   })
 
-  // First pass: find which images appear in content (will be rendered in a single carousel)
+  // First pass: find which media appears in content (will be rendered in carousels or inline)
   const mediaInContent = new Set<string>()
   const imagesInContent: TImetaInfo[] = []
+  const videosInContent: TImetaInfo[] = []
+  const audioInContent: TImetaInfo[] = []
   
   nodes.forEach((node) => {
     if (node.type === 'image') {
@@ -133,7 +135,20 @@ export default function Content({
         }
       })
     } else if (node.type === 'media') {
-      mediaInContent.add(cleanUrl(node.data))
+      const cleanedUrl = cleanUrl(node.data)
+      mediaInContent.add(cleanedUrl)
+      const mediaInfo = mediaMap.get(cleanedUrl)
+      if (mediaInfo) {
+        if (isVideo(cleanedUrl) || mediaInfo.m?.startsWith('video/')) {
+          if (!videosInContent.find(v => v.url === cleanedUrl)) {
+            videosInContent.push(mediaInfo)
+          }
+        } else if (isAudio(cleanedUrl) || mediaInfo.m?.startsWith('audio/')) {
+          if (!audioInContent.find(a => a.url === cleanedUrl)) {
+            audioInContent.push(mediaInfo)
+          }
+        }
+      }
     } else if (node.type === 'url') {
       const cleanedUrl = cleanUrl(node.data)
       if (isImage(cleanedUrl)) {
@@ -142,15 +157,33 @@ export default function Content({
         if (!imagesInContent.find(img => img.url === cleanedUrl)) {
           imagesInContent.push(imageInfo)
         }
+      } else if (isVideo(cleanedUrl)) {
+        mediaInContent.add(cleanedUrl)
+        const videoInfo = mediaMap.get(cleanedUrl) || { url: cleanedUrl, pubkey: event?.pubkey, m: 'video/*' }
+        if (!videosInContent.find(v => v.url === cleanedUrl)) {
+          videosInContent.push(videoInfo)
+        }
+      } else if (isAudio(cleanedUrl)) {
+        mediaInContent.add(cleanedUrl)
+        const audioInfo = mediaMap.get(cleanedUrl) || { url: cleanedUrl, pubkey: event?.pubkey, m: 'audio/*' }
+        if (!audioInContent.find(a => a.url === cleanedUrl)) {
+          audioInContent.push(audioInfo)
+        }
       } else if (isMedia(cleanedUrl)) {
         mediaInContent.add(cleanedUrl)
       }
     }
   })
   
-  // Filter carousel: only show IMAGES that DON'T appear in content
+  // Filter: only show media that DON'T appear in content (from tags)
   const carouselImages = extractedMedia.images.filter((img: TImetaInfo) => {
     return !mediaInContent.has(img.url)
+  })
+  const videosFromTags = extractedMedia.videos.filter((video: TImetaInfo) => {
+    return !mediaInContent.has(video.url)
+  })
+  const audioFromTags = extractedMedia.audio.filter((audio: TImetaInfo) => {
+    return !mediaInContent.has(audio.url)
   })
 
   logger.debug('[Content] Parsed content:', { 
@@ -192,6 +225,26 @@ export default function Content({
           mustLoad={mustLoadMedia}
         />
       )}
+      
+      {/* Render videos from tags that don't appear in content */}
+      {videosFromTags.map((video) => (
+        <MediaPlayer
+          key={`tag-video-${video.url}`}
+          src={video.url}
+          className="mt-2"
+          mustLoad={mustLoadMedia}
+        />
+      ))}
+      
+      {/* Render audio from tags that don't appear in content */}
+      {audioFromTags.map((audio) => (
+        <MediaPlayer
+          key={`tag-audio-${audio.url}`}
+          src={audio.url}
+          className="mt-2"
+          mustLoad={mustLoadMedia}
+        />
+      ))}
       
       {nodes.map((node, index) => {
         if (node.type === 'text') {
