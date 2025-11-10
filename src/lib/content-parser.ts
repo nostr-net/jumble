@@ -78,6 +78,15 @@ export const EmbeddedUrlParser: TContentParser = (content: string) => {
   const matches = content.matchAll(URL_REGEX)
   const result: TEmbeddedNode[] = []
   let lastIndex = 0
+  
+  // Helper function to check if URL is YouTube (use non-global regex to avoid state issues)
+  const isYouTubeUrl = (url: string): boolean => {
+    if (!url) return false
+    const flags = YOUTUBE_URL_REGEX.flags.replace('g', '')
+    const regex = new RegExp(YOUTUBE_URL_REGEX.source, flags)
+    return regex.test(url)
+  }
+  
   for (const match of matches) {
     const matchStart = match.index!
     // Add text before the match
@@ -94,7 +103,7 @@ export const EmbeddedUrlParser: TContentParser = (content: string) => {
       type = 'image'
     } else if (isMedia(url)) {
       type = 'media'
-    } else if (url.match(YOUTUBE_URL_REGEX)) {
+    } else if (isYouTubeUrl(url)) {
       type = 'youtube'
     }
 

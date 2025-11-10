@@ -30,6 +30,16 @@ import MediaPlayer from '../MediaPlayer'
 import YoutubeEmbeddedPlayer from '../YoutubeEmbeddedPlayer'
 import WebPreview from '../WebPreview'
 import { toNote } from '@/lib/link'
+import { YOUTUBE_URL_REGEX } from '@/constants'
+
+// Helper function to check if a URL is a YouTube URL
+function isYouTubeUrl(url: string): boolean {
+  if (!url) return false
+  // Create a new regex instance without global flag for testing
+  const flags = YOUTUBE_URL_REGEX.flags.replace('g', '')
+  const regex = new RegExp(YOUTUBE_URL_REGEX.source, flags)
+  return regex.test(url)
+}
 
 const REDIRECT_REGEX = /Read (naddr1[a-z0-9]+) instead\./i
 
@@ -93,6 +103,7 @@ export default function Content({
   }, [_content, event])
 
   // Extract HTTP/HTTPS links from content nodes (in order of appearance) for WebPreview cards at bottom
+  // Exclude YouTube URLs, images, and media (they're rendered separately)
   const contentLinks = useMemo(() => {
     if (!nodes) return []
     const links: string[] = []
@@ -101,7 +112,7 @@ export default function Content({
     nodes.forEach((node) => {
       if (node.type === 'url') {
         const url = node.data
-        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url) && !isYouTubeUrl(url)) {
           const cleaned = cleanUrl(url)
           if (cleaned && !seenUrls.has(cleaned)) {
             links.push(cleaned)
@@ -114,7 +125,33 @@ export default function Content({
     return links
   }, [nodes])
 
-  // Extract HTTP/HTTPS links from r tags (excluding those already in content)
+  // Extract YouTube URLs from r tags to render as players
+  const youtubeUrlsFromTags = useMemo(() => {
+    if (!event) return []
+    const urls: string[] = []
+    const seenUrls = new Set<string>()
+    
+    // Check if YouTube URL is already in content
+    const hasYouTubeInContent = nodes?.some(node => node.type === 'youtube') || false
+    
+    event.tags
+      .filter(tag => tag[0] === 'r' && tag[1])
+      .forEach(tag => {
+        const url = tag[1]
+        if (isYouTubeUrl(url)) {
+          const cleaned = cleanUrl(url)
+          // Only include if not already in content and not already seen
+          if (cleaned && !hasYouTubeInContent && !seenUrls.has(cleaned)) {
+            urls.push(cleaned)
+            seenUrls.add(cleaned)
+          }
+        }
+      })
+    
+    return urls
+  }, [event, nodes])
+  
+  // Extract HTTP/HTTPS links from r tags (excluding those already in content, YouTube URLs, images, and media)
   const tagLinks = useMemo(() => {
     if (!event) return []
     const links: string[] = []
@@ -127,7 +164,7 @@ export default function Content({
       .filter(tag => tag[0] === 'r' && tag[1])
       .forEach(tag => {
         const url = tag[1]
-        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url)) {
+        if ((url.startsWith('http://') || url.startsWith('https://')) && !isImage(url) && !isMedia(url) && !isYouTubeUrl(url)) {
           const cleaned = cleanUrl(url)
           // Only include if not already in content links and not already seen in tags
           if (cleaned && !contentLinkUrls.has(cleaned) && !seenUrls.has(cleaned)) {
@@ -310,10 +347,20 @@ export default function Content({
         />
       ))}
       
+      {/* Render YouTube URLs from r tags that don't appear in content */}
+      {youtubeUrlsFromTags.map((url) => (
+        <YoutubeEmbeddedPlayer
+          key={`tag-youtube-${url}`}
+          url={url}
+          className="mt-2"
+          mustLoad={mustLoadMedia}
+        />
+      ))}
+      
       {nodes && nodes.length > 0 && nodes.map((node, index) => {
         if (node.type === 'text') {
-          // Skip empty text nodes
-          if (!node.data || node.data.trim() === '') {
+          // Skip only completely empty text nodes, but preserve whitespace (important for spacing)
+          if (!node.data || node.data.length === 0) {
             return null
           }
           return renderRedirectText(node.data, index)

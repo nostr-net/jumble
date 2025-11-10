@@ -64,180 +64,17 @@ function parseMarkdownContent(
   const footnotes = new Map<string, string>()
   let lastIndex = 0
   
-  // Find all patterns: markdown images, markdown links, relay URLs, nostr addresses, hashtags, wikilinks
-  const patterns: Array<{ index: number; end: number; type: string; data: any }> = []
+  // Helper function to check if an index range falls within any block-level pattern
+  const isWithinBlockPattern = (start: number, end: number, blockPatterns: Array<{ index: number; end: number }>): boolean => {
+    return blockPatterns.some(blockPattern =>
+      (start >= blockPattern.index && start < blockPattern.end) ||
+      (end > blockPattern.index && end <= blockPattern.end) ||
+      (start <= blockPattern.index && end >= blockPattern.end)
+    )
+  }
   
-  // Markdown images: ![](url) or ![alt](url)
-  const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
-  const imageMatches = Array.from(content.matchAll(markdownImageRegex))
-  imageMatches.forEach(match => {
-    if (match.index !== undefined) {
-      patterns.push({
-        index: match.index,
-        end: match.index + match[0].length,
-        type: 'markdown-image',
-        data: { alt: match[1], url: match[2] }
-      })
-    }
-  })
-  
-  // Markdown links: [text](url) - but not images
-    const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
-  const linkMatches = Array.from(content.matchAll(markdownLinkRegex))
-  linkMatches.forEach(match => {
-    if (match.index !== undefined) {
-      // Skip if this is already an image
-      const isImage = content.substring(Math.max(0, match.index - 1), match.index) === '!'
-      if (!isImage) {
-        patterns.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          type: 'markdown-link',
-          data: { text: match[1], url: match[2] }
-        })
-      }
-    }
-  })
-  
-  // YouTube URLs - not in markdown links
-  const youtubeUrlMatches = Array.from(content.matchAll(YOUTUBE_URL_REGEX))
-  youtubeUrlMatches.forEach(match => {
-    if (match.index !== undefined) {
-      const url = match[0]
-      // Only add if not already covered by a markdown link/image
-      const isInMarkdown = patterns.some(p => 
-        (p.type === 'markdown-link' || p.type === 'markdown-image') && 
-        match.index! >= p.index && 
-        match.index! < p.end
-      )
-      // Only process if not in markdown link
-      if (!isInMarkdown && isYouTubeUrl(url)) {
-        patterns.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          type: 'youtube-url',
-          data: { url }
-        })
-      }
-    }
-  })
-  
-  // Relay URLs (wss:// or ws://) - not in markdown links
-  const relayUrlMatches = Array.from(content.matchAll(WS_URL_REGEX))
-  relayUrlMatches.forEach(match => {
-    if (match.index !== undefined) {
-      const url = match[0]
-      // Only add if not already covered by a markdown link/image or YouTube URL
-      const isInMarkdown = patterns.some(p => 
-        (p.type === 'markdown-link' || p.type === 'markdown-image' || p.type === 'youtube-url') && 
-        match.index! >= p.index && 
-        match.index! < p.end
-      )
-      // Only process valid websocket URLs
-      if (!isInMarkdown && isWebsocketUrl(url)) {
-        patterns.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          type: 'relay-url',
-          data: { url }
-        })
-      }
-    }
-  })
-  
-  // Nostr addresses (nostr:npub1..., nostr:note1..., etc.) - not in markdown links, relay URLs, or YouTube URLs
-  const nostrRegex = /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g
-  const nostrMatches = Array.from(content.matchAll(nostrRegex))
-  nostrMatches.forEach(match => {
-    if (match.index !== undefined) {
-      // Only add if not already covered by a markdown link/image, relay URL, or YouTube URL
-      const isInOther = patterns.some(p => 
-        (p.type === 'markdown-link' || p.type === 'markdown-image' || p.type === 'relay-url' || p.type === 'youtube-url') && 
-        match.index! >= p.index && 
-        match.index! < p.end
-      )
-      if (!isInOther) {
-        patterns.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          type: 'nostr',
-          data: match[1]
-        })
-      }
-    }
-  })
-  
-  // Hashtags (#tag) - but not inside markdown links, relay URLs, or nostr addresses
-  const hashtagRegex = /#([a-zA-Z0-9_]+)/g
-  const hashtagMatches = Array.from(content.matchAll(hashtagRegex))
-  hashtagMatches.forEach(match => {
-    if (match.index !== undefined) {
-      // Only add if not already covered by another pattern
-      const isInOther = patterns.some(p => 
-        match.index! >= p.index && 
-        match.index! < p.end
-      )
-      if (!isInOther) {
-        patterns.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          type: 'hashtag',
-          data: match[1]
-        })
-      }
-    }
-  })
-  
-  // Wikilinks ([[link]] or [[link|display]])
-  const wikilinkRegex = /\[\[([^\]]+)\]\]/g
-  const wikilinkMatches = Array.from(content.matchAll(wikilinkRegex))
-  wikilinkMatches.forEach(match => {
-    if (match.index !== undefined) {
-      // Only add if not already covered by another pattern
-      const isInOther = patterns.some(p => 
-        match.index! >= p.index && 
-        match.index! < p.end
-      )
-      if (!isInOther) {
-        patterns.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          type: 'wikilink',
-          data: match[1]
-        })
-      }
-    }
-  })
-  
-  // Footnote references ([^1], [^note], etc.) - but not definitions
-  const footnoteRefRegex = /\[\^([^\]]+)\]/g
-  const footnoteRefMatches = Array.from(content.matchAll(footnoteRefRegex))
-  footnoteRefMatches.forEach(match => {
-    if (match.index !== undefined) {
-      // Skip if this is a footnote definition (has : after the closing bracket)
-      const afterMatch = content.substring(match.index + match[0].length, match.index + match[0].length + 2)
-      if (afterMatch.startsWith(']:')) {
-        return // This is a definition, not a reference
-      }
-      
-      // Only add if not already covered by another pattern
-      const isInOther = patterns.some(p => 
-        match.index! >= p.index && 
-        match.index! < p.end
-      )
-      if (!isInOther) {
-        patterns.push({
-          index: match.index,
-          end: match.index + match[0].length,
-          type: 'footnote-ref',
-          data: match[1] // footnote ID
-        })
-      }
-    }
-  })
-  
-  // Block-level patterns: headers, lists, horizontal rules, tables, footnotes - must be at start of line
-  // Process line by line to detect block-level elements
+  // STEP 1: First detect all block-level patterns (headers, lists, blockquotes, tables, etc.)
+  // Block-level patterns must be detected first so we can exclude inline patterns within them
   const lines = content.split('\n')
   let currentIndex = 0
   const blockPatterns: Array<{ index: number; end: number; type: string; data: any }> = []
@@ -383,6 +220,60 @@ function parseMarkdownContent(
         })
       }
     }
+    // Blockquotes (> text or >)
+    else if (line.match(/^>\s*/)) {
+      // Collect consecutive blockquote lines
+      const blockquoteLines: string[] = []
+      const blockquoteStartIndex = lineStartIndex
+      let blockquoteLineIdx = lineIdx
+      let tempIndex = lineStartIndex
+      
+      while (blockquoteLineIdx < lines.length) {
+        const blockquoteLine = lines[blockquoteLineIdx]
+        if (blockquoteLine.match(/^>\s*/)) {
+          // Strip the > prefix and optional space
+          const content = blockquoteLine.replace(/^>\s?/, '')
+          blockquoteLines.push(content)
+          blockquoteLineIdx++
+          tempIndex += blockquoteLine.length + 1 // +1 for newline
+        } else if (blockquoteLine.trim() === '') {
+          // Empty line without > - this ALWAYS ends the blockquote
+          // Even if the next line is another blockquote, we want separate blockquotes
+          break
+        } else {
+          // Non-empty line that doesn't start with > - ends the blockquote
+          break
+        }
+      }
+      
+      if (blockquoteLines.length > 0) {
+        // Filter out trailing empty lines (but keep internal empty lines for spacing)
+        while (blockquoteLines.length > 0 && blockquoteLines[blockquoteLines.length - 1].trim() === '') {
+          blockquoteLines.pop()
+          blockquoteLineIdx--
+          // Recalculate tempIndex by subtracting the last line's length
+          if (blockquoteLineIdx >= lineIdx) {
+            tempIndex -= (lines[blockquoteLineIdx].length + 1)
+          }
+        }
+        
+        if (blockquoteLines.length > 0) {
+          // Calculate end index: tempIndex - 1 (subtract 1 because we don't want the trailing newline)
+          const blockquoteEndIndex = tempIndex - 1
+          
+          blockPatterns.push({
+            index: blockquoteStartIndex,
+            end: blockquoteEndIndex,
+            type: 'blockquote',
+            data: { lines: blockquoteLines, lineNum: lineIdx }
+          })
+          // Update currentIndex and skip processed lines (similar to table handling)
+          currentIndex = blockquoteEndIndex + 1
+          lineIdx = blockquoteLineIdx
+          continue
+        }
+      }
+    }
     // Footnote definition (already extracted, but mark it so we don't render it in content)
     else if (line.match(/^\[\^([^\]]+)\]:\s+.+$/)) {
       blockPatterns.push({
@@ -397,29 +288,238 @@ function parseMarkdownContent(
     lineIdx++
   }
   
-  // Add block patterns to main patterns array
+  // STEP 2: Now detect inline patterns (images, links, URLs, hashtags, etc.)
+  // But exclude any that fall within block-level patterns
+  const patterns: Array<{ index: number; end: number; type: string; data: any }> = []
+  
+  // Add block patterns to main patterns array first
   blockPatterns.forEach(pattern => {
     patterns.push(pattern)
+  })
+  
+  // Markdown links: [text](url) or [![](image)](url) - detect FIRST to handle nested images
+  // We detect links first because links can contain images, and we want the link pattern to take precedence
+  const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
+  const linkMatches = Array.from(content.matchAll(markdownLinkRegex))
+  const linkPatterns: Array<{ index: number; end: number; type: string; data: any }> = []
+  
+  linkMatches.forEach(match => {
+    if (match.index !== undefined) {
+      const start = match.index
+      const end = match.index + match[0].length
+      // Skip if within a block-level pattern
+      if (!isWithinBlockPattern(start, end, blockPatterns)) {
+        // Check if the link text contains an image markdown syntax
+        const linkText = match[1]
+        const hasImage = /^!\[/.test(linkText.trim())
+        
+        linkPatterns.push({
+          index: start,
+          end: end,
+          type: hasImage ? 'markdown-image-link' : 'markdown-link',
+          data: { text: match[1], url: match[2] }
+        })
+      }
+    }
+  })
+  
+  // Markdown images: ![](url) or ![alt](url) - but not if they're inside a markdown link
+  const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
+  const imageMatches = Array.from(content.matchAll(markdownImageRegex))
+  imageMatches.forEach(match => {
+    if (match.index !== undefined) {
+      const start = match.index
+      const end = match.index + match[0].length
+      // Skip if within a block-level pattern
+      if (isWithinBlockPattern(start, end, blockPatterns)) {
+        return
+      }
+      // Skip if this image is inside a markdown link
+      const isInsideLink = linkPatterns.some(linkPattern =>
+        start >= linkPattern.index && end <= linkPattern.end
+      )
+      if (!isInsideLink) {
+        patterns.push({
+          index: start,
+          end: end,
+          type: 'markdown-image',
+          data: { alt: match[1], url: match[2] }
+        })
+      }
+    }
+  })
+  
+  // Add markdown links to patterns
+  linkPatterns.forEach(linkPattern => {
+    patterns.push(linkPattern)
+  })
+  
+  // YouTube URLs - not in markdown links
+  const youtubeUrlMatches = Array.from(content.matchAll(YOUTUBE_URL_REGEX))
+  youtubeUrlMatches.forEach(match => {
+    if (match.index !== undefined) {
+      const url = match[0]
+      const start = match.index
+      const end = match.index + match[0].length
+      // Only add if not already covered by a markdown link/image-link/image and not in block pattern
+      const isInMarkdown = patterns.some(p => 
+        (p.type === 'markdown-link' || p.type === 'markdown-image-link' || p.type === 'markdown-image') && 
+        start >= p.index && 
+        start < p.end
+      )
+      if (!isInMarkdown && !isWithinBlockPattern(start, end, blockPatterns) && isYouTubeUrl(url)) {
+        patterns.push({
+          index: start,
+          end: end,
+          type: 'youtube-url',
+          data: { url }
+        })
+      }
+    }
+  })
+  
+  // Relay URLs (wss:// or ws://) - not in markdown links
+  const relayUrlMatches = Array.from(content.matchAll(WS_URL_REGEX))
+  relayUrlMatches.forEach(match => {
+    if (match.index !== undefined) {
+      const url = match[0]
+      const start = match.index
+      const end = match.index + match[0].length
+      // Only add if not already covered by a markdown link/image-link/image or YouTube URL and not in block pattern
+      const isInMarkdown = patterns.some(p => 
+        (p.type === 'markdown-link' || p.type === 'markdown-image-link' || p.type === 'markdown-image' || p.type === 'youtube-url') && 
+        start >= p.index && 
+        start < p.end
+      )
+      if (!isInMarkdown && !isWithinBlockPattern(start, end, blockPatterns) && isWebsocketUrl(url)) {
+        patterns.push({
+          index: start,
+          end: end,
+          type: 'relay-url',
+          data: { url }
+        })
+      }
+    }
+  })
+  
+  // Nostr addresses (nostr:npub1..., nostr:note1..., etc.)
+  const nostrRegex = /nostr:(npub1[a-z0-9]{58}|nprofile1[a-z0-9]+|note1[a-z0-9]{58}|nevent1[a-z0-9]+|naddr1[a-z0-9]+)/g
+  const nostrMatches = Array.from(content.matchAll(nostrRegex))
+  nostrMatches.forEach(match => {
+    if (match.index !== undefined) {
+      const start = match.index
+      const end = match.index + match[0].length
+      // Only add if not already covered by other patterns and not in block pattern
+      const isInOther = patterns.some(p => 
+        (p.type === 'markdown-link' || p.type === 'markdown-image-link' || p.type === 'markdown-image' || p.type === 'relay-url' || p.type === 'youtube-url') && 
+        start >= p.index && 
+        start < p.end
+      )
+      if (!isInOther && !isWithinBlockPattern(start, end, blockPatterns)) {
+        patterns.push({
+          index: start,
+          end: end,
+          type: 'nostr',
+          data: match[1]
+        })
+      }
+    }
+  })
+  
+  // Hashtags (#tag) - but not inside markdown links, relay URLs, or nostr addresses
+  const hashtagRegex = /#([a-zA-Z0-9_]+)/g
+  const hashtagMatches = Array.from(content.matchAll(hashtagRegex))
+  hashtagMatches.forEach(match => {
+    if (match.index !== undefined) {
+      const start = match.index
+      const end = match.index + match[0].length
+      // Only add if not already covered by another pattern and not in block pattern
+      // Note: hashtags inside block patterns will be handled by parseInlineMarkdown
+      const isInOther = patterns.some(p => 
+        start >= p.index && 
+        start < p.end
+      )
+      if (!isInOther && !isWithinBlockPattern(start, end, blockPatterns)) {
+        patterns.push({
+          index: start,
+          end: end,
+          type: 'hashtag',
+          data: match[1]
+        })
+      }
+    }
+  })
+  
+  // Wikilinks ([[link]] or [[link|display]]) - but not inside markdown links
+  const wikilinkRegex = /\[\[([^\]]+)\]\]/g
+  const wikilinkMatches = Array.from(content.matchAll(wikilinkRegex))
+  wikilinkMatches.forEach(match => {
+    if (match.index !== undefined) {
+      const start = match.index
+      const end = match.index + match[0].length
+      // Only add if not already covered by another pattern and not in block pattern
+      const isInOther = patterns.some(p => 
+        start >= p.index && 
+        start < p.end
+      )
+      if (!isInOther && !isWithinBlockPattern(start, end, blockPatterns)) {
+        patterns.push({
+          index: start,
+          end: end,
+          type: 'wikilink',
+          data: match[1]
+        })
+      }
+    }
+  })
+  
+  // Footnote references ([^1], [^note], etc.) - but not definitions
+  const footnoteRefRegex = /\[\^([^\]]+)\]/g
+  const footnoteRefMatches = Array.from(content.matchAll(footnoteRefRegex))
+  footnoteRefMatches.forEach(match => {
+    if (match.index !== undefined) {
+      // Skip if this is a footnote definition (has : after the closing bracket)
+      const afterMatch = content.substring(match.index + match[0].length, match.index + match[0].length + 2)
+      if (afterMatch.startsWith(']:')) {
+        return // This is a definition, not a reference
+      }
+      
+      const start = match.index
+      const end = match.index + match[0].length
+      // Only add if not already covered by another pattern and not in block pattern
+      const isInOther = patterns.some(p => 
+        start >= p.index && 
+        start < p.end
+      )
+      if (!isInOther && !isWithinBlockPattern(start, end, blockPatterns)) {
+        patterns.push({
+          index: start,
+          end: end,
+          type: 'footnote-ref',
+          data: match[1] // footnote ID
+        })
+      }
+    }
   })
   
   // Sort patterns by index
   patterns.sort((a, b) => a.index - b.index)
   
   // Remove overlapping patterns (keep the first one)
-  // Block-level patterns (headers, lists, horizontal rules, tables) take priority
+  // Block-level patterns (headers, lists, horizontal rules, tables, blockquotes) take priority
   const filteredPatterns: typeof patterns = []
-  const blockLevelTypes = ['header', 'horizontal-rule', 'bullet-list-item', 'numbered-list-item', 'table', 'footnote-definition']
-  const blockLevelPatterns = patterns.filter(p => blockLevelTypes.includes(p.type))
+  const blockLevelTypes = ['header', 'horizontal-rule', 'bullet-list-item', 'numbered-list-item', 'table', 'blockquote', 'footnote-definition']
+  const blockLevelPatternsFromAll = patterns.filter(p => blockLevelTypes.includes(p.type))
   const otherPatterns = patterns.filter(p => !blockLevelTypes.includes(p.type))
   
   // First add all block-level patterns
-  blockLevelPatterns.forEach(pattern => {
+  blockLevelPatternsFromAll.forEach(pattern => {
     filteredPatterns.push(pattern)
   })
   
   // Then add other patterns that don't overlap with block-level patterns
   otherPatterns.forEach(pattern => {
-    const overlapsWithBlock = blockLevelPatterns.some(blockPattern =>
+    const overlapsWithBlock = blockLevelPatternsFromAll.some(blockPattern =>
       (pattern.index >= blockPattern.index && pattern.index < blockPattern.end) ||
       (pattern.end > blockPattern.index && pattern.end <= blockPattern.end) ||
       (pattern.index <= blockPattern.index && pattern.end >= blockPattern.end)
@@ -440,16 +540,45 @@ function parseMarkdownContent(
   // Re-sort by index
   filteredPatterns.sort((a, b) => a.index - b.index)
   
+  // Helper function to check if a pattern type is inline
+  const isInlinePatternType = (patternType: string, patternData?: any): boolean => {
+    if (patternType === 'hashtag' || patternType === 'wikilink' || patternType === 'footnote-ref' || patternType === 'relay-url') {
+      return true
+    }
+    if (patternType === 'markdown-link' && patternData) {
+      const { url } = patternData
+      // Markdown links are inline only if they're not YouTube or WebPreview
+      return !isYouTubeUrl(url) && !isWebsocketUrl(url)
+    }
+    if (patternType === 'nostr' && patternData) {
+      const bech32Id = patternData
+      // Nostr addresses are inline only if they're profile types (not events)
+      return bech32Id.startsWith('npub') || bech32Id.startsWith('nprofile')
+    }
+    return false
+  }
+  
+  // Track the last rendered pattern type to determine if whitespace should be preserved
+  let lastRenderedPatternType: string | null = null
+  let lastRenderedPatternData: any = null
+  
   // Build React nodes from patterns
   filteredPatterns.forEach((pattern, patternIdx) => {
     // Add text before pattern
     if (pattern.index > lastIndex) {
       const text = content.slice(lastIndex, pattern.index)
-      // Skip whitespace-only text to avoid empty spans between block elements
-      if (text && text.trim()) {
+      // Check if this pattern and the last rendered pattern are both inline patterns
+      // Inline patterns should preserve whitespace between them (like spaces between hashtags)
+      const currentIsInline = isInlinePatternType(pattern.type, pattern.data)
+      const prevIsInline = lastRenderedPatternType !== null && isInlinePatternType(lastRenderedPatternType, lastRenderedPatternData)
+      
+      // Preserve whitespace between inline patterns, but skip it between block elements
+      const shouldPreserveWhitespace = currentIsInline && prevIsInline
+      
+      if (text && (shouldPreserveWhitespace || text.trim())) {
         // Process text for inline formatting (bold, italic, etc.)
         // But skip if this text is part of a table (tables are handled as block patterns)
-        const isInTable = blockLevelPatterns.some(p => 
+        const isInTable = blockLevelPatternsFromAll.some(p => 
           p.type === 'table' &&
           lastIndex >= p.index && 
           lastIndex < p.end
@@ -497,11 +626,79 @@ function parseMarkdownContent(
           </div>
         )
       }
+    } else if (pattern.type === 'markdown-image-link') {
+      // Link containing an image: [![](image)](url)
+      const { text, url } = pattern.data
+      // Extract image URL from the link text (which contains ![](imageUrl))
+      const imageMatch = text.match(/!\[([^\]]*)\]\(([^)]+)\)/)
+      if (imageMatch) {
+        const imageUrl = imageMatch[2]
+        const cleaned = cleanUrl(imageUrl)
+        
+        if (isImage(cleaned)) {
+          // Render as a block-level clickable image that links to the URL
+          // Clicking the image should navigate to the URL (standard markdown behavior)
+          parts.push(
+            <div key={`image-link-${patternIdx}`} className="my-2 block">
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // Allow normal link navigation
+                }}
+              >
+                <Image
+                  image={{ url: imageUrl, pubkey: eventPubkey }}
+                  className="max-w-[400px] rounded-lg cursor-pointer"
+                  classNames={{
+                    wrapper: 'rounded-lg block',
+                    errorPlaceholder: 'aspect-square h-[30vh]'
+                  }}
+                  onClick={(e) => {
+                    // Don't prevent default - let the link handle navigation
+                    e.stopPropagation()
+                  }}
+                />
+              </a>
+            </div>
+          )
+        } else {
+          // Not an image, render as regular link
+          parts.push(
+            <a
+              key={`link-${patternIdx}`}
+              href={url}
+              className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {text}
+            </a>
+          )
+        }
+      } else {
+        // Fallback: render as regular link
+        parts.push(
+          <a
+            key={`link-${patternIdx}`}
+            href={url}
+            className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {text}
+          </a>
+        )
+      }
     } else if (pattern.type === 'markdown-link') {
       const { text, url } = pattern.data
-      const displayText = truncateLinkText(text)
-      // Check if it's a relay URL - if so, link to relay page instead
+      // Markdown links should always be rendered as inline links, not block-level components
+      // This ensures they don't break up the content flow when used in paragraphs
       if (isWebsocketUrl(url)) {
+        // Relay URLs link to relay page
         const relayPath = `/relays/${encodeURIComponent(url)}`
         parts.push(
           <a
@@ -515,26 +712,21 @@ function parseMarkdownContent(
             }}
             title={text.length > 200 ? text : undefined}
           >
-            {displayText}
+            {text}
           </a>
         )
-      } else if (isYouTubeUrl(url)) {
-        // Render YouTube URL as embedded player
-        parts.push(
-          <div key={`youtube-${patternIdx}`} className="my-2">
-            <YoutubeEmbeddedPlayer
-              url={url}
-              className="max-w-[400px]"
-              mustLoad={false}
-            />
-          </div>
-        )
       } else {
-        // Render as WebPreview component (shows opengraph data or fallback card)
+        // Regular markdown links render as simple inline links (green to match theme)
         parts.push(
-          <div key={`link-${patternIdx}`} className="my-2">
-            <WebPreview url={url} className="w-full" />
-          </div>
+          <a
+            key={`link-${patternIdx}`}
+            href={url}
+            className="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {text}
+          </a>
         )
       }
     } else if (pattern.type === 'youtube-url') {
@@ -647,6 +839,51 @@ function parseMarkdownContent(
           </div>
         )
       }
+    } else if (pattern.type === 'blockquote') {
+      const { lines } = pattern.data
+      // Group lines into paragraphs (consecutive non-empty lines form a paragraph, empty lines separate paragraphs)
+      const paragraphs: string[][] = []
+      let currentParagraph: string[] = []
+      
+      lines.forEach((line: string) => {
+        if (line.trim() === '') {
+          // Empty line - if we have a current paragraph, finish it and start a new one
+          if (currentParagraph.length > 0) {
+            paragraphs.push(currentParagraph)
+            currentParagraph = []
+          }
+        } else {
+          // Non-empty line - add to current paragraph
+          currentParagraph.push(line)
+        }
+      })
+      
+      // Add the last paragraph if it exists
+      if (currentParagraph.length > 0) {
+        paragraphs.push(currentParagraph)
+      }
+      
+      // Render paragraphs
+      const blockquoteContent = paragraphs.map((paragraphLines: string[], paraIdx: number) => {
+        // Join paragraph lines with spaces (or preserve line breaks if needed)
+        const paragraphText = paragraphLines.join(' ')
+        const paragraphContent = parseInlineMarkdown(paragraphText, `blockquote-${patternIdx}-para-${paraIdx}`, footnotes)
+        
+        return (
+          <p key={`blockquote-${patternIdx}-para-${paraIdx}`} className="mb-2 last:mb-0">
+            {paragraphContent}
+          </p>
+        )
+      })
+      
+      parts.push(
+        <blockquote
+          key={`blockquote-${patternIdx}`}
+          className="border-l-4 border-gray-400 dark:border-gray-500 pl-4 pr-2 py-2 my-4 italic text-gray-700 dark:text-gray-300 bg-gray-50/50 dark:bg-gray-800/30"
+        >
+          {blockquoteContent}
+        </blockquote>
+      )
     } else if (pattern.type === 'footnote-definition') {
       // Don't render footnote definitions in the main content - they'll be rendered at the bottom
       // Just skip this pattern
@@ -659,7 +896,7 @@ function parseMarkdownContent(
             <a 
               href={`#footnote-${footnoteId}`} 
               id={`footnote-ref-${footnoteId}`}
-              className="text-blue-600 dark:text-blue-400 hover:underline no-underline"
+              className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline no-underline"
               onClick={(e) => {
                 e.preventDefault()
                 const footnoteElement = document.getElementById(`footnote-${footnoteId}`)
@@ -729,6 +966,12 @@ function parseMarkdownContent(
       )
     }
     
+    // Update tracking for the last rendered pattern (skip footnote-definition as it's not rendered)
+    if (pattern.type !== 'footnote-definition') {
+      lastRenderedPatternType = pattern.type
+      lastRenderedPatternData = pattern.data
+    }
+    
     lastIndex = pattern.end
   })
   
@@ -739,7 +982,7 @@ function parseMarkdownContent(
     if (text && text.trim()) {
       // Process text for inline formatting
       // But skip if this text is part of a table
-      const isInTable = blockLevelPatterns.some(p => 
+      const isInTable = blockLevelPatternsFromAll.some((p: { type: string; index: number; end: number }) => 
         p.type === 'table' &&
         lastIndex >= p.index && 
         lastIndex < p.end
@@ -841,7 +1084,7 @@ function parseMarkdownContent(
               {' '}
               <a 
                 href={`#footnote-ref-${id}`}
-                className="text-blue-600 dark:text-blue-400 hover:underline text-xs"
+                className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline text-xs"
                 onClick={(e) => {
                   e.preventDefault()
                   const refElement = document.getElementById(`footnote-ref-${id}`)
@@ -1053,6 +1296,28 @@ function parseInlineMarkdown(text: string, keyPrefix: string, _footnotes: Map<st
   // Note: __text__ is bold by default, but if user wants it italic, we can add it
   // For now, we'll keep __text__ as bold only, and _text_ as italic
   
+  // Markdown links: [text](url) - but not images (process after code/bold/italic to avoid conflicts)
+  const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
+  const markdownLinkMatches = Array.from(text.matchAll(markdownLinkRegex))
+  markdownLinkMatches.forEach(match => {
+    if (match.index !== undefined) {
+      // Skip if already in code, bold, italic, or strikethrough
+      const isInOther = inlinePatterns.some(p => 
+        (p.type === 'code' || p.type === 'bold' || p.type === 'italic' || p.type === 'strikethrough') &&
+        match.index! >= p.index && 
+        match.index! < p.end
+      )
+      if (!isInOther) {
+        inlinePatterns.push({
+          index: match.index,
+          end: match.index + match[0].length,
+          type: 'link',
+          data: { text: match[1], url: match[2] }
+        })
+      }
+    }
+  })
+  
   // Sort by index
   inlinePatterns.sort((a, b) => a.index - b.index)
   
@@ -1088,6 +1353,20 @@ function parseInlineMarkdown(text: string, keyPrefix: string, _footnotes: Map<st
         <code key={`${keyPrefix}-code-${i}`} className="bg-muted px-1 py-0.5 rounded text-sm font-mono">
           {pattern.data}
         </code>
+      )
+    } else if (pattern.type === 'link') {
+      // Render markdown links as inline links (green to match theme)
+      const { text, url } = pattern.data
+      parts.push(
+        <a
+          key={`${keyPrefix}-link-${i}`}
+          href={url}
+          className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {text}
+        </a>
       )
     }
     
