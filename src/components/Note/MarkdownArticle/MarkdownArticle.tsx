@@ -444,7 +444,8 @@ function parseMarkdownContent(
     // Add text before pattern
     if (pattern.index > lastIndex) {
       const text = content.slice(lastIndex, pattern.index)
-      if (text) {
+      // Skip whitespace-only text to avoid empty spans between block elements
+      if (text && text.trim()) {
         // Process text for inline formatting (bold, italic, etc.)
         // But skip if this text is part of a table (tables are handled as block patterns)
         const isInTable = blockLevelPatterns.some(p => 
@@ -597,10 +598,11 @@ function parseMarkdownContent(
         </li>
       )
     } else if (pattern.type === 'numbered-list-item') {
-      const { text } = pattern.data
+      const { text, number } = pattern.data
       const listContent = parseInlineMarkdown(text, `numbered-${patternIdx}`, footnotes)
+      const itemNumber = number ? parseInt(number, 10) : undefined
       parts.push(
-        <li key={`numbered-${patternIdx}`} className="list-decimal list-inside my-1">
+        <li key={`numbered-${patternIdx}`} className="leading-tight" value={itemNumber}>
           {listContent}
         </li>
       )
@@ -730,7 +732,8 @@ function parseMarkdownContent(
   // Add remaining text
   if (lastIndex < content.length) {
     const text = content.slice(lastIndex)
-    if (text) {
+    // Skip whitespace-only text to avoid empty spans
+    if (text && text.trim()) {
       // Process text for inline formatting
       // But skip if this text is part of a table
       const isInTable = blockLevelPatterns.some(p => 
@@ -750,11 +753,26 @@ function parseMarkdownContent(
     return { nodes: formattedContent, hashtagsInContent, footnotes }
   }
   
+  // Filter out empty spans before wrapping lists
+  const filteredParts = parts.filter(part => {
+    if (React.isValidElement(part) && part.type === 'span') {
+      const children = part.props.children
+      // Filter out spans with only whitespace or empty content
+      if (typeof children === 'string' && !children.trim()) {
+        return false
+      }
+      if (Array.isArray(children) && children.every(child => typeof child === 'string' && !child.trim())) {
+        return false
+      }
+    }
+    return true
+  })
+  
   // Wrap list items in <ul> or <ol> tags
   const wrappedParts: React.ReactNode[] = []
   let partIdx = 0
-  while (partIdx < parts.length) {
-    const part = parts[partIdx]
+  while (partIdx < filteredParts.length) {
+    const part = filteredParts[partIdx]
     // Check if this is a list item
     if (React.isValidElement(part) && part.type === 'li') {
       // Determine if it's a bullet or numbered list
@@ -765,8 +783,8 @@ function parseMarkdownContent(
         // Collect consecutive list items of the same type
         const listItems: React.ReactNode[] = [part]
         partIdx++
-        while (partIdx < parts.length) {
-          const nextPart = parts[partIdx]
+        while (partIdx < filteredParts.length) {
+          const nextPart = filteredParts[partIdx]
           if (React.isValidElement(nextPart) && nextPart.type === 'li') {
             const nextIsBullet = nextPart.key && nextPart.key.toString().startsWith('bullet-')
             const nextIsNumbered = nextPart.key && nextPart.key.toString().startsWith('numbered-')
@@ -790,7 +808,7 @@ function parseMarkdownContent(
           )
         } else {
           wrappedParts.push(
-            <ol key={`ol-${partIdx}`} className="list-decimal list-inside my-2 space-y-1">
+            <ol key={`ol-${partIdx}`} className="list-decimal list-outside my-2 ml-6">
               {listItems}
             </ol>
           )
@@ -1351,6 +1369,17 @@ export default function MarkdownArticle({
   
   return (
     <>
+      <style>{`
+        .prose ol[class*="list-decimal"] {
+          list-style-type: decimal !important;
+        }
+        .prose ol[class*="list-decimal"] li {
+          display: list-item !important;
+          list-style-position: outside !important;
+          line-height: 1.25 !important;
+          margin-bottom: 0 !important;
+        }
+      `}</style>
       <div className={`prose prose-zinc max-w-none dark:prose-invert break-words overflow-wrap-anywhere ${className || ''}`}>
         {/* Metadata */}
                 {!hideMetadata && metadata.title && <h1 className="break-words">{metadata.title}</h1>}
