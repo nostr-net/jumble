@@ -66,10 +66,16 @@ export function preprocessMarkdownMediaLinks(content: string): string {
       }
     }
     
-    // Check if it's a media URL
+    // Check if it's a media URL or YouTube URL
     const isImageUrl = isImage(url)
     const isVideoUrl = isVideo(url)
     const isAudioUrl = isAudio(url)
+    const isYouTube = isYouTubeUrl(url)
+    
+    // Skip YouTube URLs - they should be left as plain text so they can be detected and rendered as YouTube embeds
+    if (isYouTube) {
+      continue
+    }
     
     let replacement: string
     if (isImageUrl || isVideoUrl || isAudioUrl) {
