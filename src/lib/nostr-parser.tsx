@@ -455,14 +455,20 @@ export function renderNostrContent(parsedContent: ParsedNostrContent, className?
           const normalizedHashtag = element.hashtag.toLowerCase()
           // Only render as green link if this hashtag was parsed from the content
           // (parseNostrContent already only extracts hashtags from content, not t-tags)
+          const nextElement = parsedContent.elements[index + 1]
+          const shouldAddSpace = nextElement && nextElement.type === 'hashtag'
+          
           return (
-            <a
-              key={index}
-              href={`/notes?t=${normalizedHashtag}`}
-              className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer"
-            >
-              #{element.hashtag}
-            </a>
+            <>
+              <a
+                key={index}
+                href={`/notes?t=${normalizedHashtag}`}
+                className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer"
+              >
+                #{element.hashtag}
+              </a>
+              {shouldAddSpace && <span> </span>}
+            </>
           )
         }
         

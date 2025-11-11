@@ -261,25 +261,25 @@ function parseMarkdownContent(
     }
     // Bullet list (* item or - item)
     else if (line.match(/^[\*\-\+]\s+.+$/)) {
-      const listMatch = line.match(/^[\*\-\+]\s+(.+)$/)
+      const listMatch = line.match(/^([\*\-\+])\s+(.+)$/)
       if (listMatch) {
         blockPatterns.push({
           index: lineStartIndex,
           end: lineEndIndex,
           type: 'bullet-list-item',
-          data: { text: listMatch[1], lineNum: lineIdx }
+          data: { text: listMatch[2], marker: listMatch[1], lineNum: lineIdx, originalLine: line }
         })
       }
     }
     // Numbered list (1. item, 2. item, etc.)
     else if (line.match(/^\d+\.\s+.+$/)) {
-      const listMatch = line.match(/^\d+\.\s+(.+)$/)
+      const listMatch = line.match(/^(\d+\.)\s+(.+)$/)
       if (listMatch) {
         blockPatterns.push({
           index: lineStartIndex,
           end: lineEndIndex,
           type: 'numbered-list-item',
-          data: { text: listMatch[1], lineNum: lineIdx, number: line.match(/^(\d+)/)?.[1] }
+          data: { text: listMatch[2], marker: listMatch[1], lineNum: lineIdx, number: line.match(/^(\d+)/)?.[1], originalLine: line }
         })
       }
     }
@@ -667,8 +667,16 @@ function parseMarkdownContent(
   let lastRenderedPatternType: string | null = null
   let lastRenderedPatternData: any = null
   
+  // Create a map to store original line data for list items (for single-item list rendering)
+  const listItemOriginalLines = new Map<number, string>()
+  
   // Build React nodes from patterns
   filteredPatterns.forEach((pattern, patternIdx) => {
+    // Store original line for list items
+    if ((pattern.type === 'bullet-list-item' || pattern.type === 'numbered-list-item') && pattern.data.originalLine) {
+      listItemOriginalLines.set(patternIdx, pattern.data.originalLine)
+    }
+    
     // Add text before pattern
     if (pattern.index > lastIndex) {
       const text = content.slice(lastIndex, pattern.index)
@@ -680,7 +688,8 @@ function parseMarkdownContent(
       // Preserve whitespace between inline patterns, but skip it between block elements
       const shouldPreserveWhitespace = currentIsInline && prevIsInline
       
-      if (text && (shouldPreserveWhitespace || text.trim())) {
+      if (text) {
+        // Always process text if it's not empty, but preserve whitespace between inline patterns
         // Process text for inline formatting (bold, italic, etc.)
         // But skip if this text is part of a table (tables are handled as block patterns)
         const isInTable = blockLevelPatternsFromAll.some(p => 
@@ -689,7 +698,11 @@ function parseMarkdownContent(
           lastIndex < p.end
         )
         if (!isInTable) {
-          parts.push(...parseInlineMarkdown(text, `text-${patternIdx}`, footnotes))
+          // If we should preserve whitespace (between inline patterns), process the text as-is
+          // Otherwise, only process if the text has non-whitespace content
+          if (shouldPreserveWhitespace || text.trim()) {
+            parts.push(...parseInlineMarkdown(text, `text-${patternIdx}`, footnotes))
+          }
         }
       }
     }
@@ -1050,6 +1063,14 @@ function parseMarkdownContent(
       const tag = pattern.data
       const tagLower = tag.toLowerCase()
       hashtagsInContent.add(tagLower) // Track hashtags rendered inline
+      
+      // Check if there's another hashtag immediately following (no space between them)
+      // If so, add a space after this hashtag to prevent them from appearing smushed together
+      const nextPattern = filteredPatterns[patternIdx + 1]
+      // Add space if the next pattern is a hashtag that starts exactly where this one ends
+      // (meaning there's no space or text between them)
+      const shouldAddSpace = nextPattern && nextPattern.type === 'hashtag' && nextPattern.index === pattern.end
+      
       parts.push(
         <a
           key={`hashtag-${patternIdx}`}
@@ -1064,6 +1085,12 @@ function parseMarkdownContent(
           #{tag}
         </a>
       )
+      
+      // Add a space after the hashtag if another hashtag follows immediately
+      // Use a non-breaking space wrapped in a span to ensure it's rendered
+      if (shouldAddSpace) {
+        parts.push(<span key={`hashtag-space-${patternIdx}`} className="whitespace-pre"> </span>)
+      }
     } else if (pattern.type === 'wikilink') {
       const linkContent = pattern.data
       let target = linkContent.includes('|') ? linkContent.split('|')[0].trim() : linkContent.trim()
@@ -1114,14 +1141,45 @@ function parseMarkdownContent(
   }
   
   // Filter out empty spans before wrapping lists
-  const filteredParts = parts.filter(part => {
+  // But preserve whitespace that appears between inline patterns (like hashtags)
+  const filteredParts = parts.filter((part, idx) => {
     if (React.isValidElement(part) && part.type === 'span') {
       const children = part.props.children
-      // Filter out spans with only whitespace or empty content
-      if (typeof children === 'string' && !children.trim()) {
-        return false
-      }
-      if (Array.isArray(children) && children.every(child => typeof child === 'string' && !child.trim())) {
+      const isWhitespaceOnly = 
+        (typeof children === 'string' && !children.trim()) ||
+        (Array.isArray(children) && children.every(child => typeof child === 'string' && !child.trim()))
+      
+      if (isWhitespaceOnly) {
+        // Check if this whitespace is adjacent to inline patterns (like hashtags)
+        // Look at the previous and next parts to see if they're inline patterns
+        const prevPart = idx > 0 ? parts[idx - 1] : null
+        const nextPart = idx < parts.length - 1 ? parts[idx + 1] : null
+        
+        // Check if a part is an inline pattern (hashtag, wikilink, nostr mention, etc.)
+        const isInlinePattern = (part: any) => {
+          if (!part || !React.isValidElement(part)) return false
+          const key = part.key?.toString() || ''
+          const type = part.type
+          // Hashtags are <a> elements with keys starting with 'hashtag-'
+          // Wikilinks might be custom components
+          // Nostr mentions might be spans or other elements
+          return (type === 'a' && key.startsWith('hashtag-')) ||
+                 (type === 'a' && key.startsWith('wikilink-')) ||
+                 (type === 'span' && (key.startsWith('wikilink-') || key.startsWith('nostr-'))) ||
+                 // Also check for embedded mentions/components that might be inline
+                 (type && typeof type !== 'string' && key.includes('mention'))
+        }
+        
+        const prevIsInlinePattern = isInlinePattern(prevPart)
+        const nextIsInlinePattern = isInlinePattern(nextPart)
+        
+        // Preserve whitespace if it's between two inline patterns, or before/after one
+        // This ensures spaces around hashtags are preserved
+        if (prevIsInlinePattern || nextIsInlinePattern) {
+          return true
+        }
+        
+        // Otherwise filter out whitespace-only spans
         return false
       }
     }
@@ -1159,19 +1217,59 @@ function parseMarkdownContent(
           }
         }
         
-        // Wrap in <ul> or <ol>
-        if (isBullet) {
-          wrappedParts.push(
-            <ul key={`ul-${partIdx}`} className="list-disc list-inside my-2 space-y-1">
-              {listItems}
-            </ul>
-          )
+        // Only wrap in <ul> or <ol> if there's more than one item
+        // Single-item lists should not be formatted as lists
+        if (listItems.length > 1) {
+          if (isBullet) {
+            wrappedParts.push(
+              <ul key={`ul-${partIdx}`} className="list-disc list-inside my-2 space-y-1">
+                {listItems}
+              </ul>
+            )
+          } else {
+            wrappedParts.push(
+              <ol key={`ol-${partIdx}`} className="list-decimal list-outside my-2 ml-6">
+                {listItems}
+              </ol>
+            )
+          }
         } else {
-          wrappedParts.push(
-            <ol key={`ol-${partIdx}`} className="list-decimal list-outside my-2 ml-6">
-              {listItems}
-            </ol>
-          )
+          // Single item - render the original line text (including marker) as plain text
+          // Extract pattern index from the key to look up original line
+          const listItem = listItems[0]
+          if (React.isValidElement(listItem) && listItem.key) {
+            const keyStr = listItem.key.toString()
+            const patternIndexMatch = keyStr.match(/(?:bullet|numbered)-(\d+)/)
+            if (patternIndexMatch) {
+              const patternIndex = parseInt(patternIndexMatch[1], 10)
+              const originalLine = listItemOriginalLines.get(patternIndex)
+              if (originalLine) {
+                // Render the original line with inline markdown processing
+                const lineContent = parseInlineMarkdown(originalLine, `single-list-item-${partIdx}`, footnotes)
+                wrappedParts.push(
+                  <span key={`list-item-content-${partIdx}`}>
+                    {lineContent}
+                  </span>
+                )
+              } else {
+                // Fallback: render the list item content
+                wrappedParts.push(
+                  <span key={`list-item-content-${partIdx}`}>
+                    {listItem.props.children}
+                  </span>
+                )
+              }
+            } else {
+              // Fallback: render the list item content
+              wrappedParts.push(
+                <span key={`list-item-content-${partIdx}`}>
+                  {listItem.props.children}
+                </span>
+              )
+            }
+          } else {
+            wrappedParts.push(listItem)
+          }
         }
         continue
       }
