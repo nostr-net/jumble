@@ -19,22 +19,18 @@ export function suppressExpectedErrors() {
     }
     
     // Suppress CORS errors for external websites
-    if (message.includes('CORS policy') && message.includes('Access-Control-Allow-Origin')) {
+    if (message.includes('CORS policy') || 
+        message.includes('Access-Control-Allow-Origin') ||
+        message.includes('has been blocked by CORS policy') ||
+        message.includes('blocked by CORS policy') ||
+        (message.includes('Access to fetch at') && message.includes('has been blocked')) ||
+        (message.includes('from origin') && message.includes('has been blocked'))) {
       return
     }
     
-    // Suppress network errors for external websites
-    if (message.includes('net::ERR_FAILED') && message.includes('200 (OK)')) {
-      return
-    }
-    
-    // Suppress additional network errors that are expected
-    if (message.includes('net::ERR_FAILED') && (
-      message.includes('404 (Not Found)') ||
-      message.includes('302 (Found)') ||
-      message.includes('ERR_NAME_NOT_RESOLVED') ||
-      message.includes('ERR_CONNECTION_REFUSED')
-    )) {
+    // Suppress network errors for external websites (including CORS-related failures)
+    // Suppress all ERR_FAILED errors as they're often CORS-related or expected failures
+    if (message.includes('net::ERR_FAILED')) {
       return
     }
     
@@ -128,6 +124,32 @@ export function suppressExpectedErrors() {
       message.includes('Network request for') ||
       message.includes('returned a response with status')
     )) {
+      return
+    }
+    
+    // Suppress Canvas2D warnings (performance suggestions)
+    if (message.includes('Canvas2D') || 
+        message.includes('Multiple readback operations') ||
+        message.includes('willReadFrequently') ||
+        message.includes('getImageData')) {
+      return
+    }
+    
+    // Suppress CORS policy warnings
+    if (message.includes('CORS policy') || 
+        message.includes('Access-Control-Allow-Origin') ||
+        message.includes('has been blocked by CORS policy') ||
+        message.includes('blocked by CORS policy') ||
+        (message.includes('Access to fetch') && message.includes('blocked')) ||
+        (message.includes('from origin') && message.includes('blocked'))) {
+      return
+    }
+    
+    // Suppress network fetch errors that are expected (CORS, etc.)
+    if (message.includes('Failed to fetch') || 
+        message.includes('net::ERR_FAILED') ||
+        (message.includes('GET ') && message.includes('blocked')) ||
+        (message.includes('fetch') && message.includes('blocked'))) {
       return
     }
     
