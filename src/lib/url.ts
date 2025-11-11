@@ -18,14 +18,13 @@ export function normalizeUrl(url: string): string {
     // Parse the URL first to validate it
     const p = new URL(url)
     
-    // Check if URL has query parameters or hash fragments that suggest it's not a relay
-    // Relay URLs shouldn't have query params like ?token= or hash fragments
-    const hasQueryParams = url.includes('?')
+    // Check if URL has hash fragments (these are not valid for relay URLs)
+    // Note: Query parameters are allowed (e.g., filter.nostr.wine uses ?broadcast=true/false)
     const hasHashFragment = url.includes('#')
     
-    // Block URLs with query params or hash fragments (these are likely not relays)
-    if (hasQueryParams || hasHashFragment) {
-      logger.warn('Skipping URL with query/hash (not a relay)', { url })
+    // Block URLs with hash fragments (these are not valid for relays)
+    if (hasHashFragment) {
+      logger.warn('Skipping URL with hash fragment (not a relay)', { url })
       return ''
     }
     
