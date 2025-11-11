@@ -36,7 +36,9 @@ export default function HighlightSourcePreview({ source, className }: HighlightS
       const decoded = nip19.decode(source.bech32)
       if (decoded.type === 'nevent' || decoded.type === 'note') {
         content = (
-          <EmbeddedNote noteId={source.value} className="w-full" />
+          <div className="max-h-[300px] overflow-hidden border-b border-gray-200 dark:border-gray-700">
+            <EmbeddedNote noteId={source.value} className="w-full" />
+          </div>
         )
       }
     } catch (error) {
@@ -67,7 +69,9 @@ export default function HighlightSourcePreview({ source, className }: HighlightS
       const decoded = nip19.decode(source.bech32)
       if (decoded.type === 'naddr') {
         content = (
-          <EmbeddedNote noteId={source.bech32} className="w-full" />
+          <div className="max-h-[300px] overflow-hidden border-b border-gray-200 dark:border-gray-700">
+            <EmbeddedNote noteId={source.bech32} className="w-full" />
+          </div>
         )
       }
     } catch (error) {

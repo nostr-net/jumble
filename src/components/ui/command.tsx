@@ -35,9 +35,9 @@ const CommandDialog = ({
 }: DialogProps & { classNames?: { content?: string } }) => {
   return (
     <Dialog {...props}>
-      <DialogHeader className="hidden">
-        <DialogTitle />
-        <DialogDescription />
+      <DialogHeader className="sr-only">
+        <DialogTitle>Command Menu</DialogTitle>
+        <DialogDescription>Search and select a command</DialogDescription>
       </DialogHeader>
       <DialogContent
         className={cn(

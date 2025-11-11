@@ -13,7 +13,7 @@ import Text from '@tiptap/extension-text'
 import { TextSelection } from '@tiptap/pm/state'
 import { EditorContent, useEditor } from '@tiptap/react'
 import { Event } from 'nostr-tools'
-import { Dispatch, forwardRef, SetStateAction, useImperativeHandle } from 'react'
+import { Dispatch, forwardRef, SetStateAction, useImperativeHandle, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ClipboardAndDropHandler } from './ClipboardAndDropHandler'
 import Emoji from './Emoji'
@@ -21,6 +21,7 @@ import emojiSuggestion from './Emoji/suggestion'
 import Mention from './Mention'
 import mentionSuggestion from './Mention/suggestion'
 import Preview from './Preview'
+import { HighlightData } from '../HighlightEditor'
 
 export type TPostTextareaHandle = {
   appendText: (text: string, addNewline?: boolean) => void
@@ -41,6 +42,7 @@ const PostTextarea = forwardRef<
     onUploadProgress?: (file: File, progress: number) => void
     onUploadEnd?: (file: File) => void
     kind?: number
+    highlightData?: HighlightData
   }
 >(
   (
@@ -54,11 +56,13 @@ const PostTextarea = forwardRef<
       onUploadStart,
       onUploadProgress,
       onUploadEnd,
-      kind = 1
+      kind = 1,
+      highlightData
     },
     ref
   ) => {
     const { t } = useTranslation()
+    const [activeTab, setActiveTab] = useState('edit')
     const editor = useEditor({
       extensions: [
         Document,
@@ -160,7 +164,7 @@ const PostTextarea = forwardRef<
     }
 
     return (
-      <Tabs defaultValue="edit" className="space-y-2">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-2">
         <TabsList>
           <TabsTrigger value="edit">{t('Edit')}</TabsTrigger>
           <TabsTrigger value="preview">{t('Preview')}</TabsTrigger>
@@ -169,7 +173,7 @@ const PostTextarea = forwardRef<
           <EditorContent className="tiptap" editor={editor} />
         </TabsContent>
         <TabsContent value="preview">
-          <Preview content={text} className={className} kind={kind} />
+          <Preview content={text} className={className} kind={kind} highlightData={highlightData} />
         </TabsContent>
       </Tabs>
     )

@@ -11,7 +11,7 @@ import { useMuteList } from '@/providers/MuteListProvider'
 import { useNostr } from '@/providers/NostrProvider'
 import { BIG_RELAY_URLS, FAST_READ_RELAY_URLS, FAST_WRITE_RELAY_URLS } from '@/constants'
 import client from '@/services/client.service'
-import { Bell, BellOff, Code, Copy, Link, SatelliteDish, Trash2, TriangleAlert, Pin, FileDown, Globe, BookOpen } from 'lucide-react'
+import { Bell, BellOff, Code, Copy, Link, SatelliteDish, Trash2, TriangleAlert, Pin, FileDown, Globe, BookOpen, Highlighter } from 'lucide-react'
 import { Event, kinds } from 'nostr-tools'
 import { nip19 } from 'nostr-tools'
 import { useMemo, useState, useEffect } from 'react'
@@ -42,6 +42,7 @@ interface UseMenuActionsProps {
   setIsRawEventDialogOpen: (open: boolean) => void
   setIsReportDialogOpen: (open: boolean) => void
   isSmallScreen: boolean
+  openHighlightEditor?: (highlightData: import('../PostEditor/HighlightEditor').HighlightData, eventContent?: string) => void
 }
 
 export function useMenuActions({
@@ -50,7 +51,8 @@ export function useMenuActions({
   showSubMenuActions,
   setIsRawEventDialogOpen,
   setIsReportDialogOpen,
-  isSmallScreen
+  isSmallScreen,
+  openHighlightEditor
 }: UseMenuActionsProps) {
   const { t } = useTranslation()
   const { pubkey, attemptDelete, publish } = useNostr()
@@ -347,6 +349,21 @@ export function useMenuActions({
     }
   }, [isArticleType, event, dTag])
 
+  // Check if this is an OP event that can be highlighted
+  const isOPEvent = useMemo(() => {
+    return (
+      event.kind === kinds.ShortTextNote || // 1
+      event.kind === kinds.LongFormArticle || // 30023
+      event.kind === ExtendedKind.WIKI_ARTICLE || // 30818
+      event.kind === ExtendedKind.WIKI_ARTICLE_MARKDOWN || // 30817
+      event.kind === ExtendedKind.PUBLICATION || // 30040
+      event.kind === ExtendedKind.PUBLICATION_CONTENT || // 30041
+      event.kind === ExtendedKind.DISCUSSION || // 11
+      event.kind === ExtendedKind.COMMENT || // 1111
+      (event.kind === kinds.Zap && (event.tags.some(tag => tag[0] === 'e') || event.tags.some(tag => tag[0] === 'a'))) // Zap receipt
+    )
+  }, [event.kind, event.tags])
+
   const menuActions: MenuAction[] = useMemo(() => {
     // Export functions for articles
     const exportAsMarkdown = () => {
@@ -443,17 +460,81 @@ export function useMenuActions({
           navigator.clipboard.writeText(toNjump(getNoteBech32Id(event)))
           closeDrawer()
         }
-      },
-      {
-        icon: Code,
-        label: t('View raw event'),
-        onClick: () => {
-          closeDrawer()
-          setIsRawEventDialogOpen(true)
-        },
-        separator: true
       }
     ]
+
+    // Add "Create Highlight" action for OP events
+    if (isOPEvent && openHighlightEditor) {
+      actions.push({
+        icon: Highlighter,
+        label: t('Create Highlight'),
+        onClick: () => {
+          try {
+            // For addressable events (publications, long-form articles with d-tag), use naddr
+            // For regular events, use nevent
+            let sourceValue: string
+            let sourceHexId: string | undefined
+            
+            if (kinds.isAddressableKind(event.kind) || kinds.isReplaceableKind(event.kind)) {
+              // Generate naddr for addressable/replaceable events
+              const dTag = event.tags.find(tag => tag[0] === 'd')?.[1] || ''
+              if (dTag) {
+                const relays = event.tags
+                  .filter(tag => tag[0] === 'relay')
+                  .map(tag => tag[1])
+                  .filter(Boolean)
+                
+                try {
+                  sourceValue = nip19.naddrEncode({
+                    kind: event.kind,
+                    pubkey: event.pubkey,
+                    identifier: dTag,
+                    relays: relays.length > 0 ? relays : undefined
+                  })
+                  sourceHexId = undefined // naddr doesn't have a single hex ID
+                } catch (error) {
+                  logger.error('Error generating naddr for highlight', { error })
+                  // Fallback to nevent
+                  sourceValue = getNoteBech32Id(event)
+                  sourceHexId = event.id
+                }
+              } else {
+                // No d-tag, use nevent
+                sourceValue = getNoteBech32Id(event)
+                sourceHexId = event.id
+              }
+            } else {
+              // Regular event, use nevent
+              sourceValue = getNoteBech32Id(event)
+              sourceHexId = event.id
+            }
+            
+            const highlightData: import('../PostEditor/HighlightEditor').HighlightData = {
+              sourceType: 'nostr',
+              sourceValue,
+              sourceHexId
+              // context field is left empty - user can add it later if needed
+            }
+            // Pass the event content as defaultContent for the main editor field
+            openHighlightEditor(highlightData, event.content)
+          } catch (error) {
+            logger.error('Error creating highlight from event', { error, eventId: event.id })
+            toast.error(t('Failed to create highlight'))
+          }
+        },
+        separator: true
+      })
+    }
+
+    actions.push({
+      icon: Code,
+      label: t('View raw event'),
+      onClick: () => {
+        closeDrawer()
+        setIsRawEventDialogOpen(true)
+      },
+      separator: true
+    })
 
     // Add export options for article-type events
     if (isArticleType) {
@@ -621,6 +702,7 @@ export function useMenuActions({
     pubkey,
     isMuted,
     isSmallScreen,
+    openHighlightEditor,
     broadcastSubMenu,
     closeDrawer,
     showSubMenuActions,

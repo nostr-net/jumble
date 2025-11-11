@@ -7,6 +7,8 @@ import { MobileMenu } from './MobileMenu'
 import RawEventDialog from './RawEventDialog'
 import ReportDialog from './ReportDialog'
 import { SubMenuAction, useMenuActions } from './useMenuActions'
+import PostEditor from '../PostEditor'
+import { HighlightData } from '../PostEditor/HighlightEditor'
 
 export default function NoteOptions({ event, className }: { event: Event; className?: string }) {
   const { isSmallScreen } = useScreenSize()
@@ -16,6 +18,9 @@ export default function NoteOptions({ event, className }: { event: Event; classN
   const [showSubMenu, setShowSubMenu] = useState(false)
   const [activeSubMenu, setActiveSubMenu] = useState<SubMenuAction[]>([])
   const [subMenuTitle, setSubMenuTitle] = useState('')
+  const [isPostEditorOpen, setIsPostEditorOpen] = useState(false)
+  const [initialHighlightData, setInitialHighlightData] = useState<HighlightData | undefined>(undefined)
+  const [highlightDefaultContent, setHighlightDefaultContent] = useState<string>('')
 
   const closeDrawer = () => {
     setIsDrawerOpen(false)
@@ -38,7 +43,13 @@ export default function NoteOptions({ event, className }: { event: Event; classN
     showSubMenuActions,
     setIsRawEventDialogOpen,
     setIsReportDialogOpen,
-    isSmallScreen
+    isSmallScreen,
+    openHighlightEditor: (highlightData: HighlightData, eventContent?: string) => {
+      setInitialHighlightData(highlightData)
+      setHighlightDefaultContent(eventContent || '')
+      setIsPostEditorOpen(true)
+      closeDrawer()
+    }
   })
 
   const trigger = useMemo(
@@ -80,6 +91,18 @@ export default function NoteOptions({ event, className }: { event: Event; classN
         event={event}
         isOpen={isReportDialogOpen}
         closeDialog={() => setIsReportDialogOpen(false)}
+      />
+      <PostEditor
+        open={isPostEditorOpen}
+        setOpen={(open) => {
+          setIsPostEditorOpen(open)
+          if (!open) {
+            setInitialHighlightData(undefined)
+            setHighlightDefaultContent('')
+          }
+        }}
+        defaultContent={highlightDefaultContent}
+        initialHighlightData={initialHighlightData}
       />
     </div>
   )

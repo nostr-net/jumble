@@ -4,6 +4,42 @@ import { nip19 } from 'nostr-tools'
 import logger from '@/lib/logger'
 import HighlightSourcePreview from '@/components/UniversalContent/HighlightSourcePreview'
 
+/**
+ * Check if a string is a URL or Nostr address
+ */
+function isUrlOrNostrAddress(value: string | undefined): boolean {
+  if (!value || typeof value !== 'string') {
+    return false
+  }
+  
+  // Check if it's a URL (http://, https://, or starts with common URL patterns)
+  try {
+    if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('ws://') || value.startsWith('wss://')) {
+      new URL(value) // Validate it's a proper URL
+      return true
+    }
+  } catch {
+    // Not a valid URL
+  }
+
+  // Check if it's a Nostr address (nostr: prefix or bech32 encoded)
+  if (value.startsWith('nostr:')) {
+    return true
+  }
+
+  // Check if it's a bech32 encoded Nostr address
+  try {
+    const decoded = nip19.decode(value)
+    if (['npub', 'nprofile', 'nevent', 'naddr', 'note', 'nrelay'].includes(decoded.type)) {
+      return true
+    }
+  } catch {
+    // Not a valid Nostr address
+  }
+
+  return false
+}
+
 export default function Highlight({
   event,
   className
@@ -15,6 +51,7 @@ export default function Highlight({
 
     // Extract the source (e-tag, a-tag, or r-tag) with improved priority handling
     let source = null
+    let quoteSource: string | null = null // For plain text r-tags that aren't URLs/Nostr addresses
     let sourceTag: string[] | undefined
     
     // Check for 'source' marker first (highest priority)
@@ -50,13 +87,13 @@ export default function Highlight({
     
     // Process the selected source tag
     if (sourceTag) {
-      if (sourceTag[0] === 'e') {
+      if (sourceTag[0] === 'e' && sourceTag[1]) {
         source = {
           type: 'event' as const,
           value: sourceTag[1],
           bech32: nip19.noteEncode(sourceTag[1])
         }
-      } else if (sourceTag[0] === 'a') {
+      } else if (sourceTag[0] === 'a' && sourceTag[1]) {
         const [kind, pubkey, identifier] = sourceTag[1].split(':')
         const relay = sourceTag[2]
         source = {
@@ -70,10 +107,16 @@ export default function Highlight({
           })
         }
       } else if (sourceTag[0] === 'r') {
-        source = {
-          type: 'url' as const,
-          value: sourceTag[1],
-          bech32: sourceTag[1]
+        // Check if the r-tag value is a URL or Nostr address
+        if (sourceTag[1] && isUrlOrNostrAddress(sourceTag[1])) {
+          source = {
+            type: 'url' as const,
+            value: sourceTag[1],
+            bech32: sourceTag[1]
+          }
+        } else if (sourceTag[1]) {
+          // It's plain text, store it as a quote source
+          quoteSource = sourceTag[1]
         }
       }
     }
@@ -90,27 +133,53 @@ export default function Highlight({
         <div className="flex-1 min-w-0">
             {/* Full quoted text with highlighted portion */}
             {context && (
-              <div className="text-base font-normal mb-3 whitespace-pre-wrap break-words">
+              <div className="text-base font-normal mb-3 whitespace-pre-wrap break-words border-l-4 border-green-500 pl-4">
                 {contextTag && highlightedText ? (
                   // If we have both context and highlighted text, show the highlight within the context
                   <div>
-                    {context.split(highlightedText).map((part, index) => (
-                      <span key={index}>
-                        {part}
-                        {index < context.split(highlightedText).length - 1 && (
-                          <mark className="bg-green-200 dark:bg-green-800 px-1 rounded">
-                            {highlightedText}
-                          </mark>
-                        )}
-                      </span>
-                    ))}
+                    {(() => {
+                      // Strip outer quotation marks if present
+                      let cleanContext = context.trim()
+                      if (cleanContext.startsWith('"') && cleanContext.endsWith('"')) {
+                        cleanContext = cleanContext.slice(1, -1).trim()
+                      }
+                      // Strip outer quotation marks from highlighted text if present
+                      let cleanHighlightedText = highlightedText.trim()
+                      if (cleanHighlightedText.startsWith('"') && cleanHighlightedText.endsWith('"')) {
+                        cleanHighlightedText = cleanHighlightedText.slice(1, -1).trim()
+                      }
+                      return cleanContext.split(cleanHighlightedText).map((part, index) => (
+                        <span key={index}>
+                          {part}
+                          {index < cleanContext.split(cleanHighlightedText).length - 1 && (
+                            <mark className="bg-green-200 dark:bg-green-800 px-1 rounded">
+                              {cleanHighlightedText}
+                            </mark>
+                          )}
+                        </span>
+                      ))
+                    })()}
                   </div>
                 ) : (
                   // If no context tag, just show the content as a regular quote
-                  <blockquote className="italic">
-                    "{context}"
-                  </blockquote>
+                  <div>
+                    {(() => {
+                      // Strip outer quotation marks if present
+                      let cleanContext = context.trim()
+                      if (cleanContext.startsWith('"') && cleanContext.endsWith('"')) {
+                        cleanContext = cleanContext.slice(1, -1).trim()
+                      }
+                      return cleanContext
+                    })()}
+                  </div>
                 )}
+              </div>
+            )}
+
+            {/* Quote source (plain text r-tag) */}
+            {quoteSource && (
+              <div className="mt-3 text-sm text-gray-600 dark:text-gray-400 italic">
+                {quoteSource.trimStart().startsWith('—') ? quoteSource : `— ${quoteSource}`}
               </div>
             )}
 

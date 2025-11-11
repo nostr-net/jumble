@@ -38,12 +38,14 @@ export default function PostContent({
   defaultContent = '',
   parentEvent,
   close,
-  openFrom
+  openFrom,
+  initialHighlightData
 }: {
   defaultContent?: string
   parentEvent?: Event
   close: () => void
   openFrom?: string[]
+  initialHighlightData?: HighlightData
 }) {
   const { t } = useTranslation()
   const { pubkey, publish, checkLogin } = useNostr()
@@ -64,11 +66,13 @@ export default function PostContent({
   const [extractedMentions, setExtractedMentions] = useState<string[]>([])
   const [isProtectedEvent, setIsProtectedEvent] = useState(false)
   const [additionalRelayUrls, setAdditionalRelayUrls] = useState<string[]>([])
-  const [isHighlight, setIsHighlight] = useState(false)
-  const [highlightData, setHighlightData] = useState<HighlightData>({
-    sourceType: 'nostr',
-    sourceValue: ''
-  })
+  const [isHighlight, setIsHighlight] = useState(!!initialHighlightData)
+  const [highlightData, setHighlightData] = useState<HighlightData>(
+    initialHighlightData || {
+      sourceType: 'nostr',
+      sourceValue: ''
+    }
+  )
   const [pollCreateData, setPollCreateData] = useState<TPollCreateData>({
     isMultipleChoice: false,
     options: ['', ''],
@@ -105,6 +109,22 @@ export default function PostContent({
     isHighlight,
     highlightData
   ])
+
+  // Clear highlight data when initialHighlightData changes or is removed
+  useEffect(() => {
+    if (initialHighlightData) {
+      // Set highlight mode and data when provided
+      setIsHighlight(true)
+      setHighlightData(initialHighlightData)
+    } else {
+      // Clear highlight mode and data when not provided
+      setIsHighlight(false)
+      setHighlightData({
+        sourceType: 'nostr',
+        sourceValue: ''
+      })
+    }
+  }, [initialHighlightData])
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -469,7 +489,8 @@ export default function PostContent({
         onUploadStart={handleUploadStart}
         onUploadProgress={handleUploadProgress}
         onUploadEnd={handleUploadEnd}
-        kind={isPublicMessage ? ExtendedKind.PUBLIC_MESSAGE : isPoll ? ExtendedKind.POLL : kinds.ShortTextNote}
+        kind={isHighlight ? kinds.Highlights : isPublicMessage ? ExtendedKind.PUBLIC_MESSAGE : isPoll ? ExtendedKind.POLL : kinds.ShortTextNote}
+        highlightData={isHighlight ? highlightData : undefined}
       />
       {isPoll && (
         <PollEditor

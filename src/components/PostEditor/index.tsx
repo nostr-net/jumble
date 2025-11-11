@@ -24,26 +24,34 @@ export default function PostEditor({
   parentEvent,
   open,
   setOpen,
-  openFrom
+  openFrom,
+  initialHighlightData
 }: {
   defaultContent?: string
   parentEvent?: Event
   open: boolean
   setOpen: Dispatch<boolean>
   openFrom?: string[]
+  initialHighlightData?: import('./HighlightEditor').HighlightData
 }) {
   const { isSmallScreen } = useScreenSize()
+
+  // If initialHighlightData is provided and we're creating a highlight from an event,
+  // we need to pass the event content as defaultContent for the main editor
+  // Note: This is handled separately - we'll pass the event content when opening from menu
+  const effectiveDefaultContent = defaultContent
 
   const content = useMemo(() => {
     return (
       <PostContent
-        defaultContent={defaultContent}
+        defaultContent={effectiveDefaultContent}
         parentEvent={parentEvent}
         close={() => setOpen(false)}
         openFrom={openFrom}
+        initialHighlightData={initialHighlightData}
       />
     )
-  }, [defaultContent, parentEvent, openFrom, setOpen])
+  }, [effectiveDefaultContent, parentEvent, openFrom, setOpen, initialHighlightData])
 
   if (isSmallScreen) {
     return (
