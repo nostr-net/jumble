@@ -199,6 +199,25 @@ export function getImetaInfoFromImetaTag(tag: string[], pubkey?: string): TImeta
     imeta.image = cleanUrl(imageUrl)
   }
   
+  // Parse thumbnail URL (for images)
+  let thumbUrl: string | undefined
+  
+  // First try the space-separated format
+  const thumbItem = tag.find((item) => item.startsWith('thumb '))
+  if (thumbItem) {
+    thumbUrl = thumbItem.slice(6)
+  } else {
+    // Try the separate element format
+    const thumbIndex = tag.findIndex((item) => item === 'thumb')
+    if (thumbIndex !== -1 && thumbIndex + 1 < tag.length) {
+      thumbUrl = tag[thumbIndex + 1]
+    }
+  }
+  
+  if (thumbUrl) {
+    imeta.thumb = cleanUrl(thumbUrl)
+  }
+  
   return imeta
 }
 

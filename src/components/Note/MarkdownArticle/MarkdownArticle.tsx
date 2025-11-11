@@ -119,9 +119,11 @@ function parseMarkdownContent(
     navigateToHashtag: (href: string) => void
     navigateToRelay: (url: string) => void
     videoPosterMap?: Map<string, string>
+    imageThumbnailMap?: Map<string, string>
+    getImageIdentifier?: (url: string) => string | null
   }
 ): { nodes: React.ReactNode[]; hashtagsInContent: Set<string>; footnotes: Map<string, string> } {
-  const { eventPubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay, videoPosterMap } = options
+  const { eventPubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay, videoPosterMap, imageThumbnailMap, getImageIdentifier } = options
   const parts: React.ReactNode[] = []
   const hashtagsInContent = new Set<string>()
   const footnotes = new Map<string, string>()
@@ -711,12 +713,35 @@ function parseMarkdownContent(
     if (pattern.type === 'markdown-image') {
       const { url } = pattern.data
       const cleaned = cleanUrl(url)
-      const imageIndex = imageIndexMap.get(cleaned)
+      // Look up image index - try by URL first, then by identifier for cross-domain matching
+      let imageIndex = imageIndexMap.get(cleaned)
+      if (imageIndex === undefined && getImageIdentifier) {
+        const identifier = getImageIdentifier(cleaned)
+        if (identifier) {
+          imageIndex = imageIndexMap.get(`__img_id:${identifier}`)
+        }
+      }
+      
       if (isImage(cleaned)) {
+        // Check if there's a thumbnail available for this image
+        // Use thumbnail for display, but original URL for lightbox
+        let thumbnailUrl: string | undefined
+        if (imageThumbnailMap) {
+          thumbnailUrl = imageThumbnailMap.get(cleaned)
+          // Also check by identifier for cross-domain matching
+          if (!thumbnailUrl && getImageIdentifier) {
+            const identifier = getImageIdentifier(cleaned)
+            if (identifier) {
+              thumbnailUrl = imageThumbnailMap.get(`__img_id:${identifier}`)
+            }
+          }
+        }
+        const displayUrl = thumbnailUrl || url
+        
         parts.push(
           <div key={`img-${patternIdx}`} className="my-2 block">
             <Image
-              image={{ url, pubkey: eventPubkey }}
+              image={{ url: displayUrl, pubkey: eventPubkey }}
               className="max-w-[400px] rounded-lg cursor-zoom-in"
               classNames={{
                 wrapper: 'rounded-lg block',
@@ -754,6 +779,20 @@ function parseMarkdownContent(
         const cleaned = cleanUrl(imageUrl)
         
         if (isImage(cleaned)) {
+          // Check if there's a thumbnail available for this image
+          let thumbnailUrl: string | undefined
+          if (imageThumbnailMap) {
+            thumbnailUrl = imageThumbnailMap.get(cleaned)
+            // Also check by identifier for cross-domain matching
+            if (!thumbnailUrl && getImageIdentifier) {
+              const identifier = getImageIdentifier(cleaned)
+              if (identifier) {
+                thumbnailUrl = imageThumbnailMap.get(`__img_id:${identifier}`)
+              }
+            }
+          }
+          const displayUrl = thumbnailUrl || imageUrl
+          
           // Render as a block-level clickable image that links to the URL
           // Clicking the image should navigate to the URL (standard markdown behavior)
           parts.push(
@@ -769,7 +808,7 @@ function parseMarkdownContent(
                 }}
               >
                 <Image
-                  image={{ url: imageUrl, pubkey: eventPubkey }}
+                  image={{ url: displayUrl, pubkey: eventPubkey }}
                   className="max-w-[400px] rounded-lg cursor-pointer"
                   classNames={{
                     wrapper: 'rounded-lg block',
@@ -1741,19 +1780,57 @@ export default function MarkdownArticle({
     return images
   }, [extractedMedia.images, metadata.image])
   
+  // Helper function to extract image filename/hash from URL for comparison
+  // This helps identify the same image hosted on different domains
+  const getImageIdentifier = useMemo(() => {
+    return (url: string): string | null => {
+      try {
+        const cleaned = cleanUrl(url)
+        if (!cleaned) return null
+        const parsed = new URL(cleaned)
+        const pathname = parsed.pathname
+        // Extract the filename (last segment of the path)
+        const filename = pathname.split('/').pop() || ''
+        // If the filename looks like a hash (hex string), use it for comparison
+        // Also use the full pathname as a fallback
+        if (filename && /^[a-f0-9]{32,}\.(png|jpg|jpeg|gif|webp|svg)$/i.test(filename)) {
+          return filename.toLowerCase()
+        }
+        // Fallback to cleaned URL for non-hash filenames
+        return cleaned
+      } catch {
+        return cleanUrl(url) || null
+      }
+    }
+  }, [])
+  
   // Create image index map for lightbox
+  // Maps image URLs (and identifiers) to their index in allImages
   const imageIndexMap = useMemo(() => {
     const map = new Map<string, number>()
     allImages.forEach((img, index) => {
       const cleaned = cleanUrl(img.url)
-      if (cleaned) map.set(cleaned, index)
+      if (cleaned) {
+        map.set(cleaned, index)
+        // Also map by identifier for cross-domain matching
+        const identifier = getImageIdentifier(cleaned)
+        if (identifier && identifier !== cleaned) {
+          // Only add identifier mapping if it's different from the cleaned URL
+          // This helps match images across different domains
+          if (!map.has(`__img_id:${identifier}`)) {
+            map.set(`__img_id:${identifier}`, index)
+          }
+        }
+      }
     })
     return map
-  }, [allImages])
-  
+  }, [allImages, getImageIdentifier])
+
   // Parse content to find media URLs that are already rendered
+  // Store both cleaned URLs and image identifiers for comparison
   const mediaUrlsInContent = useMemo(() => {
     const urls = new Set<string>()
+    const imageIdentifiers = new Set<string>()
     const urlRegex = /https?:\/\/[^\s<>"']+/g
     let match
     while ((match = urlRegex.exec(event.content)) !== null) {
@@ -1761,10 +1838,17 @@ export default function MarkdownArticle({
       const cleaned = cleanUrl(url)
       if (cleaned && (isImage(cleaned) || isVideo(cleaned) || isAudio(cleaned))) {
         urls.add(cleaned)
+        // Also add image identifier for filename-based matching
+        const identifier = getImageIdentifier(cleaned)
+        if (identifier) {
+          imageIdentifiers.add(identifier)
+        }
       }
     }
+    // Store identifiers in the Set as well (using a prefix to distinguish)
+    imageIdentifiers.forEach(id => urls.add(`__img_id:${id}`))
     return urls
-  }, [event.content])
+  }, [event.content, getImageIdentifier])
   
   // Extract YouTube URLs from content
   const youtubeUrlsInContent = useMemo(() => {
@@ -1813,8 +1897,14 @@ export default function MarkdownArticle({
     return tagMedia.filter(media => {
       const cleaned = cleanUrl(media.url)
       if (!cleaned) return false
-      // Skip if already in content
+      
+      // Check if already in content by cleaned URL
       if (mediaUrlsInContent.has(cleaned)) return false
+      
+      // Also check by image identifier (filename/hash) for same image on different domains
+      const identifier = getImageIdentifier(cleaned)
+      if (identifier && mediaUrlsInContent.has(`__img_id:${identifier}`)) return false
+      
       // Skip if this is the metadata image (shown separately)
       if (metadataImageUrl && cleaned === metadataImageUrl && !hideMetadata) return false
       return true
@@ -1861,6 +1951,27 @@ export default function MarkdownArticle({
     return map
   }, [event.id, JSON.stringify(event.tags)])
   
+  // Create thumbnail map from imeta tags (for images)
+  // Maps original image URL to thumbnail URL
+  const imageThumbnailMap = useMemo(() => {
+    const map = new Map<string, string>()
+    const imetaInfos = getImetaInfosFromEvent(event)
+    imetaInfos.forEach((info) => {
+      if (info.thumb && (info.m?.startsWith('image/') || isImage(info.url))) {
+        const cleaned = cleanUrl(info.url)
+        if (cleaned && info.thumb) {
+          map.set(cleaned, info.thumb)
+          // Also map by identifier for cross-domain matching
+          const identifier = getImageIdentifier(cleaned)
+          if (identifier) {
+            map.set(`__img_id:${identifier}`, info.thumb)
+          }
+        }
+      }
+    })
+    return map
+  }, [event.id, JSON.stringify(event.tags), getImageIdentifier])
+  
   // Parse markdown content with post-processing for nostr: links and hashtags
   const { nodes: parsedContent, hashtagsInContent } = useMemo(() => {
     const result = parseMarkdownContent(preprocessedContent, {
@@ -1869,11 +1980,13 @@ export default function MarkdownArticle({
       openLightbox,
       navigateToHashtag,
       navigateToRelay,
-      videoPosterMap
+      videoPosterMap,
+      imageThumbnailMap,
+      getImageIdentifier
     })
     // Return nodes and hashtags (footnotes are already included in nodes)
     return { nodes: result.nodes, hashtagsInContent: result.hashtagsInContent }
-  }, [preprocessedContent, event.pubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay, videoPosterMap])
+  }, [preprocessedContent, event.pubkey, imageIndexMap, openLightbox, navigateToHashtag, navigateToRelay, videoPosterMap, imageThumbnailMap, getImageIdentifier])
   
   // Filter metadata tags to only show what's not already in content
   const leftoverMetadataTags = useMemo(() => {
@@ -1908,9 +2021,11 @@ export default function MarkdownArticle({
         {/* Metadata image */}
                 {!hideMetadata && metadata.image && (() => {
         const cleanedMetadataImage = cleanUrl(metadata.image)
-          // Don't show if already in content
-          if (cleanedMetadataImage && mediaUrlsInContent.has(cleanedMetadataImage)) {
-            return null
+          // Don't show if already in content (check by URL and by identifier)
+          if (cleanedMetadataImage) {
+            if (mediaUrlsInContent.has(cleanedMetadataImage)) return null
+            const identifier = getImageIdentifier(cleanedMetadataImage)
+            if (identifier && mediaUrlsInContent.has(`__img_id:${identifier}`)) return null
           }
           
           const metadataImageIndex = imageIndexMap.get(cleanedMetadataImage)
@@ -1941,10 +2056,24 @@ export default function MarkdownArticle({
               const mediaIndex = imageIndexMap.get(cleaned)
               
               if (media.type === 'image') {
+                // Check if there's a thumbnail available for this image
+                let thumbnailUrl: string | undefined
+                if (imageThumbnailMap) {
+                  thumbnailUrl = imageThumbnailMap.get(cleaned)
+                  // Also check by identifier for cross-domain matching
+                  if (!thumbnailUrl) {
+                    const identifier = getImageIdentifier(cleaned)
+                    if (identifier) {
+                      thumbnailUrl = imageThumbnailMap.get(`__img_id:${identifier}`)
+                    }
+                  }
+                }
+                const displayUrl = thumbnailUrl || media.url
+                
                 return (
                   <div key={`tag-media-${cleaned}`} className="my-2">
                     <Image
-                      image={{ url: media.url, pubkey: event.pubkey }}
+                      image={{ url: displayUrl, pubkey: event.pubkey }}
                       className="max-w-[400px] rounded-lg cursor-zoom-in"
                       classNames={{
                         wrapper: 'rounded-lg',
