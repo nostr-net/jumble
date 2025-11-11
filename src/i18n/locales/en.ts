@@ -30,6 +30,7 @@ export default {
     'loading...': 'loading...',
     'Loading...': 'Loading...',
     'no more notes': 'no more notes',
+    'The nostr.band relay appears to be temporarily out of service. Please try again later.': 'The nostr.band relay appears to be temporarily out of service. Please try again later.',
     'reply to': 'reply to',
     reply: 'reply',
     Reply: 'Reply',

@@ -873,7 +873,23 @@ class ClientService extends EventTarget {
     }
 
     try {
-      const response = await fetch('https://api.nostr.band/v0/trending/notes')
+      // Create a timeout promise that rejects after 5 seconds
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('TIMEOUT'))
+        }, 5000)
+      })
+
+      // Race between the fetch and timeout
+      const response = await Promise.race([
+        fetch('https://api.nostr.band/v0/trending/notes'),
+        timeoutPromise
+      ])
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
       const data = await response.json()
       const events: NEvent[] = []
       for (const note of data.notes ?? []) {
@@ -895,6 +911,13 @@ class ClientService extends EventTarget {
       this.trendingNotesCache = events
       return this.trendingNotesCache
     } catch (error) {
+      // Re-throw timeout errors so the component can handle them
+      // Don't cache on timeout - let the component handle the error state
+      if (error instanceof Error && error.message === 'TIMEOUT') {
+        throw error
+      }
+      // For other errors, return empty array and cache it (existing behavior)
+      this.trendingNotesCache = []
       return []
     }
   }

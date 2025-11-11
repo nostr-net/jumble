@@ -40,6 +40,7 @@ export default function TrendingNotes() {
   const { zapReplyThreshold } = useZap()
   const [nostrEvents, setNostrEvents] = useState<NostrEvent[]>([])
   const [nostrLoading, setNostrLoading] = useState(false)
+  const [nostrError, setNostrError] = useState<string | null>(null)
   const [showCount, setShowCount] = useState(SHOW_COUNT)
   const [activeTab, setActiveTab] = useState<TrendingTab>('nostr')
   const [sortOrder, setSortOrder] = useState<SortOrder>('most-popular')
@@ -49,25 +50,48 @@ export default function TrendingNotes() {
   const [cacheEvents, setCacheEvents] = useState<NostrEvent[]>([])
   const [cacheLoading, setCacheLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const isFetchingNostrRef = useRef(false)
 
   // Load Nostr.band trending feed when tab is active
   useEffect(() => {
     const loadTrending = async () => {
+      // Prevent concurrent fetches
+      if (isFetchingNostrRef.current) {
+        return
+      }
+      
       try {
+        isFetchingNostrRef.current = true
         setNostrLoading(true)
+        setNostrError(null)
         const events = await client.fetchTrendingNotes()
         setNostrEvents(events)
+        setNostrError(null)
       } catch (error) {
-        logger.warn('Failed to load nostr.band trending notes', error as Error)
+        if (error instanceof Error && error.message === 'TIMEOUT') {
+          setNostrError('timeout')
+          logger.warn('nostr.band API request timed out after 5 seconds')
+        } else {
+          logger.warn('Failed to load nostr.band trending notes', error as Error)
+          setNostrError(null) // Other errors are handled silently (empty array)
+        }
       } finally {
         setNostrLoading(false)
+        isFetchingNostrRef.current = false
       }
     }
 
-    if (activeTab === 'nostr' && nostrEvents.length === 0 && !nostrLoading) {
+    if (activeTab === 'nostr' && nostrEvents.length === 0 && !nostrLoading && !nostrError && !isFetchingNostrRef.current) {
       loadTrending()
     }
-  }, [activeTab, nostrEvents.length, nostrLoading])
+  }, [activeTab, nostrEvents.length, nostrLoading, nostrError])
+  
+  // Reset error when switching away from nostr tab
+  useEffect(() => {
+    if (activeTab !== 'nostr') {
+      setNostrError(null)
+    }
+  }, [activeTab])
 
   // Debug: Track cacheEvents changes
   useEffect(() => {
@@ -562,16 +586,6 @@ export default function TrendingNotes() {
           <span className="text-sm font-medium text-muted-foreground">Trending:</span>
           <div className="flex gap-1">
             <button
-              onClick={() => setActiveTab('nostr')}
-              className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                activeTab === 'nostr'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-              }`}
-            >
-              on Nostr
-            </button>
-            <button
               onClick={() => setActiveTab('relays')}
               className={`px-3 py-1 text-sm rounded-md transition-colors ${
                 activeTab === 'relays'
@@ -590,6 +604,16 @@ export default function TrendingNotes() {
               }`}
             >
               hashtags
+            </button>
+            <button
+              onClick={() => setActiveTab('nostr')}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                activeTab === 'nostr'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+              }`}
+            >
+              on Nostr
             </button>
           </div>
         </div>
@@ -675,8 +699,15 @@ export default function TrendingNotes() {
         )}
       </div>
       
-      {/* Show loading message for nostr tab */}
-      {activeTab === 'nostr' && nostrLoading && nostrEvents.length === 0 && (
+      {/* Show error message for nostr tab timeout (show instead of loading when error occurs, only if no events) */}
+      {activeTab === 'nostr' && nostrError === 'timeout' && !nostrLoading && filteredEvents.length === 0 && (
+        <div className="text-center text-sm text-muted-foreground mt-8 px-4 py-2 bg-muted/50 rounded-md mx-4">
+          {t('The nostr.band relay appears to be temporarily out of service. Please try again later.')}
+        </div>
+      )}
+      
+      {/* Show loading message for nostr tab (only if not in error state) */}
+      {activeTab === 'nostr' && nostrLoading && nostrEvents.length === 0 && !nostrError && (
         <div className="text-center text-sm text-muted-foreground mt-8">
           Loading trending notes from nostr.band...
         </div>
@@ -691,6 +722,14 @@ export default function TrendingNotes() {
       {filteredEvents.map((event) => (
         <NoteCard key={event.id} className="w-full" event={event} />
       ))}
+      
+      {/* Show error message at the end for nostr tab timeout (only if there are events) */}
+      {activeTab === 'nostr' && nostrError === 'timeout' && !nostrLoading && filteredEvents.length > 0 && (
+        <div className="text-center text-sm text-muted-foreground mt-4 px-4 py-2 bg-muted/50 rounded-md mx-4">
+          {t('The nostr.band relay appears to be temporarily out of service. Please try again later.')}
+        </div>
+      )}
+      
       {(() => {
         const totalAvailableLength =
           activeTab === 'nostr'
