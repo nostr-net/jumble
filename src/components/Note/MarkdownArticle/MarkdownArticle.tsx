@@ -29,6 +29,69 @@ function truncateLinkText(text: string, maxLength: number = 200): string {
 }
 
 /**
+ * Unescape JSON-encoded escape sequences in content
+ * Handles cases where content has been JSON-encoded multiple times or has escaped characters
+ * Examples: \\n -> \n, \" -> ", \\\n -> \n
+ * 
+ * The content may have patterns like:
+ * - \\\n (three backslashes + n) which should become \n (newline)
+ * - \" (escaped quote) which should become " (quote)
+ * - \\\" (escaped backslash + escaped quote) which should become \" (backslash + quote)
+ */
+function unescapeJsonContent(content: string): string {
+  // The content may have been JSON-encoded multiple times, resulting in escape sequences.
+  // When content is stored in JSON and then parsed, escape sequences can become literal strings.
+  // For example, a newline stored as "\\n" in JSON becomes the string "\n" (backslash + n) after parsing.
+  // If double-encoded, "\\\\n" in JSON becomes "\\n" (two backslashes + n) after parsing.
+  
+  // Process in order from most escaped to least escaped to avoid double-processing
+  
+  // Handle triple-escaped newlines: \\\n -> \n
+  // In the actual string, this appears as backslash + backslash + backslash + 'n'
+  // Regex: /\\\\\\n/g (in source: four backslashes + backslash + n)
+  let unescaped = content.replace(/\\\\\\n/g, '\n')
+  
+  // Handle double-escaped newlines: \\n -> \n  
+  // In the actual string, this appears as backslash + backslash + 'n'
+  // Regex: /\\\\n/g (in source: four backslashes + n)
+  unescaped = unescaped.replace(/\\\\n/g, '\n')
+  
+  // Handle single-escaped newlines: \n -> newline
+  // This handles cases where the content has literal \n that should be newlines
+  // But we need to be careful not to break actual newlines that are already in the content
+  // We'll only replace \n that appears as a literal backslash + n sequence
+  unescaped = unescaped.replace(/\\n/g, '\n')
+  
+  // Handle escaped quotes: \" -> "
+  unescaped = unescaped.replace(/\\"/g, '"')
+  
+  // Handle escaped tabs: \t -> tab
+  unescaped = unescaped.replace(/\\t/g, '\t')
+  
+  // Handle escaped carriage returns: \r -> carriage return
+  unescaped = unescaped.replace(/\\r/g, '\r')
+  
+  // Remove any remaining standalone backslashes that aren't part of valid escape sequences
+  // This catches any stray backslashes that shouldn't be visible
+  // We preserve backslashes that are followed by n, ", t, r, or another backslash
+  // BUT: Don't remove backslashes that might be legitimate (like in markdown code blocks)
+  // Only remove if it's clearly a stray escape character
+  unescaped = unescaped.replace(/\\(?![n"tr\\])/g, '')
+  
+  // Decode any HTML entities that might have been incorrectly encoded
+  // This handles cases where content has HTML entities like &#x43; (which is 'C')
+  // We'll decode common numeric entities
+  unescaped = unescaped.replace(/&#x([0-9a-fA-F]+);/g, (_match, hex) => {
+    return String.fromCharCode(parseInt(hex, 16))
+  })
+  unescaped = unescaped.replace(/&#(\d+);/g, (_match, dec) => {
+    return String.fromCharCode(parseInt(dec, 10))
+  })
+  
+  return unescaped
+}
+
+/**
  * Check if a URL is a YouTube URL
  */
 function isYouTubeUrl(url: string): boolean {
@@ -915,12 +978,13 @@ function parseMarkdownContent(
       
       // Render paragraphs
       const blockquoteContent = paragraphs.map((paragraphLines: string[], paraIdx: number) => {
-        // Join paragraph lines with spaces (or preserve line breaks if needed)
-        const paragraphText = paragraphLines.join(' ')
+        // Join paragraph lines with newlines to preserve line breaks (especially before em-dashes)
+        // This preserves the original formatting of the blockquote
+        const paragraphText = paragraphLines.join('\n')
         const paragraphContent = parseInlineMarkdown(paragraphText, `blockquote-${patternIdx}-para-${paraIdx}`, footnotes)
         
         return (
-          <p key={`blockquote-${patternIdx}-para-${paraIdx}`} className="mb-2 last:mb-0">
+          <p key={`blockquote-${patternIdx}-para-${paraIdx}`} className="mb-2 last:mb-0 whitespace-pre-line">
             {paragraphContent}
           </p>
         )
@@ -1678,7 +1742,10 @@ export default function MarkdownArticle({
   
   // Preprocess content to convert URLs to markdown syntax
   const preprocessedContent = useMemo(() => {
-    return preprocessMarkdownMediaLinks(event.content)
+    // First unescape JSON-encoded escape sequences
+    const unescapedContent = unescapeJsonContent(event.content)
+    // Then preprocess media links
+    return preprocessMarkdownMediaLinks(unescapedContent)
   }, [event.content])
   
   // Create video poster map from imeta tags
