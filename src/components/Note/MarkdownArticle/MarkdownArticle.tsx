@@ -313,10 +313,48 @@ function parseMarkdownContent(
         const linkText = match[1]
         const hasImage = /^!\[/.test(linkText.trim())
         
+        // Check if link is standalone (on its own line, not part of a sentence/list/quote)
+        const isStandalone = (() => {
+          // Get the line containing this link
+          const lineStart = content.lastIndexOf('\n', start) + 1
+          const lineEnd = content.indexOf('\n', end)
+          const lineEndIndex = lineEnd === -1 ? content.length : lineEnd
+          const line = content.substring(lineStart, lineEndIndex)
+          
+          // Check if the line is just whitespace + the link (possibly with trailing whitespace)
+          const lineTrimmed = line.trim()
+          const linkMatch = lineTrimmed.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+          if (linkMatch) {
+            // Link is on its own line - check if it's in a list or blockquote
+            // Check if previous line starts with list marker or blockquote
+            const prevLineStart = content.lastIndexOf('\n', lineStart - 1) + 1
+            const prevLine = content.substring(prevLineStart, lineStart - 1).trim()
+            
+            // Not standalone if it's part of a list or blockquote
+            if (prevLine.match(/^[\*\-\+]\s/) || prevLine.match(/^\d+\.\s/) || prevLine.match(/^>\s/)) {
+              return false
+            }
+            
+            // Standalone if it's on its own line and not in a list/blockquote
+            return true
+          }
+          
+          // Not standalone if it's part of a sentence
+          return false
+        })()
+        
+        // Only render as WebPreview if it's a standalone HTTP/HTTPS link (not YouTube, not relay, not image link)
+        const url = match[2]
+        const shouldRenderAsWebPreview = isStandalone && 
+          !hasImage && 
+          !isYouTubeUrl(url) && 
+          !isWebsocketUrl(url) &&
+          (url.startsWith('http://') || url.startsWith('https://'))
+        
         linkPatterns.push({
           index: start,
           end: end,
-          type: hasImage ? 'markdown-image-link' : 'markdown-link',
+          type: hasImage ? 'markdown-image-link' : (shouldRenderAsWebPreview ? 'markdown-link-standalone' : 'markdown-link'),
           data: { text: match[1], url: match[2] }
         })
       }
@@ -545,6 +583,10 @@ function parseMarkdownContent(
     if (patternType === 'hashtag' || patternType === 'wikilink' || patternType === 'footnote-ref' || patternType === 'relay-url') {
       return true
     }
+    // Standalone links are block-level, not inline
+    if (patternType === 'markdown-link-standalone') {
+      return false
+    }
     if (patternType === 'markdown-link' && patternData) {
       const { url } = patternData
       // Markdown links are inline only if they're not YouTube or WebPreview
@@ -693,6 +735,14 @@ function parseMarkdownContent(
           </a>
         )
       }
+    } else if (pattern.type === 'markdown-link-standalone') {
+      const { url } = pattern.data
+      // Standalone links render as WebPreview (OpenGraph card)
+      parts.push(
+        <div key={`webpreview-${patternIdx}`} className="my-2">
+          <WebPreview url={url} className="w-full" />
+        </div>
+      )
     } else if (pattern.type === 'markdown-link') {
       const { text, url } = pattern.data
       // Markdown links should always be rendered as inline links, not block-level components

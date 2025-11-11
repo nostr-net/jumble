@@ -703,26 +703,109 @@ export default function AsciidocArticle({
         })
         
         // Handle YouTube URLs and relay URLs in links
-        htmlString = htmlString.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/g, (match, href, linkText) => {
+        // Process all link matches first to determine which are standalone
+        const linkMatches: Array<{ match: string; href: string; linkText: string; index: number; isStandalone: boolean }> = []
+        const linkRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/g
+        let linkMatch
+        while ((linkMatch = linkRegex.exec(htmlString)) !== null) {
+          const match = linkMatch[0]
+          const href = linkMatch[1]
+          const linkText = linkMatch[2]
+          const index = linkMatch.index
+          
+          // Check if link is standalone (on its own line, not part of a sentence/list/quote)
+          let isStandalone = false
+          if (href.startsWith('http://') || href.startsWith('https://')) {
+            // Get context around the link
+            const beforeMatch = htmlString.substring(Math.max(0, index - 500), index)
+            const afterMatch = htmlString.substring(index + match.length, Math.min(htmlString.length, index + match.length + 500))
+            
+            // Extract the parent paragraph/div content
+            const paragraphMatch = beforeMatch.match(/<p[^>]*>([^<]*)$/)
+            const divMatch = beforeMatch.match(/<div[^>]*>([^<]*)$/)
+            
+            // If link is in a paragraph, check if paragraph contains only the link
+            if (paragraphMatch) {
+              const paragraphEnd = afterMatch.match(/^([^<]*)<\/p>/)
+              const paragraphContent = paragraphMatch[1] + linkText + (paragraphEnd?.[1] || '')
+              const trimmedContent = paragraphContent.trim()
+              // If paragraph contains only the link (possibly with whitespace), it's standalone
+              if (trimmedContent === linkText.trim() || trimmedContent === '') {
+                // Check if it's in a list or blockquote by looking further back
+                const contextBefore = htmlString.substring(Math.max(0, index - 1000), index)
+                if (!contextBefore.match(/<[uo]l[^>]*>/) && !contextBefore.match(/<blockquote[^>]*>/)) {
+                  isStandalone = true
+                }
+              }
+            }
+            
+            // If link is in a div and the div contains only the link, it's standalone
+            if (!isStandalone && divMatch) {
+              const divEnd = afterMatch.match(/^([^<]*)<\/div>/)
+              const divContent = divMatch[1] + linkText + (divEnd?.[1] || '')
+              const trimmedContent = divContent.trim()
+              if (trimmedContent === linkText.trim() || trimmedContent === '') {
+                const contextBefore = htmlString.substring(Math.max(0, index - 1000), index)
+                if (!contextBefore.match(/<[uo]l[^>]*>/) && !contextBefore.match(/<blockquote[^>]*>/)) {
+                  isStandalone = true
+                }
+              }
+            }
+            
+            // If link appears to be on its own line (surrounded by block-level tags or whitespace)
+            if (!isStandalone) {
+              const beforeTrimmed = beforeMatch.replace(/\s*$/, '')
+              const afterTrimmed = afterMatch.replace(/^\s*/, '')
+              if (
+                (beforeTrimmed.endsWith('</p>') || beforeTrimmed.endsWith('</div>') || beforeTrimmed.endsWith('<br') || beforeTrimmed === '') &&
+                (afterTrimmed.startsWith('</p>') || afterTrimmed.startsWith('</div>') || afterTrimmed.startsWith('<p') || afterTrimmed.startsWith('<div') || afterTrimmed === '')
+              ) {
+                const contextBefore = htmlString.substring(Math.max(0, index - 1000), index)
+                if (!contextBefore.match(/<[uo]l[^>]*>/) && !contextBefore.match(/<blockquote[^>]*>/)) {
+                  isStandalone = true
+                }
+              }
+            }
+          }
+          
+          linkMatches.push({ match, href, linkText, index, isStandalone })
+        }
+        
+        // Replace links in reverse order to preserve indices
+        for (let i = linkMatches.length - 1; i >= 0; i--) {
+          const { match, href, linkText, isStandalone } = linkMatches[i]
+          let replacement = match
+          
           // Check if the href is a YouTube URL
           if (isYouTubeUrl(href)) {
             const cleanedUrl = cleanUrl(href)
-            return `<div data-youtube-url="${cleanedUrl.replace(/"/g, '&quot;')}" class="youtube-placeholder my-2"></div>`
+            replacement = `<div data-youtube-url="${cleanedUrl.replace(/"/g, '&quot;')}" class="youtube-placeholder my-2"></div>`
           }
           // Check if the href is a relay URL
-          if (isWebsocketUrl(href)) {
+          else if (isWebsocketUrl(href)) {
             const relayPath = `/relays/${encodeURIComponent(href)}`
-            return `<a href="${relayPath}" class="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer" data-relay-url="${href}" data-original-text="${linkText.replace(/"/g, '&quot;')}">${linkText}</a>`
+            replacement = `<a href="${relayPath}" class="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words cursor-pointer" data-relay-url="${href}" data-original-text="${linkText.replace(/"/g, '&quot;')}">${linkText}</a>`
           }
-          // For regular HTTP/HTTPS links, replace with WebPreview placeholder
-          if (href.startsWith('http://') || href.startsWith('https://')) {
-            const cleanedUrl = cleanUrl(href)
-            return `<div data-webpreview-url="${cleanedUrl.replace(/"/g, '&quot;')}" class="webpreview-placeholder my-2"></div>`
+          // For regular HTTP/HTTPS links, check if standalone
+          else if (href.startsWith('http://') || href.startsWith('https://')) {
+            if (isStandalone) {
+              // Standalone link - render as WebPreview
+              const cleanedUrl = cleanUrl(href)
+              replacement = `<div data-webpreview-url="${cleanedUrl.replace(/"/g, '&quot;')}" class="webpreview-placeholder my-2"></div>`
+            } else {
+              // Inline link - keep as regular link
+              const escapedLinkText = linkText.replace(/"/g, '&quot;')
+              replacement = `<a href="${href}" class="inline text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:underline break-words" target="_blank" rel="noopener noreferrer" data-original-text="${escapedLinkText}">${linkText}</a>`
+            }
           }
-          // For other links (like relative links), keep as-is
-          const escapedLinkText = linkText.replace(/"/g, '&quot;')
-          return match.replace(/<a/, `<a data-original-text="${escapedLinkText}"`)
-        })
+          // For other links (like relative links), keep as-is but add data attribute
+          else {
+            const escapedLinkText = linkText.replace(/"/g, '&quot;')
+            replacement = match.replace(/<a/, `<a data-original-text="${escapedLinkText}"`)
+          }
+          
+          htmlString = htmlString.substring(0, linkMatches[i].index) + replacement + htmlString.substring(linkMatches[i].index + match.length)
+        }
         
         // Handle YouTube URLs in plain text (not in <a> tags)
         // Create a new regex instance to avoid state issues

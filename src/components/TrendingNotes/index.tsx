@@ -42,7 +42,7 @@ export default function TrendingNotes() {
   const [nostrLoading, setNostrLoading] = useState(false)
   const [nostrError, setNostrError] = useState<string | null>(null)
   const [showCount, setShowCount] = useState(SHOW_COUNT)
-  const [activeTab, setActiveTab] = useState<TrendingTab>('nostr')
+  const [activeTab, setActiveTab] = useState<TrendingTab>('relays')
   const [sortOrder, setSortOrder] = useState<SortOrder>('most-popular')
   const [hashtagFilter] = useState<HashtagFilter>('popular')
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null)
@@ -51,8 +51,9 @@ export default function TrendingNotes() {
   const [cacheLoading, setCacheLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isFetchingNostrRef = useRef(false)
+  const hasUserClickedNostrTabRef = useRef(false)
 
-  // Load Nostr.band trending feed when tab is active
+  // Load Nostr.band trending feed only when user explicitly clicks the nostr tab
   useEffect(() => {
     const loadTrending = async () => {
       // Prevent concurrent fetches
@@ -81,7 +82,8 @@ export default function TrendingNotes() {
       }
     }
 
-    if (activeTab === 'nostr' && nostrEvents.length === 0 && !nostrLoading && !nostrError && !isFetchingNostrRef.current) {
+    // Only fetch if user has explicitly clicked the nostr tab AND it's currently active
+    if (activeTab === 'nostr' && hasUserClickedNostrTabRef.current && nostrEvents.length === 0 && !nostrLoading && !nostrError && !isFetchingNostrRef.current) {
       loadTrending()
     }
   }, [activeTab, nostrEvents.length, nostrLoading, nostrError])
@@ -606,7 +608,10 @@ export default function TrendingNotes() {
               hashtags
             </button>
             <button
-              onClick={() => setActiveTab('nostr')}
+              onClick={() => {
+                hasUserClickedNostrTabRef.current = true
+                setActiveTab('nostr')
+              }}
               className={`px-3 py-1 text-sm rounded-md transition-colors ${
                 activeTab === 'nostr'
                   ? 'bg-primary text-primary-foreground'
