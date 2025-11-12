@@ -63,7 +63,7 @@ const FeedSwitcherTrigger = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEle
         return t('Following')
       }
       if (feedInfo.feedType === 'hashtag') {
-        return `#${feedInfo.hashtag}`
+        return `#${feedInfo.hashtag ?? ''}`
       }
       if (relayUrls.length === 0) {
         return t('Choose a relay')
