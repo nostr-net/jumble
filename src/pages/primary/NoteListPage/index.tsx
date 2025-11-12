@@ -22,6 +22,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import FeedButton from './FeedButton'
 import FollowingFeed from './FollowingFeed'
+import HashtagFeed from './HashtagFeed'
 import RelaysFeed from './RelaysFeed'
 
 const NoteListPage = forwardRef((_, ref) => {
@@ -61,6 +62,8 @@ const NoteListPage = forwardRef((_, ref) => {
     )
   } else if (feedInfo.feedType === 'following') {
     content = <FollowingFeed />
+  } else if (feedInfo.feedType === 'hashtag') {
+    content = <HashtagFeed />
   } else {
     content = (
       <>

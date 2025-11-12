@@ -15,7 +15,7 @@ type TFeedContext = {
   isReady: boolean
   switchFeed: (
     feedType: TFeedType,
-    options?: { activeRelaySetId?: string; pubkey?: string; relay?: string | null }
+    options?: { activeRelaySetId?: string; pubkey?: string; relay?: string | null; hashtag?: string | null }
   ) => Promise<void>
 }
 
@@ -69,6 +69,11 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       if (feedInfo.feedType === 'following' && pubkey) {
         return await switchFeed('following', { pubkey })
       }
+
+      // restore hashtag feed
+      if (feedInfo.feedType === 'hashtag' && feedInfo.hashtag) {
+        return await switchFeed('hashtag', { hashtag: feedInfo.hashtag })
+      }
     }
 
     init()
@@ -80,6 +85,7 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
       activeRelaySetId?: string | null
       pubkey?: string | null
       relay?: string | null
+      hashtag?: string | null
     } = {}
   ) => {
     setIsReady(false)
@@ -135,6 +141,20 @@ export function FeedProvider({ children }: { children: React.ReactNode }) {
         return
       }
       const newFeedInfo = { feedType }
+      setFeedInfo(newFeedInfo)
+      feedInfoRef.current = newFeedInfo
+      storage.setFeedInfo(newFeedInfo, pubkey)
+
+      setRelayUrls([])
+      setIsReady(true)
+      return
+    }
+    if (feedType === 'hashtag') {
+      if (!options.hashtag) {
+        setIsReady(true)
+        return
+      }
+      const newFeedInfo = { feedType, hashtag: options.hashtag }
       setFeedInfo(newFeedInfo)
       feedInfoRef.current = newFeedInfo
       storage.setFeedInfo(newFeedInfo, pubkey)

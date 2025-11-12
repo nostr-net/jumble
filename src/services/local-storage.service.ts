@@ -52,6 +52,7 @@ class LocalStorageService {
   private sidebarCollapse: boolean = false
   private primaryColor: TPrimaryColor = 'DEFAULT'
   private enableSingleColumnLayout: boolean = true
+  private savedHashtags: string[] = []
 
   constructor() {
     if (!LocalStorageService.instance) {
@@ -204,6 +205,9 @@ class LocalStorageService {
 
     this.enableSingleColumnLayout =
       window.localStorage.getItem(StorageKey.ENABLE_SINGLE_COLUMN_LAYOUT) !== 'false'
+
+    const savedHashtagsStr = window.localStorage.getItem(StorageKey.SAVED_HASHTAGS)
+    this.savedHashtags = savedHashtagsStr ? JSON.parse(savedHashtagsStr) : []
 
     // Clean up deprecated data
     window.localStorage.removeItem(StorageKey.ACCOUNT_PROFILE_EVENT_MAP)
@@ -514,6 +518,28 @@ class LocalStorageService {
   setEnableSingleColumnLayout(enable: boolean) {
     this.enableSingleColumnLayout = enable
     window.localStorage.setItem(StorageKey.ENABLE_SINGLE_COLUMN_LAYOUT, enable.toString())
+  }
+
+  getSavedHashtags() {
+    return this.savedHashtags
+  }
+
+  addSavedHashtag(hashtag: string) {
+    // Normalize hashtag by removing # if present and converting to lowercase
+    const normalizedHashtag = hashtag.replace(/^#/, '').toLowerCase().trim()
+    if (!normalizedHashtag || this.savedHashtags.includes(normalizedHashtag)) {
+      return this.savedHashtags
+    }
+    this.savedHashtags.push(normalizedHashtag)
+    window.localStorage.setItem(StorageKey.SAVED_HASHTAGS, JSON.stringify(this.savedHashtags))
+    return this.savedHashtags
+  }
+
+  removeSavedHashtag(hashtag: string) {
+    const normalizedHashtag = hashtag.replace(/^#/, '').toLowerCase().trim()
+    this.savedHashtags = this.savedHashtags.filter((h) => h !== normalizedHashtag)
+    window.localStorage.setItem(StorageKey.SAVED_HASHTAGS, JSON.stringify(this.savedHashtags))
+    return this.savedHashtags
   }
 }
 

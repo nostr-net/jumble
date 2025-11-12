@@ -4,8 +4,12 @@ import { SecondaryPageLink } from '@/PageManager'
 import { useFavoriteRelays } from '@/providers/FavoriteRelaysProvider'
 import { useFeed } from '@/providers/FeedProvider'
 import { useNostr } from '@/providers/NostrProvider'
-import { UsersRound } from 'lucide-react'
+import storage from '@/services/local-storage.service'
+import { Hash, Plus, UsersRound, X } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import RelayIcon from '../RelayIcon'
 import RelaySetCard from '../RelaySetCard'
 
@@ -14,6 +18,23 @@ export default function FeedSwitcher({ close }: { close?: () => void }) {
   const { pubkey } = useNostr()
   const { relaySets, favoriteRelays } = useFavoriteRelays()
   const { feedInfo, switchFeed } = useFeed()
+  const [savedHashtags, setSavedHashtags] = useState<string[]>(storage.getSavedHashtags())
+  const [newHashtag, setNewHashtag] = useState('')
+  const [showHashtagInput, setShowHashtagInput] = useState(false)
+
+  const handleAddHashtag = () => {
+    if (!newHashtag.trim()) return
+    storage.addSavedHashtag(newHashtag)
+    setSavedHashtags(storage.getSavedHashtags())
+    setNewHashtag('')
+    setShowHashtagInput(false)
+  }
+
+  const handleRemoveHashtag = (hashtag: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    storage.removeSavedHashtag(hashtag)
+    setSavedHashtags(storage.getSavedHashtags())
+  }
 
   return (
     <div className="space-y-2">
@@ -34,6 +55,69 @@ export default function FeedSwitcher({ close }: { close?: () => void }) {
           </div>
         </FeedSwitcherItem>
       )}
+
+      <div className="flex justify-between items-center text-sm">
+        <div className="font-semibold text-muted-foreground">{t('Hashtags')}</div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowHashtagInput(!showHashtagInput)}
+          className="h-7 px-2"
+        >
+          <Plus className="size-4" />
+        </Button>
+      </div>
+
+      {showHashtagInput && (
+        <div className="flex gap-2">
+          <Input
+            placeholder={t('Enter hashtag...')}
+            value={newHashtag}
+            onChange={(e) => setNewHashtag(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleAddHashtag()
+              } else if (e.key === 'Escape') {
+                setShowHashtagInput(false)
+                setNewHashtag('')
+              }
+            }}
+            autoFocus
+            className="flex-1"
+          />
+          <Button onClick={handleAddHashtag} size="sm">
+            {t('Add')}
+          </Button>
+        </div>
+      )}
+
+      {savedHashtags.map((hashtag) => (
+        <FeedSwitcherItem
+          key={hashtag}
+          isActive={feedInfo.feedType === 'hashtag' && feedInfo.hashtag === hashtag}
+          onClick={() => {
+            switchFeed('hashtag', { hashtag })
+            close?.()
+          }}
+          controls={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => handleRemoveHashtag(hashtag, e)}
+              className="h-7 w-7 p-0"
+            >
+              <X className="size-4" />
+            </Button>
+          }
+        >
+          <div className="flex gap-2 items-center">
+            <div className="flex justify-center items-center w-6 h-6 shrink-0">
+              <Hash className="size-4" />
+            </div>
+            <div>#{hashtag}</div>
+          </div>
+        </FeedSwitcherItem>
+      ))}
 
       <div className="flex justify-end items-center text-sm">
         <SecondaryPageLink
